@@ -14,6 +14,7 @@ const TODO_COLS: { status: TodoStatus; label: string }[] = [
 
 export function ProjectsPanel({
   selectedId,
+  refreshTick = 0,
   highlightAssetId,
   highlightTodoId,
   sessions,
@@ -22,6 +23,7 @@ export function ProjectsPanel({
   onCreateSession,
 }: {
   selectedId?: string;
+  refreshTick?: number;
   highlightAssetId?: string;
   highlightTodoId?: string;
   sessions: SessionSummary[];
@@ -60,6 +62,9 @@ export function ProjectsPanel({
   useEffect(() => {
     setInviteToken(null);
     setRedeemToken("");
+  }, [selectedId]);
+
+  useEffect(() => {
     void (async () => {
       try {
         const list = await refreshList();
@@ -69,7 +74,7 @@ export function ProjectsPanel({
         setError(err instanceof Error ? err.message : String(err));
       }
     })();
-  }, [selectedId]);
+  }, [selectedId, refreshTick]);
 
   useEffect(() => {
     if (!detail || !highlightAssetId) return;
