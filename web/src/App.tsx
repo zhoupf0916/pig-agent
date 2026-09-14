@@ -24,6 +24,10 @@ import {
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
+  applySessionListSnapshot,
+  startSessionListSync,
+} from "./lib/session-list-sync";
+import {
   applySyncPhase,
   CATCH_UP_STATUS,
   rememberEventSeq,
@@ -98,7 +102,7 @@ export function App() {
 
   const refreshSessions = useCallback(async () => {
     const { sessions: next } = await api.sessions();
-    setSessions(next);
+    setSessions((prev) => applySessionListSnapshot(prev, next));
     return next;
   }, []);
 
@@ -212,6 +216,16 @@ export function App() {
     const onHash = () => setRoute(parseHash());
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  useEffect(() => {
+    return startSessionListSync({
+      fetchList: async () => {
+        const { sessions: next } = await api.sessions();
+        return next;
+      },
+      onList: (next) => setSessions((prev) => applySessionListSnapshot(prev, next)),
+    });
   }, []);
 
   useEffect(() => {

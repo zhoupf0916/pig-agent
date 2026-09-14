@@ -86,6 +86,10 @@ So two `GET …/events` clients on the same session see the **same seq sequence*
 
 The live `GET …/events` connection stays open after a turn ends, so a follow-up from another tab arrives without a full page reload.
 
+## Sidebar status (Milestone Q)
+
+Transcript SSE is per-session. The workstation sidebar is a **read-only** refresh of `GET /api/sessions` (status / title / `updatedAt`). Another tab on the same host that starts or finishes a turn does not need a full page reload. This does **not** dual-write session JSON or append `events.jsonl`.
+
 ## What this is not
 
 - No Redis / MySQL bus
