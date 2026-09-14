@@ -31,11 +31,11 @@ export function SettingsModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 p-4 backdrop-blur-[2px]">
-      <div className="w-full max-w-xl rounded-2xl border border-ink-200 bg-white p-5 shadow-lift">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-800/20 p-4 backdrop-blur-[2px]">
+      <div className="w-full max-w-xl rounded-card border border-ink-300 bg-white p-5 shadow-lift">
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-base font-medium text-ink-900">设置</h2>
+            <h2 className="text-base font-medium text-ink-800">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
               保存在本机 data/settings.json，覆盖 .env / .env.local。默认 DeepSeek
               （https://api.deepseek.com/v1 · deepseek-chat）。切勿把密钥提交到仓库。
@@ -82,7 +82,7 @@ export function SettingsModal({
           </Field>
         </div>
 
-        <div className="mt-4 rounded-xl border border-ink-200 bg-ink-50 p-3">
+        <div className="mt-4 rounded-card border border-ink-300 bg-ink-100 p-3">
           <div className="text-[11px] uppercase tracking-[0.14em] text-ink-500">本地技能</div>
           <ul className="mt-2 space-y-1.5">
             {skills.map((s) => (

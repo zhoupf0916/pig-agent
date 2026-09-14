@@ -271,13 +271,13 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex items-center justify-between border-b border-ink-200 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
+      <header className="flex items-center justify-between border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-900 text-sm font-semibold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
             P
           </div>
           <div>
-            <div className="text-sm font-medium text-ink-900">Pig Agent</div>
+            <div className="text-sm font-medium text-ink-800">Pig Agent</div>
             <div className="text-[11px] text-ink-500">纯本地 · 纯 Web 工作台</div>
           </div>
         </div>
@@ -300,12 +300,12 @@ export function App() {
       </header>
 
       {bootError && (
-        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
+        <div className="border-b border-danger-soft bg-danger-soft px-4 py-2 text-xs text-danger">
           无法连接本地后端：{bootError}。请确认已运行 <code>pnpm dev</code>。
         </div>
       )}
       {session?.lastError && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+        <div className="border-b border-warning-soft bg-warning-soft px-4 py-2 text-xs text-warning">
           {session.lastError}
         </div>
       )}

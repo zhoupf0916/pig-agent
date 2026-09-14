@@ -3,18 +3,18 @@ import { lineDiff } from "../lib/diff";
 export function DiffView({ before, after }: { before: string; after: string }) {
   const lines = lineDiff(before, after);
   if (lines.length === 0) {
-    return <p className="text-xs text-ink-500">无差异。</p>;
+    return <p className="text-xs text-ink-600">无差异。</p>;
   }
   return (
-    <pre className="overflow-auto rounded-lg border border-ink-200 bg-ink-50 font-mono text-[11px] leading-5">
+    <pre className="overflow-auto rounded-card border border-ink-300 bg-ink-100 font-mono text-[12px] leading-5">
       {lines.map((line, i) => (
         <div
           key={`${i}-${line.type}`}
           className={
             line.type === "add"
-              ? "bg-emerald-50 text-emerald-900"
+              ? "bg-success-soft text-success"
               : line.type === "del"
-                ? "bg-red-50 text-red-900"
+                ? "bg-danger-soft text-danger"
                 : "text-ink-600"
           }
         >
