@@ -175,6 +175,29 @@ export type ProjectSummary = {
   sessionCount: number;
 };
 
+export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message";
+
+/** Read-only local search hit (Milestone G). No embeddings. */
+export type SearchHit = {
+  type: SearchHitType;
+  id: string;
+  title: string;
+  snippet: string;
+  /** Hash route, e.g. `#/sessions/<id>` or `#/projects/<id>?asset=<id>`. */
+  href: string;
+  sessionId?: string;
+  projectId?: string;
+  assetId?: string;
+  todoId?: string;
+  messageId?: string;
+};
+
+export type SearchResponse = {
+  q: string;
+  limit: number;
+  hits: SearchHit[];
+};
+
 export type InboxKind = "invite" | "handoff";
 
 export type InboxItem = {

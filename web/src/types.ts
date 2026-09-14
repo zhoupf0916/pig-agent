@@ -151,6 +151,27 @@ export type Project = {
   sessions?: SessionSummary[];
 };
 
+export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message";
+
+export type SearchHit = {
+  type: SearchHitType;
+  id: string;
+  title: string;
+  snippet: string;
+  href: string;
+  sessionId?: string;
+  projectId?: string;
+  assetId?: string;
+  todoId?: string;
+  messageId?: string;
+};
+
+export type SearchResponse = {
+  q: string;
+  limit: number;
+  hits: SearchHit[];
+};
+
 export type InboxItem = {
   id: string;
   kind: "invite" | "handoff";

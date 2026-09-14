@@ -122,30 +122,33 @@ export async function getProject(id: string): Promise<Project | null> {
   return readProjectFile(id);
 }
 
-export async function listProjects(): Promise<ProjectSummary[]> {
+export async function listProjectRecords(): Promise<Project[]> {
   ensureDir(DIR);
   const ids = (await readdir(DIR, { withFileTypes: true }))
     .filter((e) => e.isDirectory())
     .map((e) => e.name);
-  const sessions = await listSessions();
-  const out: ProjectSummary[] = [];
+  const out: Project[] = [];
   for (const id of ids) {
     const project = await readProjectFile(id);
-    if (!project) continue;
-    out.push({
-      id: project.id,
-      name: project.name,
-      instruction: project.instruction,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      memberCount: project.members.length,
-      todoCount: project.todos.length,
-      assetCount: project.assets.length,
-      sessionCount: sessions.filter((s) => s.projectId === project.id).length,
-    });
+    if (project) out.push(project);
   }
   out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return out;
+}
+
+export async function listProjects(): Promise<ProjectSummary[]> {
+  const [projects, sessions] = await Promise.all([listProjectRecords(), listSessions()]);
+  return projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    instruction: project.instruction,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    memberCount: project.members.length,
+    todoCount: project.todos.length,
+    assetCount: project.assets.length,
+    sessionCount: sessions.filter((s) => s.projectId === project.id).length,
+  }));
 }
 
 export async function updateProject(

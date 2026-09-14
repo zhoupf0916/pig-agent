@@ -31,29 +31,33 @@ export async function createSession(
   return session;
 }
 
-export async function listSessions(): Promise<SessionSummary[]> {
+export async function listSessionRecords(): Promise<Session[]> {
   ensureDir(DIR);
   const files = (await readdir(DIR)).filter((f) => f.endsWith(".json"));
-  const sessions: SessionSummary[] = [];
+  const sessions: Session[] = [];
   for (const file of files) {
     try {
-      const session = await readSessionFile(join(DIR, file));
-      sessions.push({
-        id: session.id,
-        title: session.title,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        status: session.status,
-        projectId: session.projectId,
-        expertId: session.expertId,
-        expertTeamId: session.expertTeamId,
-      });
+      sessions.push(await readSessionFile(join(DIR, file)));
     } catch {
       // skip corrupt files
     }
   }
   sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return sessions;
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const sessions = await listSessionRecords();
+  return sessions.map((session) => ({
+    id: session.id,
+    title: session.title,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    status: session.status,
+    projectId: session.projectId,
+    expertId: session.expertId,
+    expertTeamId: session.expertTeamId,
+  }));
 }
 
 export async function getSession(id: string): Promise<Session | null> {

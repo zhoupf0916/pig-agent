@@ -140,3 +140,17 @@ No LLM required. See [docs/project-assets.md](./docs/project-assets.md).
 - [ ] `GET /api/projects/<id>/assets/<assetId>/download` is `Content-Disposition: attachment`
 - [ ] `POST /api/projects/<id>/handoffs` with `{ sessionId, note, attachRecentArtifacts: true }` → 201 + inbox `kind=handoff` (and `assetIds` when files were copied)
 - [ ] Default runtime is still **本机 Pig**. This is **not** Desk Remote / Firecracker / marketplace
+
+## Local search / memory (Milestone G)
+
+No LLM required. No embeddings. See [docs/search.md](./docs/search.md).
+
+- [ ] Header shows a search box (desktop) and a **搜索** nav item. Default runtime is still **本机 Pig**
+- [ ] Open `#/search`, type a unique phrase from a session title or recent user/assistant message — a **会话** hit appears
+- [ ] Click the session hit — workstation opens that transcript (`#/sessions/<id>`)
+- [ ] Search a project name / instruction / todo / comment — typed hits navigate to `#/projects/<id>` (todo is highlighted)
+- [ ] Search a text asset filename or a unique string inside the file — **资产** hit opens the project and the existing preview modal
+- [ ] Upload a PNG; searching a string that exists only in the binary bytes returns no asset hit; the filename still matches
+- [ ] `GET /api/search?q=` → `{ hits: [] }`; `GET /api/search?q=<term>&limit=2` returns at most 2 hits with `href` / id hints
+- [ ] Ctrl+K (or `/` when not typing) focuses the header box; Enter opens the full `#/search` page
+- [ ] This is **not** a vector DB, Mem0, marketplace, Desk Remote, or environment builds

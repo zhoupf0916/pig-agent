@@ -14,12 +14,16 @@ const TODO_COLS: { status: TodoStatus; label: string }[] = [
 
 export function ProjectsPanel({
   selectedId,
+  highlightAssetId,
+  highlightTodoId,
   sessions,
   onSelectProject,
   onOpenSession,
   onCreateSession,
 }: {
   selectedId?: string;
+  highlightAssetId?: string;
+  highlightTodoId?: string;
   sessions: SessionSummary[];
   onSelectProject: (id?: string) => void;
   onOpenSession: (id: string) => void;
@@ -61,6 +65,12 @@ export function ProjectsPanel({
       }
     })();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!detail || !highlightAssetId) return;
+    const asset = detail.assets.find((a) => a.id === highlightAssetId);
+    if (asset) setPreviewAsset(asset);
+  }, [detail, highlightAssetId]);
 
   const linked = useMemo(
     () => sessions.filter((s) => s.projectId === detail?.id),
@@ -209,7 +219,14 @@ export function ProjectsPanel({
                       {detail.todos
                         .filter((t) => t.status === col.status)
                         .map((todo) => (
-                          <div key={todo.id} className="rounded-[10px] border border-ink-200 bg-ink-50 px-2 py-1.5">
+                          <div
+                            key={todo.id}
+                            className={`rounded-[10px] border px-2 py-1.5 ${
+                              todo.id === highlightTodoId
+                                ? "border-accent bg-accent-soft"
+                                : "border-ink-200 bg-ink-50"
+                            }`}
+                          >
                             <div className="text-[13px] text-ink-800">{todo.title}</div>
                             <div className="mt-1 flex flex-wrap gap-1">
                               {TODO_COLS.filter((c) => c.status !== todo.status).map((c) => (
@@ -269,7 +286,12 @@ export function ProjectsPanel({
                   <li className="px-2 py-3 text-center text-xs text-ink-500">还没有资产。上传一份 brief 或图片即可。</li>
                 )}
                 {detail.assets.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 px-2 py-1.5 text-[13px]">
+                  <li
+                    key={a.id}
+                    className={`flex items-center justify-between gap-2 rounded-[10px] px-2 py-1.5 text-[13px] ${
+                      a.id === highlightAssetId ? "bg-accent-soft" : ""
+                    }`}
+                  >
                     <button
                       type="button"
                       className="min-w-0 flex-1 truncate text-left"
@@ -426,7 +448,10 @@ export function ProjectsPanel({
         <AssetPreviewModal
           projectId={detail.id}
           asset={previewAsset}
-          onClose={() => setPreviewAsset(null)}
+          onClose={() => {
+            setPreviewAsset(null);
+            if (highlightAssetId) onSelectProject(detail.id);
+          }}
           onOpenSession={onOpenSession}
         />
       )}

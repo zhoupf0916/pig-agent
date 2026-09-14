@@ -1,4 +1,4 @@
-import { Settings2 } from "lucide-react";
+import { Search, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
@@ -6,6 +6,8 @@ import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
+import { SearchBox } from "./components/SearchBox";
+import { SearchPanel } from "./components/SearchPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
@@ -14,6 +16,8 @@ import {
   expertsHash,
   parseHash,
   projectsHash,
+  searchHash,
+  sessionHash,
   workstationHash,
   type AppRoute,
 } from "./lib/hash";
@@ -23,6 +27,7 @@ import type {
   ExpertTeam,
   LiveTool,
   ProjectSummary,
+  SearchHit,
   Session,
   SessionSummary,
   Settings,
@@ -90,13 +95,30 @@ export function App() {
     }
   }, []);
 
-  const goWorkstation = useCallback(() => {
-    window.location.hash = workstationHash();
+  const goWorkstation = useCallback((sessionId?: string) => {
+    window.location.hash = sessionId ? sessionHash(sessionId) : workstationHash();
   }, []);
 
-  const goProjects = useCallback((projectId?: string) => {
-    window.location.hash = projectsHash(projectId);
+  const goProjects = useCallback((projectId?: string, extra?: { assetId?: string; todoId?: string }) => {
+    window.location.hash = projectsHash(projectId, extra);
   }, []);
+
+  const goSearch = useCallback((q?: string) => {
+    window.location.hash = searchHash(q);
+  }, []);
+
+  const openHit = useCallback(
+    (hit: SearchHit) => {
+      if (hit.type === "session") {
+        const id = hit.sessionId || hit.id;
+        void loadSession(id);
+        window.location.hash = hit.href || sessionHash(id);
+        return;
+      }
+      window.location.hash = hit.href;
+    },
+    [loadSession],
+  );
 
   const goExperts = useCallback((expertId?: string) => {
     window.location.hash = expertsHash(expertId);
@@ -131,7 +153,10 @@ export function App() {
         await refreshTree();
         await refreshProjects();
         await refreshExperts();
-        if (list.sessions[0]) {
+        const bootRoute = parseHash();
+        if (bootRoute.name === "workstation" && bootRoute.sessionId) {
+          await loadSession(bootRoute.sessionId);
+        } else if (list.sessions[0]) {
           await loadSession(list.sessions[0].id);
         }
       } catch (err) {
@@ -145,6 +170,12 @@ export function App() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  useEffect(() => {
+    if (route.name !== "workstation" || !route.sessionId) return;
+    if (route.sessionId === activeId) return;
+    void loadSession(route.sessionId);
+  }, [activeId, loadSession, route]);
 
   const openFile = useCallback(async (path: string) => {
     setPreviewPath(path);
@@ -166,7 +197,7 @@ export function App() {
     await refreshProjects();
     await loadSession(created.id);
     setDraft("");
-    goWorkstation();
+    goWorkstation(created.id);
   }, [goWorkstation, loadSession, refreshProjects, refreshSessions]);
 
   const removeSession = useCallback(
@@ -393,8 +424,10 @@ export function App() {
         await refreshSessions();
         await loadSession(created.id);
         setDraft("");
+        goWorkstation(created.id);
+        return;
       }
-      goWorkstation();
+      goWorkstation(session?.id);
     },
     [bindExpert, goWorkstation, loadSession, refreshSessions, session],
   );
@@ -408,8 +441,10 @@ export function App() {
         await refreshSessions();
         await loadSession(created.id);
         setDraft("");
+        goWorkstation(created.id);
+        return;
       }
-      goWorkstation();
+      goWorkstation(session?.id);
     },
     [bindTeam, goWorkstation, loadSession, refreshSessions, session],
   );
@@ -434,8 +469,8 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex items-center justify-between border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between gap-3 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
+        <div className="flex shrink-0 items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
             P
           </div>
@@ -444,11 +479,18 @@ export function App() {
             <div className="text-meta text-ink-500">工作台 · 本机与云端同一协议</div>
           </div>
         </div>
+        <div className="hidden min-w-0 max-w-lg flex-1 md:block">
+          <SearchBox
+            initialQ={route.name === "search" ? route.q ?? "" : ""}
+            onOpenAll={(q) => goSearch(q)}
+            onOpenHit={openHit}
+          />
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             className={route.name === "workstation" ? "btn-primary" : "btn-ghost"}
-            onClick={goWorkstation}
+            onClick={() => goWorkstation(activeId ?? undefined)}
           >
             工作台
           </button>
@@ -473,11 +515,19 @@ export function App() {
           >
             自动化
           </button>
+          <button
+            type="button"
+            className={route.name === "search" ? "btn-primary" : "btn-ghost"}
+            onClick={() => goSearch(route.name === "search" ? route.q : undefined)}
+          >
+            <Search size={14} />
+            搜索
+          </button>
           <InboxMenu
             onOpenProject={(id) => goProjects(id)}
             onOpenSession={(id) => {
               void loadSession(id);
-              goWorkstation();
+              goWorkstation(id);
             }}
           />
           <div className="hidden text-right text-meta text-ink-500 sm:block">
@@ -512,13 +562,21 @@ export function App() {
         {route.name === "projects" ? (
           <ProjectsPanel
             selectedId={route.projectId}
+            highlightAssetId={route.assetId}
+            highlightTodoId={route.todoId}
             sessions={sessions}
             onSelectProject={(id) => goProjects(id)}
             onOpenSession={(id) => {
               void loadSession(id);
-              goWorkstation();
+              goWorkstation(id);
             }}
             onCreateSession={(projectId) => void createSession(projectId)}
+          />
+        ) : route.name === "search" ? (
+          <SearchPanel
+            initialQ={route.q}
+            onQueryChange={(q) => goSearch(q)}
+            onOpenHit={openHit}
           />
         ) : route.name === "experts" ? (
           <ExpertsPanel
@@ -537,7 +595,7 @@ export function App() {
             onSelect={(id) => goAutomations(id)}
             onOpenSession={(id) => {
               void loadSession(id);
-              goWorkstation();
+              goWorkstation(id);
             }}
           />
         ) : (
@@ -545,7 +603,10 @@ export function App() {
             <Sidebar
               sessions={sessions}
               activeId={activeId}
-              onSelect={(id) => void loadSession(id)}
+              onSelect={(id) => {
+                void loadSession(id);
+                goWorkstation(id);
+              }}
               onCreate={() => void createSession()}
               onDelete={(id) => void removeSession(id)}
             />
