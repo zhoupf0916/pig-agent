@@ -122,13 +122,22 @@ export type ComposerDraftSyncBus = {
   removeListener: (type: "visibilitychange" | "focus", handler: () => void) => void;
 };
 
+const storageListeners = new WeakMap<(event: StorageEventLike) => void, EventListener>();
+
 export function browserComposerDraftSyncBus(): ComposerDraftSyncBus {
   return {
     addStorageListener: (handler) => {
-      window.addEventListener("storage", handler as EventListener);
+      const listener: EventListener = (event) => {
+        handler(event as StorageEvent);
+      };
+      storageListeners.set(handler, listener);
+      window.addEventListener("storage", listener);
     },
     removeStorageListener: (handler) => {
-      window.removeEventListener("storage", handler as EventListener);
+      const listener = storageListeners.get(handler);
+      if (!listener) return;
+      window.removeEventListener("storage", listener);
+      storageListeners.delete(handler);
     },
     addListener: (type, handler) => {
       if (type === "visibilitychange") document.addEventListener(type, handler);
