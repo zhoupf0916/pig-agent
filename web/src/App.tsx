@@ -24,6 +24,11 @@ import {
   startComposerDraftSync,
 } from "./lib/composer-draft";
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
+import {
+  applyWorkspaceFileSnapshot,
+  startWorkspaceFileSync,
+  type WorkspaceFilePreview,
+} from "./lib/workspace-file-sync";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
   applySessionListSnapshot,
@@ -83,12 +88,7 @@ export function App() {
   const [skills, setSkills] = useState<SkillMeta[]>([]);
   const [tree, setTree] = useState<WorkspaceNode | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{
-    path: string;
-    content: string;
-    binary: boolean;
-    size: number;
-  } | null>(null);
+  const [preview, setPreview] = useState<WorkspaceFilePreview | null>(null);
   const [draft, setDraft] = useState(() => {
     const boot = parseHash();
     return boot.name === "workstation" && boot.sessionId
@@ -256,6 +256,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!previewPath) return;
+    return startWorkspaceFileSync({
+      path: previewPath,
+      fetchFile: (path) => api.file(path),
+      onFile: (next) => setPreview((prev) => applyWorkspaceFileSnapshot(prev, next)),
+    });
+  }, [previewPath]);
+
+  useEffect(() => {
     if (!activeId) return;
     return startComposerDraftSync({
       sessionId: activeId,
@@ -273,11 +282,12 @@ export function App() {
   const openFile = useCallback(async (path: string) => {
     setPreviewPath(path);
     try {
-      setPreview(await api.file(path));
+      const next = await api.file(path);
+      setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
     } catch (err) {
       setPreview({
         path,
-        content: err instanceof Error ? err.message : String(err),
+        content: redactSecretsForDisplay(err instanceof Error ? err.message : String(err)),
         binary: false,
         size: 0,
       });

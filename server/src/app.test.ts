@@ -20,6 +20,27 @@ describe("HTTP API", () => {
     expect(names).toContain("drafts");
   });
 
+  it("GET /api/workspace/file is a read-only snapshot of an existing sandbox path", async () => {
+    const before = await loadSettings();
+    const res = await app.request("/api/workspace/file?path=notes/meeting-2026-03-14.md");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      path?: string;
+      content?: string;
+      binary?: boolean;
+      size?: number;
+    };
+    expect(body.path).toBe("notes/meeting-2026-03-14.md");
+    expect(body.binary).toBe(false);
+    expect(typeof body.content).toBe("string");
+    expect(body.content).toContain("Sprint sync");
+    expect(typeof body.size).toBe("number");
+    expect(JSON.stringify(body)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    const after = await loadSettings();
+    expect(after).toEqual(before);
+    expect(after.runtime).toBe("pig");
+  });
+
   it("GET /api/workspace/tree is a read-only snapshot (no secrets, no settings write)", async () => {
     const before = await loadSettings();
     const res = await app.request("/api/workspace/tree");

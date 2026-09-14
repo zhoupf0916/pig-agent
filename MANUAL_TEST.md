@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab workspace file preview (Milestone U)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/file` refresh of the already-open preview path. No second write path, no dual-write of workspace / sessions / events. Orthogonal to Milestone T tree listing. Not a credentials vault / connector / multi-agent change. Sandbox boundary unchanged.
+
+- [ ] Two workstation tabs on the same host. Tab B has a workspace path open in **预览**. Tab A runs a turn that modifies that same path — Tab B preview text / size updates without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** need to be on the same session. Closing the preview (or never opening one) means no file GET. Tree listing still follows Milestone T independently
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, and L/M/N retry / abort paths unchanged
+- [ ] Preview / banner / settings never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Cross-tab workspace browser tree (Milestone T)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/tree` refresh. No second write path, no dual-write of workspace / sessions / events. Not a credentials vault / connector / multi-agent change. Sandbox boundary unchanged.

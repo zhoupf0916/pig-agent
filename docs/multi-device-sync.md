@@ -102,6 +102,10 @@ Unsent workstation composer text stays in the existing client-only `localStorage
 
 The workstation workspace tree is a **read-only** refresh of `GET /api/workspace/tree`. Another tab on the same host that creates or modifies sandbox files during a turn updates Tab B's tree on focus, visibility, or a short poll — no full page reload. Nodes stay name / path / type / size (no file contents). This does **not** dual-write workspace files, session JSON, or `events.jsonl`. Default runtime stays **pig**. Sandbox boundary is unchanged.
 
+## Workspace file preview (Milestone U)
+
+When Tab B already has a sandbox path open in the preview pane, that preview is a **read-only** refresh of `GET /api/workspace/file`. Another same-host tab that modifies that same path during a turn updates Tab B's preview on focus, visibility, or a short poll — no full page reload. Change detection uses the existing snapshot `size` plus content (no new write path, no ETag header). Secrets in file text are redacted with the existing display helper. This is orthogonal to Milestone T (tree listing only). It does **not** dual-write workspace files, session JSON, or `events.jsonl`. Default runtime stays **pig**. Sandbox boundary is unchanged.
+
 ## What this is not
 
 - No Redis / MySQL bus
