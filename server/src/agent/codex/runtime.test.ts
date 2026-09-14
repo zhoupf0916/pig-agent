@@ -35,6 +35,9 @@ function settings(workspaceRoot: string, extra: Partial<Settings> = {}): Setting
     codexBinaryPath: "",
     codexModel: "deepseek-flash",
     codexNetworkAccess: false,
+    cloudBaseUrl: "",
+    cloudToken: "",
+    cloudMode: "local-stub",
     ...extra,
   };
 }

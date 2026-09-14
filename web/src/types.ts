@@ -54,12 +54,20 @@ export type SessionSummary = Pick<
   "id" | "title" | "createdAt" | "updatedAt" | "status"
 >;
 
-export type AgentRuntime = "pig" | "codex";
+export type AgentRuntime = "pig" | "codex" | "cloud";
+
+export type CloudMode = "local-stub" | "remote";
 
 export type CodexStatus = {
   binaryFound: boolean;
   homeWritable: boolean;
   apiKeyPresent: boolean;
+};
+
+export type CloudStatus = {
+  mode: CloudMode;
+  remoteUrlConfigured: boolean;
+  tokenPresent: boolean;
 };
 
 export type Settings = {
@@ -73,6 +81,10 @@ export type Settings = {
   codexModel: string;
   codexNetworkAccess: boolean;
   codexStatus?: CodexStatus;
+  cloudBaseUrl: string;
+  cloudToken: string;
+  cloudMode: CloudMode;
+  cloudStatus?: CloudStatus;
 };
 
 export type SkillMeta = {

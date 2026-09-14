@@ -266,11 +266,18 @@ export function App() {
     if (!settings) return "正在连接本地后端…";
     if (settings.runtime === "codex") {
       const net = settings.codexNetworkAccess ? " · 外网已开" : "";
-      return `codex · ${settings.codexModel}${net}`;
+      return `本机 Codex · ${settings.codexModel}${net}`;
+    }
+    if (settings.runtime === "cloud") {
+      if (settings.cloudMode === "remote" && settings.cloudBaseUrl) {
+        const host = settings.cloudBaseUrl.replace(/^https?:\/\//, "");
+        return `云端 · ${host}`;
+      }
+      return "云端 · local-stub";
     }
     const model = settings.llmModel;
     const host = settings.llmBaseUrl.replace(/^https?:\/\//, "");
-    return `${model} · ${host}`;
+    return `本机 Pig · ${model} · ${host}`;
   }, [settings]);
 
   return (
@@ -282,7 +289,7 @@ export function App() {
           </div>
           <div>
             <div className="text-sm font-medium text-ink-800">Pig Agent</div>
-            <div className="text-meta text-ink-500">纯本地 · 纯 Web 工作台</div>
+            <div className="text-meta text-ink-500">工作台 · 本机与云端同一协议</div>
           </div>
         </div>
         <div className="flex items-center gap-3">

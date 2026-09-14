@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   CODEX_DEEPSEEK_BASE_URL,
   DEEPSEEK_BASE_URL,
+  resolveCloudBaseUrl,
+  resolveCloudMode,
+  resolveCloudToken,
   resolveCodexApiKey,
   resolveCodexBaseUrl,
   resolveLlmApiKey,
@@ -49,5 +52,17 @@ describe("Codex env isolation", () => {
     expect(resolveCodexBaseUrl({ CODEX_BASE_URL: "https://example.com" } as NodeJS.ProcessEnv)).toBe(
       "https://example.com/",
     );
+  });
+});
+
+describe("Cloud env isolation", () => {
+  it("defaults to local-stub and reads PIG_CLOUD_* without requiring a cluster", () => {
+    expect(resolveCloudMode({} as NodeJS.ProcessEnv)).toBe("local-stub");
+    expect(resolveCloudMode({ PIG_CLOUD_MODE: "remote" } as NodeJS.ProcessEnv)).toBe("remote");
+    expect(resolveCloudBaseUrl({ PIG_CLOUD_BASE_URL: "http://127.0.0.1:8080" } as NodeJS.ProcessEnv)).toBe(
+      "http://127.0.0.1:8080",
+    );
+    expect(resolveCloudToken({ CLOUD_TOKEN: "tok" } as NodeJS.ProcessEnv)).toBe("tok");
+    expect(resolveCloudToken({} as NodeJS.ProcessEnv)).toBe("");
   });
 });

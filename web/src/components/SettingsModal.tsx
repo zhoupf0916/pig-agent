@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentRuntime, Settings, SkillMeta } from "../types";
+import type { AgentRuntime, CloudMode, Settings, SkillMeta } from "../types";
 
 const emptyForm: Settings = {
   llmBaseUrl: "",
@@ -10,6 +10,9 @@ const emptyForm: Settings = {
   codexBinaryPath: "",
   codexModel: "deepseek-flash",
   codexNetworkAccess: false,
+  cloudBaseUrl: "",
+  cloudToken: "",
+  cloudMode: "local-stub",
 };
 
 export function SettingsModal({
@@ -45,8 +48,8 @@ export function SettingsModal({
           <div>
             <h2 className="text-base font-medium text-ink-800">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
-              保存在本机 data/settings.json，覆盖 .env / .env.local。默认 Pig 运行时 + DeepSeek
-              Chat Completions。Codex 为可选后端。切勿把密钥提交到仓库。
+              保存在本机 data/settings.json，覆盖 .env / .env.local。默认本机 Pig + DeepSeek
+              Chat Completions。Codex 与云端为可选执行面。切勿把密钥提交到仓库。
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-ink-800">
@@ -56,21 +59,89 @@ export function SettingsModal({
 
         <div className="space-y-3">
           <Field label="Agent 运行时">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <RuntimeChoice
-                active={form.runtime !== "codex"}
-                title="Pig（默认）"
+                active={form.runtime === "pig"}
+                title="本机 Pig（默认）"
                 hint="OpenAI 兼容 tool-calling"
                 onClick={() => setRuntime("pig")}
               />
               <RuntimeChoice
                 active={form.runtime === "codex"}
-                title="Codex（可选）"
+                title="本机 Codex（可选）"
                 hint="subprocess：codex exec --json"
                 onClick={() => setRuntime("codex")}
               />
+              <RuntimeChoice
+                active={form.runtime === "cloud"}
+                title="云端（可选）"
+                hint="同一协议 · 隔离执行面"
+                onClick={() => setRuntime("cloud")}
+              />
             </div>
           </Field>
+
+          {form.runtime === "cloud" && (
+            <div className="space-y-3 rounded-card border border-accent/25 bg-accent-soft p-3">
+              <p className="text-meta leading-relaxed text-ink-600">
+                工作台会话 / 计划 / 工具 / 产物语义不变，只换执行面。默认{" "}
+                <code className="font-mono text-ink-800">local-stub</code>
+                ：在 <code className="font-mono text-ink-800">data/cloud-runs/&lt;id&gt;/</code>{" "}
+                隔离工作区副本上跑本机 Pig 循环，密钥留在本机控制路径，不会写入 run 目录或提交
+                git。远程模式指向未来控制面（create-run → SSE → IDLE / abort），见{" "}
+                <code className="font-mono text-ink-800">docs/cloud-runtime.md</code>。
+              </p>
+              <Field label="云端模式">
+                <div className="grid grid-cols-2 gap-2">
+                  <RuntimeChoice
+                    active={form.cloudMode !== "remote"}
+                    title="local-stub"
+                    hint="本机隔离桩 · 测试默认"
+                    onClick={() => setForm({ ...form, cloudMode: "local-stub" satisfies CloudMode })}
+                  />
+                  <RuntimeChoice
+                    active={form.cloudMode === "remote"}
+                    title="remote"
+                    hint="远程控制面 URL"
+                    onClick={() => setForm({ ...form, cloudMode: "remote" })}
+                  />
+                </div>
+              </Field>
+              <Field label="控制面 Base URL（remote；不要带 /v1）">
+                <input
+                  value={form.cloudBaseUrl}
+                  onChange={(e) => setForm({ ...form, cloudBaseUrl: e.target.value })}
+                  className="field"
+                  placeholder="http://127.0.0.1:8080"
+                />
+              </Field>
+              <Field label="控制面 Token（可选；只放本机，勿提交）">
+                <input
+                  type="password"
+                  value={form.cloudToken}
+                  onChange={(e) => setForm({ ...form, cloudToken: e.target.value })}
+                  className="field"
+                  placeholder="Bearer token 或从 PIG_CLOUD_TOKEN 读取"
+                />
+              </Field>
+              {settings?.cloudStatus && (
+                <ul className="space-y-1 text-meta text-ink-600">
+                  <StatusLine
+                    ok={settings.cloudStatus.mode === "local-stub" || settings.cloudStatus.remoteUrlConfigured}
+                    label={
+                      settings.cloudStatus.mode === "remote"
+                        ? "远程控制面 URL 已配置"
+                        : "local-stub（无需集群）"
+                    }
+                  />
+                  <StatusLine
+                    ok={settings.cloudStatus.tokenPresent || settings.cloudStatus.mode === "local-stub"}
+                    label="控制面 Token（remote 可选）"
+                  />
+                </ul>
+              )}
+            </div>
+          )}
 
           {form.runtime === "codex" && (
             <div className="space-y-3 rounded-card border border-accent/25 bg-accent-soft p-3">
@@ -181,6 +252,16 @@ export function SettingsModal({
           {form.runtime === "codex" && (
             <p className="mt-2 text-meta text-ink-500">
               Codex MVP 不桥接 Pig skills / update_plan / 细粒度 token 流。
+            </p>
+          )}
+          {form.runtime === "cloud" && form.cloudMode === "local-stub" && (
+            <p className="mt-2 text-meta text-ink-500">
+              local-stub 复用本机 Pig 循环，技能与计划卡片与默认运行时一致。
+            </p>
+          )}
+          {form.runtime === "cloud" && form.cloudMode === "remote" && (
+            <p className="mt-2 text-meta text-ink-500">
+              远程控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染；未下发则该轮没有步骤条。
             </p>
           )}
         </div>

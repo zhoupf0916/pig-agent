@@ -15,6 +15,9 @@ function settings(extra: Partial<Settings> = {}): Settings {
     codexBinaryPath: "/definitely/missing/codex-bin",
     codexModel: "deepseek-flash",
     codexNetworkAccess: false,
+    cloudBaseUrl: "",
+    cloudToken: "",
+    cloudMode: "local-stub",
     ...extra,
   };
 }

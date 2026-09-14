@@ -42,9 +42,14 @@ describe("HTTP API", () => {
   it("defaults settings runtime to pig", async () => {
     const res = await app.request("/api/settings");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { runtime: string; codexNetworkAccess: boolean };
+    const body = (await res.json()) as {
+      runtime: string;
+      codexNetworkAccess: boolean;
+      cloudMode?: string;
+    };
     expect(body.runtime).toBe("pig");
     expect(body.codexNetworkAccess).toBe(false);
+    expect(body.cloudMode ?? "local-stub").toBe("local-stub");
   });
 
   it("lists shipped skills", async () => {

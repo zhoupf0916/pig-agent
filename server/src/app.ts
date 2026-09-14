@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
+import { runCloudAgent } from "./agent/cloud/runtime.ts";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { runCodexAgent } from "./agent/codex/runtime.ts";
 import { runAgent } from "./agent/runtime.ts";
@@ -9,7 +10,7 @@ import { listSkills } from "./agent/skills.ts";
 import { WEB_ORIGIN } from "./config.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
-import type { AgentEvent, ChatMessage, Session } from "./types.ts";
+import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "./types.ts";
 import { newId, nowIso, truncate } from "./util.ts";
 import { buildTree, readWorkspaceText } from "./workspace.ts";
 
@@ -20,10 +21,13 @@ const settingsSchema = z.object({
   llmApiKey: z.string().optional(),
   llmModel: z.string().min(1).optional(),
   workspaceRoot: z.string().min(1).optional(),
-  runtime: z.enum(["pig", "codex"]).optional(),
+  runtime: z.enum(["pig", "codex", "cloud"]).optional(),
   codexBinaryPath: z.string().optional(),
   codexModel: z.string().min(1).optional(),
   codexNetworkAccess: z.boolean().optional(),
+  cloudBaseUrl: z.string().optional(),
+  cloudToken: z.string().optional(),
+  cloudMode: z.enum(["local-stub", "remote"]).optional(),
 });
 
 const messageSchema = z.object({
@@ -135,7 +139,7 @@ export function createApp(): Hono {
 
       try {
         emit({ type: "message", message: userMsg });
-        const runner = settings.runtime === "codex" ? runCodexAgent : runAgent;
+        const runner = pickRunner(settings.runtime);
         const next = await runner({
           session,
           settings,
@@ -192,6 +196,12 @@ export function createApp(): Hono {
   });
 
   return app;
+}
+
+function pickRunner(runtime: AgentRuntime) {
+  if (runtime === "codex") return runCodexAgent;
+  if (runtime === "cloud") return runCloudAgent;
+  return runAgent;
 }
 
 export type { Session };
