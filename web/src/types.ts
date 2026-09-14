@@ -47,12 +47,88 @@ export type Session = {
   steps: PlanStep[];
   artifacts: Artifact[];
   lastError?: string;
+  projectId?: string;
+  eventCheckpointSeq?: number;
 };
 
 export type SessionSummary = Pick<
   Session,
-  "id" | "title" | "createdAt" | "updatedAt" | "status"
+  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId"
 >;
+
+export type TodoStatus = "todo" | "doing" | "done";
+
+export type ProjectMember = {
+  id: string;
+  userId: string;
+  displayName: string;
+  role: "owner" | "admin" | "member";
+  joinedAt: string;
+};
+
+export type ProjectTodo = {
+  id: string;
+  title: string;
+  status: TodoStatus;
+  sessionId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectAsset = {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  createdAt: string;
+};
+
+export type ProjectMessage = {
+  id: string;
+  kind: "activity" | "comment" | "handoff";
+  body: string;
+  actorId: string;
+  createdAt: string;
+  sessionId?: string;
+};
+
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  instruction: string;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+  todoCount: number;
+  assetCount: number;
+  sessionCount: number;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  instruction: string;
+  createdAt: string;
+  updatedAt: string;
+  members: ProjectMember[];
+  todos: ProjectTodo[];
+  assets: ProjectAsset[];
+  messages: ProjectMessage[];
+  inviteToken: string;
+  sessions?: SessionSummary[];
+};
+
+export type InboxItem = {
+  id: string;
+  kind: "invite" | "handoff";
+  projectId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  inviteToken?: string;
+  sessionId?: string;
+};
 
 export type AgentRuntime = "pig" | "codex" | "cloud";
 

@@ -6,6 +6,7 @@ export const CODEX_HISTORY_MESSAGES = 12;
 export function assembleCodexPrompt(
   messages: ChatMessage[],
   limit = CODEX_HISTORY_MESSAGES,
+  projectInstruction?: string,
 ): string {
   const text = messages.filter(
     (m) =>
@@ -18,17 +19,23 @@ export function assembleCodexPrompt(
   const current = kept[kept.length - 1];
   const prior = kept.slice(0, -1);
   const currentText = current?.content.trim() ?? "";
-  if (prior.length === 0) return currentText;
+  const projectBlock = projectInstruction?.trim()
+    ? `Project instructions (shared team context — follow these for this bound session):\n${projectInstruction.trim()}\n\n`
+    : "";
+  if (prior.length === 0) return `${projectBlock}${currentText}`;
 
   const history = prior
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content.trim()}`)
     .join("\n\n");
 
   return [
+    projectBlock.trimEnd(),
     "Previous conversation (assembled by Pig Agent; Codex has no native cross-turn memory in this MVP):",
     history,
     "",
     "Current user request:",
     currentText,
-  ].join("\n");
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
 }

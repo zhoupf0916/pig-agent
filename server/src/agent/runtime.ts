@@ -21,9 +21,10 @@ export async function buildSystemPrompt(
   options: {
     suggested?: ScoredSkill[];
     loadedBodies?: Array<{ name: string; body: string }>;
+    projectInstruction?: string;
   } = {},
 ): Promise<string> {
-  const { suggested = [], loadedBodies = [] } = options;
+  const { suggested = [], loadedBodies = [], projectInstruction } = options;
   const skillLines =
     suggested.length === 0
       ? "- (keyword match will be added per user turn; list_skills to see all)"
@@ -62,6 +63,13 @@ export async function buildSystemPrompt(
     `Workspace root: ${settings.workspaceRoot}`,
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
+    ...(projectInstruction?.trim()
+      ? [
+          "Project instructions (shared team context — follow these for this bound session):",
+          projectInstruction.trim(),
+          "",
+        ]
+      : []),
     "Suggested skills for this task:",
     skillLines,
     loaded,
@@ -73,8 +81,9 @@ export async function runAgent(options: {
   settings: Settings;
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
+  projectInstruction?: string;
 }): Promise<Session> {
-  const { settings, signal, emit } = options;
+  const { settings, signal, emit, projectInstruction } = options;
   const session: Session = {
     ...options.session,
     status: "running",
@@ -92,6 +101,7 @@ export async function runAgent(options: {
     content: await buildSystemPrompt(settings, {
       suggested,
       loadedBodies: loaded.map((s) => ({ name: s.name, body: s.body })),
+      projectInstruction,
     }),
     createdAt: nowIso(),
   };

@@ -10,6 +10,7 @@ export async function runStubCloudAgent(options: {
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   runsRoot?: string;
+  projectInstruction?: string;
 }): Promise<Session> {
   const { settings, signal, emit } = options;
   const runId = newId("run");
@@ -36,6 +37,7 @@ export async function runStubCloudAgent(options: {
       session: options.session,
       settings: stubSettings,
       signal: inner.signal,
+      projectInstruction: options.projectInstruction,
       emit: (event) => {
         if (event.type === "artifact") {
           syncArtifactToHost(isolated.workspaceRoot, settings.workspaceRoot, event.artifact);

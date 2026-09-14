@@ -6,7 +6,7 @@ import { deliverableSummary } from "../runtime.ts";
 import { isInsideWorkspace, toRel } from "../sandbox.ts";
 import { mapCodexEvent, parseCodexJsonlLine, type CodexMapped } from "./events.ts";
 import { assertCwdMatchesWorkspace, resolveTrustedWorkspace, syncCodexHome } from "./home.ts";
-import { assembleCodexPrompt } from "./prompt.ts";
+import { assembleCodexPrompt, CODEX_HISTORY_MESSAGES } from "./prompt.ts";
 import { runCodexExec, type CodexProcessHooks } from "./process.ts";
 import { assertCodexReady, CodexValidationError } from "./validate.ts";
 
@@ -18,8 +18,9 @@ export async function runCodexAgent(options: {
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   hooks?: CodexProcessHooks;
+  projectInstruction?: string;
 }): Promise<Session> {
-  const { settings, signal, emit, hooks } = options;
+  const { settings, signal, emit, hooks, projectInstruction } = options;
   const session: Session = {
     ...options.session,
     status: "running",
@@ -34,7 +35,7 @@ export async function runCodexAgent(options: {
     const workspaceReal = synced.workspaceRealPath ?? resolveTrustedWorkspace(settings.workspaceRoot);
     assertCwdMatchesWorkspace(workspaceReal, workspaceReal);
 
-    const prompt = assembleCodexPrompt(session.messages);
+    const prompt = assembleCodexPrompt(session.messages, CODEX_HISTORY_MESSAGES, projectInstruction);
     if (!prompt) {
       throw new Error("No user/assistant text to send to Codex");
     }

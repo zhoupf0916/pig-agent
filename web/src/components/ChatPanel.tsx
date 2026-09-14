@@ -9,17 +9,23 @@ export function ChatPanel({
   draft,
   streaming,
   liveTools,
+  projectName,
+  projects,
   onDraft,
   onSend,
   onStop,
+  onBindProject,
 }: {
   session: Session | null;
   draft: string;
   streaming: boolean;
   liveTools: LiveTool[];
+  projectName?: string;
+  projects: Array<{ id: string; name: string }>;
   onDraft: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
+  onBindProject: (projectId: string | null) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -36,6 +42,24 @@ export function ChatPanel({
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-ink-50">
+      {session && (
+        <div className="flex items-center gap-2 border-b border-ink-300 bg-white/80 px-6 py-2">
+          <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
+          <select
+            className="field max-w-xs py-1 text-xs"
+            value={session.projectId ?? ""}
+            onChange={(e) => onBindProject(e.target.value || null)}
+          >
+            <option value="">未绑定</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {projectName && <span className="text-xs text-ink-500">指令将注入本会话系统提示</span>}
+        </div>
+      )}
       <StepStrip steps={session?.steps ?? []} />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {!session && (
