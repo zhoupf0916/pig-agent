@@ -1,36 +1,28 @@
-import { ChevronDown, Library } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-export type LibraryPage = "projects" | "experts" | "automations" | "memory";
+export type MorePage = "memory" | "automations";
 
-const ITEMS: { name: LibraryPage; label: string; hint: string }[] = [
-  { name: "projects", label: "项目", hint: "看板、资产与转交" },
-  { name: "experts", label: "专家", hint: "Playbook 与小队" },
-  { name: "automations", label: "自动化", hint: "手动或 cron 开一轮" },
+const ITEMS: { name: MorePage; label: string; hint: string }[] = [
   { name: "memory", label: "记忆", hint: "钉住笔记与回合摘要" },
+  { name: "automations", label: "自动化", hint: "手动或 cron 开一轮" },
 ];
 
-export function isLibraryPage(name: string): name is LibraryPage {
+export function isMorePage(name: string): name is MorePage {
   return ITEMS.some((item) => item.name === name);
 }
 
-export function LibraryMenu({
+export function MoreMenu({
   active,
-  onProjects,
-  onExperts,
-  onAutomations,
   onMemory,
+  onAutomations,
 }: {
-  active?: LibraryPage;
-  onProjects: () => void;
-  onExperts: () => void;
-  onAutomations: () => void;
+  active?: MorePage;
   onMemory: () => void;
+  onAutomations: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const current = ITEMS.find((item) => item.name === active);
-  const label = current?.label ?? "资料库";
 
   useEffect(() => {
     if (!open) return;
@@ -50,12 +42,10 @@ export function LibraryMenu({
     };
   }, [open]);
 
-  const go = (name: LibraryPage) => {
+  const go = (name: MorePage) => {
     setOpen(false);
-    if (name === "projects") onProjects();
-    else if (name === "experts") onExperts();
-    else if (name === "automations") onAutomations();
-    else onMemory();
+    if (name === "memory") onMemory();
+    else onAutomations();
   };
 
   return (
@@ -65,11 +55,10 @@ export function LibraryMenu({
         className={active ? "btn-nav-active" : "btn-nav"}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label="资料库"
+        aria-label="更多"
         onClick={() => setOpen((v) => !v)}
       >
-        <Library size={14} />
-        {label}
+        更多
         <ChevronDown size={12} className="text-ink-500" />
       </button>
       {open && (
@@ -77,7 +66,6 @@ export function LibraryMenu({
           className="absolute right-0 z-20 mt-2 w-56 rounded-card border border-ink-300 bg-white p-1 shadow-lift"
           role="menu"
         >
-          <div className="px-2 py-1.5 text-meta uppercase tracking-[0.16em] text-ink-500">资料库</div>
           {ITEMS.map((item) => {
             const selected = item.name === active;
             return (

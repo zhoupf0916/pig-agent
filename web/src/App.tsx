@@ -4,7 +4,7 @@ import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
-import { isLibraryPage, LibraryMenu } from "./components/LibraryMenu";
+import { isMorePage, MoreMenu } from "./components/MoreMenu";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
@@ -578,14 +578,26 @@ export function App() {
           />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <LibraryMenu
-            active={isLibraryPage(route.name) ? route.name : undefined}
-            onProjects={() => goProjects(route.name === "projects" ? route.projectId : undefined)}
-            onExperts={() => goExperts(route.name === "experts" ? route.expertId : undefined)}
+          <button
+            type="button"
+            className={route.name === "projects" ? "btn-nav-active" : "btn-nav"}
+            onClick={() => goProjects(route.name === "projects" ? route.projectId : undefined)}
+          >
+            项目
+          </button>
+          <button
+            type="button"
+            className={route.name === "experts" ? "btn-nav-active" : "btn-nav"}
+            onClick={() => goExperts(route.name === "experts" ? route.expertId : undefined)}
+          >
+            专家
+          </button>
+          <MoreMenu
+            active={isMorePage(route.name) ? route.name : undefined}
+            onMemory={() => goMemory(route.name === "memory" ? route.noteId : undefined)}
             onAutomations={() =>
               goAutomations(route.name === "automations" ? route.automationId : undefined)
             }
-            onMemory={() => goMemory(route.name === "memory" ? route.noteId : undefined)}
           />
           <div className="hidden h-4 w-px bg-ink-300 sm:block" aria-hidden />
           <InboxMenu

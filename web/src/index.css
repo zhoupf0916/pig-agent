@@ -119,6 +119,7 @@ body {
 
   .btn-nav {
     @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-2.5 py-1.5 text-xs text-ink-600;
+    box-shadow: inset 0 -2px 0 transparent;
   }
 
   .btn-nav:hover {
@@ -127,6 +128,7 @@ body {
 
   .btn-nav-active {
     @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-ink-100 px-2.5 py-1.5 text-xs font-medium text-ink-800;
+    box-shadow: inset 0 -2px 0 #111827;
   }
 
   .btn-nav-active:hover {
