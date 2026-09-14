@@ -23,6 +23,7 @@ import type {
   TodoStatus,
   WorkspaceNode,
 } from "../types";
+import { sessionEventsSubscribeInit } from "./transcript-sync";
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -523,8 +524,9 @@ export async function subscribeSessionEvents(
   onEvent: (event: AgentEvent, seq?: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api/sessions/${sessionId}/events?after=${after}`, {
-    headers: { "Last-Event-ID": String(after), Accept: "text/event-stream" },
+  const { query, headers } = sessionEventsSubscribeInit(after);
+  const res = await fetch(`/api/sessions/${sessionId}/events?${query}`, {
+    headers,
     signal,
   });
   if (!res.ok || !res.body) {

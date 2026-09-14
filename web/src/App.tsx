@@ -18,6 +18,12 @@ import { api, streamMessage, streamRetry, streamTeamRun, subscribeSessionEvents 
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
+  applySyncPhase,
+  CATCH_UP_STATUS,
+  rememberEventSeq,
+  type TranscriptSyncPhase,
+} from "./lib/transcript-sync";
+import {
   browserThemeRoot,
   browserThemeStorage,
   loadPersistedTheme,
@@ -68,6 +74,7 @@ export function App() {
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [syncPhase, setSyncPhase] = useState<TranscriptSyncPhase>("idle");
   const [theme, setTheme] = useState<Theme>(() => loadPersistedTheme());
   const [route, setRoute] = useState<AppRoute>(() => parseHash());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -240,10 +247,14 @@ export function App() {
   );
 
   const applyEvent = useCallback((event: AgentEvent, seq?: number) => {
+    if (event.type === "sync") {
+      setSyncPhase((prev) => applySyncPhase(event, prev));
+      return;
+    }
     if (typeof seq === "number") {
       if (seenSeqRef.current.has(seq)) return;
       seenSeqRef.current.add(seq);
-      lastSeqRef.current = Math.max(lastSeqRef.current, seq);
+      lastSeqRef.current = rememberEventSeq(lastSeqRef.current, seq);
     }
     if (event.type === "token") {
       setSession((prev) => {
@@ -351,18 +362,26 @@ export function App() {
   useEffect(() => {
     if (!activeId) return;
     const controller = new AbortController();
+    let first = true;
     const run = async () => {
       while (!controller.signal.aborted) {
+        if (!first) setSyncPhase("catching_up");
+        first = false;
         try {
           await subscribeSessionEvents(activeId, lastSeqRef.current, applyEvent, controller.signal);
         } catch {
           if (controller.signal.aborted) break;
+          setSyncPhase("catching_up");
           await new Promise((r) => setTimeout(r, 800));
         }
       }
+      setSyncPhase("idle");
     };
     void run();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      setSyncPhase("idle");
+    };
   }, [activeId, applyEvent]);
 
   const send = useCallback(async () => {
@@ -688,6 +707,11 @@ export function App() {
       {bootError && (
         <div className="border-b border-danger-soft bg-danger-soft px-4 py-2 text-xs text-danger">
           无法连接本地后端：{bootError}。请确认已运行 <code>pnpm dev</code>。
+        </div>
+      )}
+      {syncPhase === "catching_up" && !session?.lastError && (
+        <div className="flex items-center gap-2 border-b border-ink-300 bg-panel px-4 py-2 text-xs text-ink-600">
+          <span>{CATCH_UP_STATUS}</span>
         </div>
       )}
       {session?.lastError && (
