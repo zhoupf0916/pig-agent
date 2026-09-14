@@ -72,7 +72,7 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] Do **not** put `DEEPSEEK_API_KEY` into a worker env file or commit it
 - [ ] `pnpm mock:cloud` listens on `http://127.0.0.1:8080` (no provider key, no cluster)
 - [ ] Settings → 云端 → remote → Base URL `http://127.0.0.1:8080`. New session: `请整理工作区` — assistant text mentions `accepted workspace` and lists uploaded files (not `.env`)
-- [ ] Same session, second message `再写一个文件` — reply is `[stub] follow-up: …`. `data/sessions/<id>.json` keeps the same `remoteRunId`
+- [ ] Same session, second message `再写一个文件` — step strip shows 继续跟进 → 重新连接事件流 (not create-run chips), then reply is `[stub] follow-up: …`. `data/sessions/<id>.json` keeps the same `remoteRunId`
 - [ ] Isolated snapshot never includes `.env*`, `id_rsa` / `*.pem`, `node_modules`, or `.git` (see [docs/cloud-runtime.md](./docs/cloud-runtime.md))
 
 ## Remote-cloud env.json / environment.json hints (Milestone J1)
@@ -396,14 +396,15 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
-## Remote create-run progress (Milestone W)
+## Remote follow-up / reconnect progress (Milestone X)
 
-Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel. No public webhooks. Failures stay on Milestone L retry / abort → idle.
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel and the Milestone W `CreateRunProgress` machine (second catalog, not a third SM). No public webhooks. Failures stay on Milestone L retry / abort → idle. Does not replace Milestone W create-run chips.
 
 - [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
-- [ ] `pnpm mock:cloud`, Settings → 云端 / remote → `http://127.0.0.1:8080`. New session, send a turn — while create-run is in flight the step strip (and the thinking line) shows Chinese progress: 准备沙箱快照 → 创建远程运行 → 连接事件流
-- [ ] After the plane streams, bootstrap chips clear and the UI is the live turn (tokens / tool cards / idle)
-- [ ] Deliberate create-run failure (stop the mock / 500) — yellow banner + existing **重试 · 重新创建运行**; session is `error` / idle after abort, never stuck `running`
-- [ ] **停止** during hung create-run → idle; next send works (no 409 zombie)
+- [ ] After a live `remoteRunId` (same session, second message or **重试 · 继续跟进**): step strip (and the thinking line) shows Chinese progress: 继续跟进 → 重新连接事件流 — **not** 准备沙箱快照 / 创建远程运行
+- [ ] After the plane streams, follow-up chips clear and the UI is the live turn (tokens / tool cards / idle)
+- [ ] Deliberate follow-up timeout / disconnect — yellow banner + existing **重试 · 继续跟进**; session is `error` / idle after abort, never stuck `running`
+- [ ] Expired follow-up (404) falls back to Milestone W create-run chips (准备沙箱快照 → 创建远程运行 → 连接事件流); catalogs do not mix
+- [ ] **停止** during hung follow-up → idle; next send works (no 409 zombie)
 - [ ] Progress copy / banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
