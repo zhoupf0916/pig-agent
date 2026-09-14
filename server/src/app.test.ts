@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.ts";
+import { loadSettings } from "./store/settings.ts";
 
 describe("HTTP API", () => {
   const app = createApp();
@@ -60,6 +61,20 @@ describe("HTTP API", () => {
     expect(body.executionSurface?.runtime).toBe("pig");
     expect(body.executionSurface?.kind).toBe("pig");
     expect(body.executionSurface?.label).toBe("本机 Pig");
+    expect(JSON.stringify(body.executionSurface)).not.toMatch(
+      /llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /,
+    );
+  });
+
+  it("GET /api/settings is a read-only snapshot for the runtime chip", async () => {
+    const before = await loadSettings();
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { executionSurface?: { runtime?: string; label?: string } };
+    expect(body.executionSurface?.runtime).toBe(before.runtime);
+    expect(body.executionSurface?.label).toBeTruthy();
+    const after = await loadSettings();
+    expect(after).toEqual(before);
   });
 
   it("rejects remote cloud settings without a control-plane URL", async () => {

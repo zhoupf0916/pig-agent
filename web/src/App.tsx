@@ -28,6 +28,10 @@ import {
   startSessionListSync,
 } from "./lib/session-list-sync";
 import {
+  applySettingsSnapshot,
+  startSettingsSurfaceSync,
+} from "./lib/settings-surface-sync";
+import {
   applySyncPhase,
   CATCH_UP_STATUS,
   rememberEventSeq,
@@ -225,6 +229,13 @@ export function App() {
         return next;
       },
       onList: (next) => setSessions((prev) => applySessionListSnapshot(prev, next)),
+    });
+  }, []);
+
+  useEffect(() => {
+    return startSettingsSurfaceSync({
+      fetchSettings: () => api.settings(),
+      onSettings: (next) => setSettings((prev) => applySettingsSnapshot(prev, next)),
     });
   }, []);
 
