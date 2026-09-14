@@ -567,6 +567,13 @@ export function App() {
               previewPath={previewPath}
               preview={preview}
               onOpenFile={(path) => void openFile(path)}
+              sessionId={session?.id}
+              projectId={session?.projectId}
+              projectName={projects.find((p) => p.id === session?.projectId)?.name}
+              onOpenProject={(id) => {
+                void refreshProjects();
+                goProjects(id);
+              }}
             />
           </>
         )}

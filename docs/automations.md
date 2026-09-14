@@ -10,7 +10,7 @@ An automation is a JSON record on this machine. **Run now** or a simple in-proce
 | --- | --- |
 | `data/automations/<id>.json` | One automation |
 
-Fields: `id`, `name`, `enabled`, `prompt`, `schedule` (5-field cron, `@hourly`, `@daily`, or `null` for manual-only), optional `expertId` / `expertTeamId` / `projectId`, `runtime` (default `pig`), `lastRunAt`, `lastSessionId`, `lastError`, plus `createdAt` / `updatedAt`.
+Fields: `id`, `name`, `enabled`, `prompt`, `schedule` (5-field cron, `@hourly`, `@daily`, or `null` for manual-only), optional `expertId` / `expertTeamId` / `projectId`, `runtime` (default `pig`), `saveArtifactsToProject` (default **false**; see [artifacts-to-project.md](./artifacts-to-project.md)), `lastRunAt`, `lastSessionId`, `lastError`, plus `createdAt` / `updatedAt`.
 
 Keys stay in `.env.local` / Settings. They are never written into automation JSON.
 
@@ -33,6 +33,7 @@ The process polls about every **30 seconds**. The same automation will not start
 2. Bind project / expert / team on that session.
 3. Enqueue the existing `runSessionTurn` with `runtime` from the record (default **pig**, not the Settings UI).
 4. Persist events so the workstation can open the session and subscribe as usual.
+5. If `saveArtifactsToProject` is true and the run succeeded with artifacts, copy them into the bound project (opt-in; default off).
 
 This is not Slack/Telegram ingress, Desk Remote, Firecracker, or a marketplace.
 

@@ -45,10 +45,12 @@ describe("local automations", () => {
       runtime: string;
       enabled: boolean;
       schedule: string | null;
+      saveArtifactsToProject?: boolean;
     }>(created);
     expect(automation.runtime).toBe("pig");
     expect(automation.enabled).toBe(true);
     expect(automation.schedule).toBe("@daily");
+    expect(automation.saveArtifactsToProject).toBe(false);
 
     const listed = await json<{ automations: Array<{ id: string }> }>(
       await app.request("/api/automations"),
@@ -209,5 +211,54 @@ describe("local automations", () => {
     const started = await tickDueAutomations(now);
     expect(started).not.toContain(manual.id);
     expect(started).not.toContain(disabled.id);
+  });
+
+  it("auto-saves artifacts after a successful run only when saveArtifactsToProject is set", async () => {
+    const { getProject } = await import("./projects.ts");
+    const { nowIso } = await import("../util.ts");
+    setAutomationTurnForTests(async (session) => {
+      session.status = "idle";
+      session.lastError = undefined;
+      session.artifacts = [{ path: "notes/todo.txt", action: "modified", updatedAt: nowIso() }];
+      return session;
+    });
+    const project = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "自动归档" }),
+      }),
+    );
+    const off = await json<{ id: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "默认不归档",
+          prompt: "写一份简报",
+          projectId: project.id,
+        }),
+      }),
+    );
+    const on = await json<{ id: string; saveArtifactsToProject?: boolean }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "归档产物",
+          prompt: "写一份简报",
+          projectId: project.id,
+          saveArtifactsToProject: true,
+        }),
+      }),
+    );
+    expect(on.saveArtifactsToProject).toBe(true);
+
+    await runAutomation(off.id, { wait: true });
+    expect((await getProject(project.id))?.assets ?? []).toHaveLength(0);
+
+    await runAutomation(on.id, { wait: true });
+    const assets = (await getProject(project.id))?.assets ?? [];
+    expect(assets.some((a) => a.sourceArtifactPath === "notes/todo.txt")).toBe(true);
   });
 });

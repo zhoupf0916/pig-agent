@@ -17,9 +17,9 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 - **工具**（均限制在工作区内）：`list_dir` `read_file` `write_file` `edit_file` `apply_patch` `search_files` `delete_file` `move_file` `run_shell` `http_fetch`（SSRF 防护）`list_skills` `load_skill` `update_plan`
 - **技能**：`skills/*.md`；会按任务关键词自动建议 / 预加载
 - **设置**：LLM Base URL、API Key、模型、工作区。进程启动时读 `.env` / `.env.local`（已 gitignore），UI 保存优先
-- **项目协作（MVP）**：`#/projects` 可建项目、待办看板、上传资产、绑定会话；项目指令注入已绑定会话的系统提示。本机单用户 + 占位邀请令牌 / 收件箱
+- **项目协作（MVP）**：`#/projects` 可建项目、待办看板、上传资产、绑定会话；项目指令注入已绑定会话的系统提示。本机单用户 + 占位邀请令牌 / 收件箱。已绑定会话可把产物 **保存到项目**（[docs/artifacts-to-project.md](./docs/artifacts-to-project.md)）
 - **本机专家 / playbook（MVP）**：`#/experts` 目录 + 工作台钉选。内置侦察 / 规划 / 实现 / 评审；可引用 `skills/`。**专家指令先于项目指令**注入 pig / Codex / cloud-stub。见 [docs/experts.md](./docs/experts.md)
-- **本机自动化（MVP）**：`#/automations` 可手动或简单 cron 开一轮 pig 会话并钉选专家 / 项目。无公网 webhook、无远程 worker。见 [docs/automations.md](./docs/automations.md)
+- **本机自动化（MVP）**：`#/automations` 可手动或简单 cron 开一轮 pig 会话并钉选专家 / 项目。可选 `saveArtifactsToProject`（默认关）。无公网 webhook、无远程 worker。见 [docs/automations.md](./docs/automations.md)
 - **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
 
 会话写在 `data/sessions/`，项目写在 `data/projects/`，专家写在 `data/experts/`，自动化写在 `data/automations/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
@@ -210,6 +210,6 @@ Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json
 
 Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks create-run (workspace snapshot / optional repo hint) → SSE → IDLE follow-up / abort. `pnpm mock:cloud` is the in-repo plane. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
 
-Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Local experts are JSON playbooks under `data/experts/` (see [docs/experts.md](./docs/experts.md)); expert text precedes project text in the system prompt. Local automations (`data/automations/`, `#/automations`) can manually or on a simple cron start a pig session with pinned expert/project — no public webhooks (see [docs/automations.md](./docs/automations.md)). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, experts marketplace, or public webhooks.
+Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Bound sessions can copy artifacts into project assets ([docs/artifacts-to-project.md](./docs/artifacts-to-project.md)). Local experts are JSON playbooks under `data/experts/` (see [docs/experts.md](./docs/experts.md)); expert text precedes project text in the system prompt. Local automations (`data/automations/`, `#/automations`) can manually or on a simple cron start a pig session with pinned expert/project — optional `saveArtifactsToProject` (default off); no public webhooks (see [docs/automations.md](./docs/automations.md)). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, experts marketplace, or public webhooks.
 
 Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access, neo-cloud-agent control-plane / Firecracker / Java loop. Do not commit real API keys.

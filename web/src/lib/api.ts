@@ -8,6 +8,7 @@ import type {
   ExpertTeamMode,
   InboxItem,
   Project,
+  ProjectAsset,
   ProjectSummary,
   Session,
   SessionSummary,
@@ -222,6 +223,7 @@ export const api = {
     expertTeamId?: string;
     projectId?: string;
     runtime?: AgentRuntime;
+    saveArtifactsToProject?: boolean;
   }) =>
     fetch("/api/automations", {
       method: "POST",
@@ -240,6 +242,7 @@ export const api = {
       expertTeamId?: string | null;
       projectId?: string | null;
       runtime?: AgentRuntime;
+      saveArtifactsToProject?: boolean;
     },
   ) =>
     fetch(`/api/automations/${id}`, {
@@ -254,6 +257,27 @@ export const api = {
   runAutomation: (id: string) =>
     fetch(`/api/automations/${id}/run`, { method: "POST" }).then((r) =>
       json<{ automation: Automation; session: Session }>(r),
+    ),
+
+  saveArtifactToProject: (sessionId: string, name: string) =>
+    fetch(
+      `/api/sessions/${sessionId}/artifacts/${encodeURIComponent(name)}/save-to-project`,
+      { method: "POST" },
+    ).then((r) =>
+      json<{ projectId: string; artifactPath: string; asset: ProjectAsset; overwritten: boolean }>(r),
+    ),
+
+  saveAllArtifactsToProject: (sessionId: string, paths?: string[]) =>
+    fetch(`/api/sessions/${sessionId}/artifacts/save-all-to-project`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(paths ? { paths } : {}),
+    }).then((r) =>
+      json<{
+        projectId: string;
+        saved: Array<{ artifactPath: string; asset: ProjectAsset; overwritten: boolean }>;
+        skipped: Array<{ artifactPath: string; reason: string }>;
+      }>(r),
     ),
 
   tree: () =>

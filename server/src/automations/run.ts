@@ -7,6 +7,7 @@ import {
 } from "../store/automations.ts";
 import { getExpert, getExpertTeam } from "../store/experts.ts";
 import { publishPersistedEvent } from "../store/events.ts";
+import { saveAllSessionArtifactsToProject } from "../store/artifacts-to-project.ts";
 import { getProject, recordSessionBound } from "../store/projects.ts";
 import { createSession, getSession, saveSession } from "../store/sessions.ts";
 import type { Automation, Session } from "../types.ts";
@@ -88,9 +89,27 @@ export async function runAutomation(
       try {
         const latest = (await getSession(session!.id)) ?? session!;
         const next = await executeTurn(latest, { runtime: current.runtime || "pig" });
+        const flag = (await getAutomation(id))?.saveArtifactsToProject ?? current.saveArtifactsToProject;
+        let saveError: string | undefined;
+        if (
+          flag &&
+          next.status !== "error" &&
+          !next.lastError &&
+          next.projectId &&
+          next.artifacts.length > 0
+        ) {
+          try {
+            const copied = await saveAllSessionArtifactsToProject(next);
+            if (copied.saved.length === 0 && copied.skipped.length > 0) {
+              saveError = `artifact save skipped: ${copied.skipped[0]?.reason ?? "unknown"}`;
+            }
+          } catch (err) {
+            saveError = `run ok; artifact save failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
         await recordAutomationRun(id, {
           sessionId: next.id,
-          error: next.lastError ?? null,
+          error: next.lastError ?? saveError ?? null,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

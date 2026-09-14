@@ -6,6 +6,7 @@ import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { listSkills } from "./agent/skills.ts";
 import { prepareUserMessage, runningTurns, runSessionTurn } from "./agent/turn.ts";
 import { WEB_ORIGIN } from "./config.ts";
+import { registerArtifactRoutes } from "./routes/artifacts.ts";
 import { registerAutomationRoutes } from "./routes/automations.ts";
 import { registerExpertRoutes } from "./routes/experts.ts";
 import { registerProjectRoutes } from "./routes/projects.ts";
@@ -74,6 +75,7 @@ export function createApp(): Hono {
   registerProjectRoutes(app);
   registerExpertRoutes(app);
   registerAutomationRoutes(app);
+  registerArtifactRoutes(app);
   registerSyncRoutes(app);
 
   app.get("/api/sessions", async (c) => c.json({ sessions: await listSessions() }));

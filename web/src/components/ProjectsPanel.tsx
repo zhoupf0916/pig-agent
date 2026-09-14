@@ -268,9 +268,16 @@ export function ProjectsPanel({
                   <li className="px-2 py-3 text-center text-xs text-ink-500">还没有资产。上传一份 brief 即可。</li>
                 )}
                 {detail.assets.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between px-2 py-1 text-[13px]">
-                    <span className="truncate font-mono">{a.filename}</span>
-                    <span className="text-meta text-ink-500">{a.size} B</span>
+                  <li key={a.id} className="flex items-center justify-between gap-2 px-2 py-1 text-[13px]">
+                    <span className="min-w-0 truncate font-mono">
+                      {a.filename}
+                      {a.sourceArtifactPath && (
+                        <span className="ml-2 font-sans text-meta text-ink-400">
+                          来自 {a.sourceArtifactPath}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-meta text-ink-500">{a.size} B</span>
                   </li>
                 ))}
               </ul>

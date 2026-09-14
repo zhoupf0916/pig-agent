@@ -333,6 +333,22 @@ export function AutomationsPanel({
               </label>
             </div>
 
+            <label className="flex items-start gap-2 text-sm text-ink-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={Boolean(detail.saveArtifactsToProject)}
+                disabled={!detail.projectId}
+                onChange={(e) => void savePatch({ saveArtifactsToProject: e.target.checked })}
+              />
+              <span>
+                运行成功后把新产物保存到项目资产
+                <span className="mt-0.5 block text-xs text-ink-500">
+                  默认关。需先钉选项目；同一工作区路径会覆盖已有资产。
+                </span>
+              </span>
+            </label>
+
             <div className="rounded-card border border-ink-300 bg-white px-3 py-3 text-xs text-ink-600">
               <div>运行时：{detail.runtime}（默认 pig，不改全局设置）</div>
               <div className="mt-1">

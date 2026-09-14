@@ -1,5 +1,6 @@
 import { ChevronRight, FileCode, FileText, Folder } from "lucide-react";
 import { useMemo, useState } from "react";
+import { api } from "../lib/api";
 import { artifactLabel, formatBytes, isMarkdown } from "../lib/format";
 import type { Artifact, ArtifactAction, WorkspaceNode } from "../types";
 import { DiffView } from "./DiffView";
@@ -17,6 +18,10 @@ export function RightPanel({
   previewPath,
   preview,
   onOpenFile,
+  sessionId,
+  projectId,
+  projectName,
+  onOpenProject,
 }: {
   artifacts: Artifact[];
   tree: WorkspaceNode | null;
@@ -24,10 +29,61 @@ export function RightPanel({
   previewPath: string | null;
   preview: { path: string; content: string; binary: boolean; size: number } | null;
   onOpenFile: (path: string) => void;
+  sessionId?: string;
+  projectId?: string;
+  projectName?: string;
+  onOpenProject?: (projectId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("artifacts");
   const [mode, setMode] = useState<PreviewMode>("file");
+  const [saving, setSaving] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ text: string; projectId?: string } | null>(null);
   const selected = artifacts.find((a) => a.path === previewPath);
+  const bound = Boolean(sessionId && projectId);
+  const savable = artifacts.filter((a) => a.action !== "deleted");
+
+  const saveOne = async (path: string) => {
+    if (!sessionId || !projectId) return;
+    setSaving(path);
+    setToast(null);
+    try {
+      const result = await api.saveArtifactToProject(sessionId, path);
+      setToast({
+        text: result.overwritten
+          ? `已更新项目资产 ${result.asset.filename}`
+          : `已保存 ${result.asset.filename} 到项目资产`,
+        projectId: result.projectId,
+      });
+    } catch (err) {
+      setToast({ text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const saveAll = async () => {
+    if (!sessionId || !projectId) return;
+    setSaving("*");
+    setToast(null);
+    try {
+      const result = await api.saveAllArtifactsToProject(sessionId);
+      const n = result.saved.length;
+      const skip = result.skipped.length;
+      setToast({
+        text:
+          n === 0
+            ? skip
+              ? `没有可保存的产物（跳过 ${skip}）`
+              : "没有可保存的产物"
+            : `已保存 ${n} 个产物到项目${skip ? `（跳过 ${skip}）` : ""}`,
+        projectId: n > 0 ? result.projectId : undefined,
+      });
+    } catch (err) {
+      setToast({ text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setSaving(null);
+    }
+  };
   const grouped = useMemo(() => {
     return GROUPS.map((action) => ({
       action,
@@ -54,6 +110,35 @@ export function RightPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === "artifacts" && (
           <div className="p-3">
+            {bound && artifacts.length > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-card border border-ink-300 bg-white px-2 py-1.5">
+                <p className="min-w-0 truncate text-meta text-ink-500">
+                  项目 {projectName ?? projectId}
+                </p>
+                <button
+                  type="button"
+                  className="btn-ghost shrink-0"
+                  disabled={saving !== null || savable.length === 0}
+                  onClick={() => void saveAll()}
+                >
+                  {saving === "*" ? "保存中…" : "保存到项目"}
+                </button>
+              </div>
+            )}
+            {toast && (
+              <div className="mb-3 rounded-card border border-ink-300 bg-accent-soft px-2 py-1.5 text-xs text-ink-700">
+                <span>{toast.text}</span>
+                {toast.projectId && onOpenProject && (
+                  <button
+                    type="button"
+                    className="ml-2 text-accent hover:underline"
+                    onClick={() => onOpenProject(toast.projectId!)}
+                  >
+                    查看资产
+                  </button>
+                )}
+              </div>
+            )}
             {artifacts.length === 0 ? (
               <p className="px-1 pt-8 text-center text-xs text-ink-500">
                 任务中新建、修改、移动或删除的文件会出现在这里。
@@ -67,14 +152,14 @@ export function RightPanel({
                     </div>
                     <ul className="space-y-1">
                       {group.items.map((a) => (
-                        <li key={a.path}>
+                        <li key={a.path} className="flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => {
                               setMode(a.before !== undefined && a.after !== undefined ? "diff" : "file");
                               onOpenFile(a.path);
                             }}
-                            className={`flex w-full items-center gap-2 rounded-btn px-2 py-2 text-left text-xs hover:bg-ink-200 ${
+                            className={`flex min-w-0 flex-1 items-center gap-2 rounded-btn px-2 py-2 text-left text-xs hover:bg-ink-200 ${
                               previewPath === a.path
                                 ? "bg-accent-soft text-ink-800"
                                 : "text-ink-700"
@@ -87,6 +172,17 @@ export function RightPanel({
                                 : a.path}
                             </span>
                           </button>
+                          {bound && a.action !== "deleted" && (
+                            <button
+                              type="button"
+                              className="btn-ghost shrink-0 px-1.5 py-1 text-meta"
+                              disabled={saving !== null}
+                              onClick={() => void saveOne(a.path)}
+                              title="保存到项目资产"
+                            >
+                              {saving === a.path ? "…" : "保存"}
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>

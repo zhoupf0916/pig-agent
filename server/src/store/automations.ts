@@ -44,6 +44,7 @@ function normalizeAutomation(raw: Automation): Automation {
         : undefined,
     projectId:
       typeof raw.projectId === "string" && raw.projectId.trim() ? raw.projectId.trim() : undefined,
+    saveArtifactsToProject: Boolean(raw.saveArtifactsToProject),
     lastRunAt:
       typeof raw.lastRunAt === "string" && raw.lastRunAt.trim() ? raw.lastRunAt.trim() : undefined,
     lastSessionId:
@@ -82,6 +83,7 @@ export type AutomationInput = {
   expertTeamId?: string | null;
   projectId?: string | null;
   runtime?: AgentRuntime;
+  saveArtifactsToProject?: boolean;
 };
 
 function applyPins(
@@ -126,6 +128,7 @@ export async function createAutomation(input: AutomationInput): Promise<Automati
     prompt,
     schedule,
     runtime: input.runtime && RUNTIMES.has(input.runtime) ? input.runtime : "pig",
+    saveArtifactsToProject: Boolean(input.saveArtifactsToProject),
     createdAt: ts,
     updatedAt: ts,
   };
@@ -172,6 +175,9 @@ export async function updateAutomation(
   if (typeof patch.enabled === "boolean") automation.enabled = patch.enabled;
   if (patch.schedule !== undefined) automation.schedule = validateSchedule(patch.schedule);
   if (patch.runtime && RUNTIMES.has(patch.runtime)) automation.runtime = patch.runtime;
+  if (typeof patch.saveArtifactsToProject === "boolean") {
+    automation.saveArtifactsToProject = patch.saveArtifactsToProject;
+  }
   applyPins(automation, patch);
   if (patch.lastRunAt === null) delete automation.lastRunAt;
   else if (typeof patch.lastRunAt === "string" && patch.lastRunAt.trim()) {
