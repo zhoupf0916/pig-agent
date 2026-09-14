@@ -17,8 +17,12 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 - **工具**（均限制在工作区内）：`list_dir` `read_file` `write_file` `edit_file` `apply_patch` `search_files` `delete_file` `move_file` `run_shell` `http_fetch`（SSRF 防护）`list_skills` `load_skill` `update_plan`
 - **技能**：`skills/*.md`；会按任务关键词自动建议 / 预加载
 - **设置**：LLM Base URL、API Key、模型、工作区。进程启动时读 `.env` / `.env.local`（已 gitignore），UI 保存优先
+- **项目协作（MVP）**：`#/projects` 可建项目、待办看板、上传资产、绑定会话；项目指令注入已绑定会话的系统提示。本机单用户 + 占位邀请令牌 / 收件箱
+- **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
 
-会话写在 `data/sessions/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
+会话写在 `data/sessions/`，项目写在 `data/projects/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
+
+这是协作 + 同步的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。
 
 ### 快速开始
 
@@ -193,7 +197,7 @@ server/src/     Hono API, agent runtime, sandboxed tools
 web/src/        React + Vite + Tailwind UI
 skills/         Local skill playbooks
 sample-workspace/   Default sandbox with demo files
-data/           Created at runtime (sessions + settings) — gitignored
+data/           Created at runtime (sessions, projects, settings) — gitignored
 ```
 
 ### Security notes
@@ -203,5 +207,7 @@ Tools resolve every path against the workspace root and refuse escapes. Shell st
 Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json` with an isolated `CODEX_HOME`, `wire_api=responses`, DeepSeek `deepseek-flash`, `approval_policy=never`, and `network_access=false` unless you explicitly opt in. Pig `llmBaseUrl` (`…/v1`) is never copied into the Codex provider. See [docs/codex-runtime.md](./docs/codex-runtime.md).
 
 Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks a minimal create-run / SSE / abort contract. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
+
+Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, or experts marketplace.
 
 Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access, neo-cloud-agent control-plane / Firecracker / Java loop. Do not commit real API keys.

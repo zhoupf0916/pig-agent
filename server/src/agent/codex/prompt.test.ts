@@ -32,4 +32,11 @@ describe("assembleCodexPrompt", () => {
     expect(prompt).not.toContain("notes/");
     expect(prompt).toContain("no native cross-turn memory");
   });
+
+  it("prefixes project instruction when a session is bound", () => {
+    const prompt = assembleCodexPrompt([msg("user", "写 hello.md")], 12, "始终用中文，先列提纲。");
+    expect(prompt).toContain("Project instructions");
+    expect(prompt).toContain("始终用中文，先列提纲。");
+    expect(prompt).toContain("写 hello.md");
+  });
 });

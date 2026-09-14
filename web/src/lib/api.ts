@@ -1,9 +1,13 @@
 import type {
   AgentEvent,
+  InboxItem,
+  Project,
+  ProjectSummary,
   Session,
   SessionSummary,
   Settings,
   SkillMeta,
+  TodoStatus,
   WorkspaceNode,
 } from "../types";
 
@@ -42,8 +46,19 @@ export const api = {
 
   session: (id: string) => fetch(`/api/sessions/${id}`).then((r) => json<Session>(r)),
 
-  createSession: () =>
-    fetch("/api/sessions", { method: "POST" }).then((r) => json<Session>(r)),
+  createSession: (projectId?: string) =>
+    fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectId ? { projectId } : {}),
+    }).then((r) => json<Session>(r)),
+
+  patchSession: (id: string, patch: { projectId?: string | null; title?: string }) =>
+    fetch(`/api/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<Session>(r)),
 
   deleteSession: (id: string) =>
     fetch(`/api/sessions/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
@@ -52,6 +67,74 @@ export const api = {
     fetch(`/api/sessions/${id}/abort`, { method: "POST" }).then((r) =>
       json<{ ok: boolean }>(r),
     ),
+
+  projects: () =>
+    fetch("/api/projects").then((r) => json<{ projects: ProjectSummary[] }>(r)),
+
+  project: (id: string) => fetch(`/api/projects/${id}`).then((r) => json<Project>(r)),
+
+  createProject: (input: { name: string; instruction?: string }) =>
+    fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Project>(r)),
+
+  patchProject: (id: string, patch: { name?: string; instruction?: string }) =>
+    fetch(`/api/projects/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<Project>(r)),
+
+  deleteProject: (id: string) =>
+    fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+
+  createTodo: (projectId: string, input: { title: string; status?: TodoStatus }) =>
+    fetch(`/api/projects/${projectId}/todos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<{ todos: Project["todos"] }>(r)),
+
+  patchTodo: (projectId: string, todoId: string, patch: { title?: string; status?: TodoStatus }) =>
+    fetch(`/api/projects/${projectId}/todos/${todoId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<{ todos: Project["todos"] }>(r)),
+
+  deleteTodo: (projectId: string, todoId: string) =>
+    fetch(`/api/projects/${projectId}/todos/${todoId}`, { method: "DELETE" }).then((r) =>
+      json<{ todos: Project["todos"] }>(r),
+    ),
+
+  uploadAsset: (projectId: string, input: { filename: string; content: string; mimeType?: string }) =>
+    fetch(`/api/projects/${projectId}/assets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<{ assets: Project["assets"] }>(r)),
+
+  postProjectMessage: (projectId: string, body: string) =>
+    fetch(`/api/projects/${projectId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body }),
+    }).then((r) => json<{ messages: Project["messages"] }>(r)),
+
+  inviteMember: (projectId: string, displayName?: string) =>
+    fetch(`/api/projects/${projectId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName }),
+    }).then((r) => json<{ inviteToken: string }>(r)),
+
+  inbox: () =>
+    fetch("/api/inbox").then((r) => json<{ items: InboxItem[]; unread: number }>(r)),
+
+  markInboxRead: (id: string) =>
+    fetch(`/api/inbox/${id}/read`, { method: "POST" }).then((r) => json<InboxItem>(r)),
 
   tree: () =>
     fetch("/api/workspace/tree").then((r) =>
@@ -64,10 +147,50 @@ export const api = {
     ),
 };
 
+function parseSseBlock(
+  block: string,
+  onEvent: (event: AgentEvent, seq?: number) => void,
+): void {
+  let seq: number | undefined;
+  const dataLines: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith("id:")) {
+      const n = Number(line.slice(3).trim());
+      if (Number.isFinite(n)) seq = n;
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trim());
+    }
+  }
+  if (dataLines.length === 0) return;
+  try {
+    onEvent(JSON.parse(dataLines.join("\n")) as AgentEvent, seq);
+  } catch {
+    // ignore malformed chunks
+  }
+}
+
+async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: AgentEvent, seq?: number) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? "";
+    for (const part of parts) parseSseBlock(part, onEvent);
+  }
+  if (buffer.trim()) parseSseBlock(buffer, onEvent);
+}
+
 export async function streamMessage(
   sessionId: string,
   content: string,
-  onEvent: (event: AgentEvent) => void,
+  onEvent: (event: AgentEvent, seq?: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const res = await fetch(`/api/sessions/${sessionId}/messages`, {
@@ -79,31 +202,21 @@ export async function streamMessage(
   if (!res.ok || !res.body) {
     throw new Error(await parseError(res));
   }
+  await readSseStream(res.body, onEvent);
+}
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  const flush = (block: string) => {
-    const dataLines = block
-      .split(/\r?\n/)
-      .filter((l) => l.startsWith("data:"))
-      .map((l) => l.slice(5).trim());
-    if (dataLines.length === 0) return;
-    try {
-      onEvent(JSON.parse(dataLines.join("\n")) as AgentEvent);
-    } catch {
-      // ignore malformed chunks
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\r?\n\r?\n/);
-    buffer = parts.pop() ?? "";
-    for (const part of parts) flush(part);
+export async function subscribeSessionEvents(
+  sessionId: string,
+  after: number,
+  onEvent: (event: AgentEvent, seq?: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}/events?after=${after}`, {
+    headers: { "Last-Event-ID": String(after), Accept: "text/event-stream" },
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(await parseError(res));
   }
-  if (buffer.trim()) flush(buffer);
+  await readSseStream(res.body, onEvent);
 }

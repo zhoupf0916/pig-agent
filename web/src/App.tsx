@@ -1,13 +1,17 @@
 import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
+import { InboxMenu } from "./components/InboxMenu";
+import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
-import { api, streamMessage } from "./lib/api";
+import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
+import { parseHash, projectsHash, workstationHash, type AppRoute } from "./lib/hash";
 import type {
   AgentEvent,
   LiveTool,
+  ProjectSummary,
   Session,
   SessionSummary,
   Settings,
@@ -34,7 +38,11 @@ export function App() {
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [route, setRoute] = useState<AppRoute>(() => parseHash());
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const seenSeqRef = useRef<Set<number>>(new Set());
+  const lastSeqRef = useRef(0);
 
   const refreshSessions = useCallback(async () => {
     const { sessions: next } = await api.sessions();
@@ -53,9 +61,28 @@ export function App() {
 
   const loadSession = useCallback(async (id: string) => {
     const next = await api.session(id);
+    seenSeqRef.current = new Set();
+    lastSeqRef.current = next.eventCheckpointSeq ?? 0;
     setSession(next);
     setActiveId(id);
     setLiveTools([]);
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    try {
+      const { projects: next } = await api.projects();
+      setProjects(next);
+    } catch {
+      setProjects([]);
+    }
+  }, []);
+
+  const goWorkstation = useCallback(() => {
+    window.location.hash = workstationHash();
+  }, []);
+
+  const goProjects = useCallback((projectId?: string) => {
+    window.location.hash = projectsHash(projectId);
   }, []);
 
   useEffect(() => {
@@ -70,6 +97,7 @@ export function App() {
         setSkills(sk.skills);
         setSessions(list.sessions);
         await refreshTree();
+        await refreshProjects();
         if (list.sessions[0]) {
           await loadSession(list.sessions[0].id);
         }
@@ -77,7 +105,13 @@ export function App() {
         setBootError(err instanceof Error ? err.message : String(err));
       }
     })();
-  }, [loadSession, refreshTree]);
+  }, [loadSession, refreshProjects, refreshTree]);
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   const openFile = useCallback(async (path: string) => {
     setPreviewPath(path);
@@ -93,12 +127,14 @@ export function App() {
     }
   }, []);
 
-  const createSession = useCallback(async () => {
-    const created = await api.createSession();
+  const createSession = useCallback(async (projectId?: string) => {
+    const created = await api.createSession(projectId);
     await refreshSessions();
+    await refreshProjects();
     await loadSession(created.id);
     setDraft("");
-  }, [loadSession, refreshSessions]);
+    goWorkstation();
+  }, [goWorkstation, loadSession, refreshProjects, refreshSessions]);
 
   const removeSession = useCallback(
     async (id: string) => {
@@ -115,7 +151,12 @@ export function App() {
     [activeId, loadSession, refreshSessions],
   );
 
-  const applyEvent = useCallback((event: AgentEvent) => {
+  const applyEvent = useCallback((event: AgentEvent, seq?: number) => {
+    if (typeof seq === "number") {
+      if (seenSeqRef.current.has(seq)) return;
+      seenSeqRef.current.add(seq);
+      lastSeqRef.current = Math.max(lastSeqRef.current, seq);
+    }
     if (event.type === "token") {
       setSession((prev) => {
         if (!prev) return prev;
@@ -206,6 +247,23 @@ export function App() {
     }
   }, [openFile, refreshSessions, refreshTree]);
 
+  useEffect(() => {
+    if (!activeId) return;
+    const controller = new AbortController();
+    const run = async () => {
+      while (!controller.signal.aborted) {
+        try {
+          await subscribeSessionEvents(activeId, lastSeqRef.current, applyEvent, controller.signal);
+        } catch {
+          if (controller.signal.aborted) break;
+          await new Promise((r) => setTimeout(r, 800));
+        }
+      }
+    };
+    void run();
+    return () => controller.abort();
+  }, [activeId, applyEvent]);
+
   const send = useCallback(async () => {
     if (!session || streaming || !draft.trim()) return;
     const content = draft.trim();
@@ -262,6 +320,17 @@ export function App() {
     setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
   }, [session]);
 
+  const bindProject = useCallback(
+    async (projectId: string | null) => {
+      if (!session) return;
+      const next = await api.patchSession(session.id, { projectId });
+      setSession(next);
+      await refreshSessions();
+      await refreshProjects();
+    },
+    [refreshProjects, refreshSessions, session],
+  );
+
   const headerHint = useMemo(() => {
     if (!settings) return "正在连接本地后端…";
     if (settings.runtime === "codex") {
@@ -292,7 +361,22 @@ export function App() {
             <div className="text-meta text-ink-500">工作台 · 本机与云端同一协议</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className={route.name === "workstation" ? "btn-primary" : "btn-ghost"}
+            onClick={goWorkstation}
+          >
+            工作台
+          </button>
+          <button
+            type="button"
+            className={route.name === "projects" ? "btn-primary" : "btn-ghost"}
+            onClick={() => goProjects(route.name === "projects" ? route.projectId : undefined)}
+          >
+            项目
+          </button>
+          <InboxMenu onOpenProject={(id) => goProjects(id)} />
           <div className="hidden text-right text-meta text-ink-500 sm:block">
             <div>{headerHint}</div>
             <div className="max-w-[360px] truncate font-mono">
@@ -322,30 +406,48 @@ export function App() {
       )}
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <Sidebar
-          sessions={sessions}
-          activeId={activeId}
-          onSelect={(id) => void loadSession(id)}
-          onCreate={() => void createSession()}
-          onDelete={(id) => void removeSession(id)}
-        />
-        <ChatPanel
-          session={session}
-          draft={draft}
-          streaming={streaming}
-          liveTools={liveTools}
-          onDraft={setDraft}
-          onSend={() => void send()}
-          onStop={() => void stop()}
-        />
-        <RightPanel
-          artifacts={session?.artifacts ?? []}
-          tree={tree}
-          workspaceRoot={settings?.workspaceRoot ?? ""}
-          previewPath={previewPath}
-          preview={preview}
-          onOpenFile={(path) => void openFile(path)}
-        />
+        {route.name === "projects" ? (
+          <ProjectsPanel
+            selectedId={route.projectId}
+            sessions={sessions}
+            onSelectProject={(id) => goProjects(id)}
+            onOpenSession={(id) => {
+              void loadSession(id);
+              goWorkstation();
+            }}
+            onCreateSession={(projectId) => void createSession(projectId)}
+          />
+        ) : (
+          <>
+            <Sidebar
+              sessions={sessions}
+              activeId={activeId}
+              onSelect={(id) => void loadSession(id)}
+              onCreate={() => void createSession()}
+              onDelete={(id) => void removeSession(id)}
+            />
+            <ChatPanel
+              session={session}
+              draft={draft}
+              streaming={streaming}
+              liveTools={liveTools}
+              projectName={projects.find((p) => p.id === session?.projectId)?.name}
+              projects={projects}
+              onDraft={setDraft}
+              onSend={() => void send()}
+              onStop={() => void stop()}
+              onBindProject={(id) => void bindProject(id)}
+            />
+            <RightPanel
+              artifacts={session?.artifacts ?? []}
+              tree={tree}
+              workspaceRoot={settings?.workspaceRoot ?? ""}
+              previewPath={previewPath}
+              preview={preview}
+              onOpenFile={(path) => void openFile(path)}
+            />
+          </>
+        )}
       </div>
 
       <SettingsModal

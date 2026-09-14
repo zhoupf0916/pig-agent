@@ -59,3 +59,20 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] **停止** while the stub is running returns idle (same control as Pig)
 - [ ] Remote mode without a URL refuses to save (`Cloud base URL is required`)
 - [ ] Do **not** put `DEEPSEEK_API_KEY` into a worker env file or commit it
+
+## Projects + multi-tab sync (Milestone A)
+
+No LLM required for the project surface. Sync live tokens still need a model or `pnpm mock:llm`.
+
+- [ ] Header shows **工作台** / **项目** / **收件箱**. Default runtime is still **本机 Pig**
+- [ ] Open `#/projects`, create a project, write an instruction, add a todo, upload a small text asset
+- [ ] **在此项目开任务** creates a session bound to the project; chat header shows the project name
+- [ ] Invite generates a placeholder token and an unread inbox item; mark read from the inbox menu
+- [ ] `GET /api/projects` lists the project; `GET /api/inbox` shows the invite
+- [ ] Two tabs on the same session: tab B does not need a full reload to stay consistent. Or with curl:
+  1. `POST /api/sessions` → `id`
+  2. Open two terminals: `curl -N http://127.0.0.1:8787/api/sessions/<id>/events`
+  3. In a third terminal publish via a running turn, **or** inspect `data/sessions/<id>/events.jsonl` after sending a message
+  4. `curl 'http://127.0.0.1:8787/api/sessions/<id>/events?after=1&live=0'` returns seq > 1
+- [ ] Re-open the session (or reconnect SSE) after another tab advanced it — transcript matches without refresh-from-scratch
+- [ ] This is **not** Desk Remote / Firecracker / experts marketplace

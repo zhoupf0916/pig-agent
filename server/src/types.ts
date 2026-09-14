@@ -47,12 +47,101 @@ export type Session = {
   steps: PlanStep[];
   artifacts: Artifact[];
   lastError?: string;
+  /** Optional project this session belongs to (collaboration layer). */
+  projectId?: string;
+  /**
+   * Last event seq persisted with this session snapshot.
+   * Late joiners load the snapshot then subscribe with `after=eventCheckpointSeq`.
+   */
+  eventCheckpointSeq?: number;
 };
 
 export type SessionSummary = Pick<
   Session,
-  "id" | "title" | "createdAt" | "updatedAt" | "status"
+  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId"
 >;
+
+export type ProjectRole = "owner" | "admin" | "member";
+
+export type ProjectMember = {
+  id: string;
+  userId: string;
+  displayName: string;
+  role: ProjectRole;
+  joinedAt: string;
+};
+
+export type TodoStatus = "todo" | "doing" | "done";
+
+export type ProjectTodo = {
+  id: string;
+  title: string;
+  status: TodoStatus;
+  sessionId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectAsset = {
+  id: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  createdAt: string;
+};
+
+export type ProjectMessageKind = "activity" | "comment" | "handoff";
+
+export type ProjectMessage = {
+  id: string;
+  kind: ProjectMessageKind;
+  body: string;
+  actorId: string;
+  createdAt: string;
+  sessionId?: string;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  instruction: string;
+  createdAt: string;
+  updatedAt: string;
+  members: ProjectMember[];
+  todos: ProjectTodo[];
+  assets: ProjectAsset[];
+  messages: ProjectMessage[];
+  inviteToken: string;
+};
+
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  instruction: string;
+  createdAt: string;
+  updatedAt: string;
+  memberCount: number;
+  todoCount: number;
+  assetCount: number;
+  sessionCount: number;
+};
+
+export type InboxKind = "invite" | "handoff";
+
+export type InboxItem = {
+  id: string;
+  kind: InboxKind;
+  projectId: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  inviteToken?: string;
+  sessionId?: string;
+};
+
+export const LOCAL_USER_ID = "user_local";
+export const LOCAL_USER_NAME = "本机用户";
 
 export type AgentRuntime = "pig" | "codex" | "cloud";
 
@@ -134,3 +223,19 @@ export type AgentEvent =
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
   | { type: "done"; session: Session };
+
+export type SessionEventRecord = {
+  seq: number;
+  ts: string;
+  event: AgentEvent;
+};
+
+/** Shared options passed to pig / codex / cloud runners. */
+export type AgentRunOptions = {
+  session: Session;
+  settings: Settings;
+  signal: AbortSignal;
+  emit: (event: AgentEvent) => void;
+  /** Project instruction, injected into the system prompt when bound. */
+  projectInstruction?: string;
+};

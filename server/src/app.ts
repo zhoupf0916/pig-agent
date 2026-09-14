@@ -8,6 +8,10 @@ import { runCodexAgent } from "./agent/codex/runtime.ts";
 import { runAgent } from "./agent/runtime.ts";
 import { listSkills } from "./agent/skills.ts";
 import { WEB_ORIGIN } from "./config.ts";
+import { registerProjectRoutes } from "./routes/projects.ts";
+import { registerSyncRoutes } from "./routes/sync.ts";
+import { recordSessionBound, resolveProjectInstruction } from "./store/projects.ts";
+import { publishPersistedEvent } from "./store/events.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
 import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "./types.ts";
@@ -41,8 +45,9 @@ export function createApp(): Hono {
     "/api/*",
     cors({
       origin: [WEB_ORIGIN, "http://localhost:5173", "http://127.0.0.1:5173"],
-      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization"],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "Last-Event-ID"],
+      exposeHeaders: ["Last-Event-ID"],
     }),
   );
 
@@ -69,16 +74,44 @@ export function createApp(): Hono {
 
   app.get("/api/skills", async (c) => c.json({ skills: await listSkills() }));
 
+  registerProjectRoutes(app);
+  registerSyncRoutes(app);
+
   app.get("/api/sessions", async (c) => c.json({ sessions: await listSessions() }));
 
   app.post("/api/sessions", async (c) => {
-    const session = await createSession();
+    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string };
+    const projectId = typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : undefined;
+    const session = await createSession({ projectId });
+    if (projectId) await recordSessionBound(projectId, session.id);
     return c.json(session, 201);
   });
 
   app.get("/api/sessions/:id", async (c) => {
     const session = await getSession(c.req.param("id"));
     if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json(session);
+  });
+
+  app.patch("/api/sessions/:id", async (c) => {
+    const session = await getSession(c.req.param("id"));
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string | null; title?: string };
+    if (typeof body.title === "string" && body.title.trim()) {
+      session.title = body.title.trim();
+    }
+    if (body.projectId === null) {
+      delete session.projectId;
+    } else if (typeof body.projectId === "string") {
+      const id = body.projectId.trim();
+      if (id) {
+        session.projectId = id;
+        await recordSessionBound(id, session.id);
+      } else {
+        delete session.projectId;
+      }
+    }
+    await saveSession(session);
     return c.json(session);
   });
 
@@ -134,22 +167,26 @@ export function createApp(): Hono {
     return streamSSE(c, async (stream) => {
       let writes = Promise.resolve();
       const emit = (event: AgentEvent) => {
-        writes = writes.then(() =>
-          stream.writeSSE({
+        writes = writes.then(async () => {
+          const record = await publishPersistedEvent(id, event);
+          await stream.writeSSE({
+            id: String(record.seq),
             event: event.type,
             data: JSON.stringify(event),
-          }),
-        );
+          });
+        });
       };
 
       try {
         emit({ type: "message", message: userMsg });
         const runner = pickRunner(settings.runtime);
+        const projectInstruction = await resolveProjectInstruction(session.projectId);
         const next = await runner({
           session,
           settings,
           signal: controller.signal,
           emit,
+          projectInstruction,
         });
         await writes;
         await saveSession(next);

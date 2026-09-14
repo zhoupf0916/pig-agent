@@ -1,0 +1,234 @@
+import type { Hono } from "hono";
+import { z } from "zod";
+import {
+  addAsset,
+  addProjectMessage,
+  createHandoff,
+  createProject,
+  createTodo,
+  deleteProject,
+  deleteTodo,
+  getProject,
+  inviteMember,
+  listProjects,
+  recordSessionBound,
+  updateProject,
+  updateTodo,
+} from "../store/projects.ts";
+import { listInbox, markInboxRead } from "../store/inbox.ts";
+import { createSession, getSession, listSessions, saveSession } from "../store/sessions.ts";
+
+const createSchema = z.object({
+  name: z.string().min(1).max(120),
+  instruction: z.string().max(20_000).optional(),
+});
+
+const patchSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  instruction: z.string().max(20_000).optional(),
+});
+
+const todoCreateSchema = z.object({
+  title: z.string().min(1).max(240),
+  status: z.enum(["todo", "doing", "done"]).optional(),
+  sessionId: z.string().optional(),
+});
+
+const todoPatchSchema = z.object({
+  title: z.string().min(1).max(240).optional(),
+  status: z.enum(["todo", "doing", "done"]).optional(),
+  sessionId: z.string().nullable().optional(),
+});
+
+const messageSchema = z.object({
+  body: z.string().min(1).max(8_000),
+});
+
+const inviteSchema = z.object({
+  displayName: z.string().max(80).optional(),
+});
+
+const handoffSchema = z.object({
+  sessionId: z.string().min(1),
+  note: z.string().max(4_000).optional(),
+});
+
+const assetSchema = z.object({
+  filename: z.string().min(1).max(240),
+  content: z.string().max(2_000_000).optional(),
+  contentBase64: z.string().max(2_800_000).optional(),
+  mimeType: z.string().max(120).optional(),
+});
+
+function fail(err: unknown): { error: string; status: 400 } {
+  return { error: err instanceof Error ? err.message : String(err), status: 400 };
+}
+
+export function registerProjectRoutes(app: Hono): void {
+  app.get("/api/projects", async (c) => {
+    return c.json({ projects: await listProjects() });
+  });
+
+  app.post("/api/projects", async (c) => {
+    const parsed = createSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "name is required" }, 400);
+    const project = await createProject(parsed.data);
+    return c.json(project, 201);
+  });
+
+  app.get("/api/projects/:id", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const sessions = (await listSessions()).filter((s) => s.projectId === project.id);
+    return c.json({ ...project, sessions });
+  });
+
+  app.patch("/api/projects/:id", async (c) => {
+    const parsed = patchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "Invalid project patch" }, 400);
+    const project = await updateProject(c.req.param("id"), parsed.data);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json(project);
+  });
+
+  app.delete("/api/projects/:id", async (c) => {
+    const id = c.req.param("id");
+    const ok = await deleteProject(id);
+    if (!ok) return c.json({ error: "Project not found" }, 404);
+    const sessions = await listSessions();
+    for (const summary of sessions) {
+      if (summary.projectId !== id) continue;
+      const session = await getSession(summary.id);
+      if (!session) continue;
+      delete session.projectId;
+      await saveSession(session);
+    }
+    return c.json({ ok: true });
+  });
+
+  app.get("/api/projects/:id/members", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({ members: project.members, inviteToken: project.inviteToken });
+  });
+
+  app.post("/api/projects/:id/members", async (c) => {
+    const parsed = inviteSchema.safeParse(await c.req.json().catch(() => ({})));
+    const result = await inviteMember(c.req.param("id"), parsed.success ? parsed.data.displayName : undefined);
+    if (!result) return c.json({ error: "Project not found" }, 404);
+    return c.json({
+      inviteToken: result.inviteToken,
+      members: result.project.members,
+      inboxItem: result.inboxItem,
+    }, 201);
+  });
+
+  app.get("/api/projects/:id/todos", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({ todos: project.todos });
+  });
+
+  app.post("/api/projects/:id/todos", async (c) => {
+    const parsed = todoCreateSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "title is required" }, 400);
+    try {
+      const project = await createTodo(c.req.param("id"), parsed.data);
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      return c.json({ todos: project.todos, todo: project.todos.at(-1) }, 201);
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
+  app.patch("/api/projects/:id/todos/:todoId", async (c) => {
+    const parsed = todoPatchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "Invalid todo patch" }, 400);
+    const project = await updateTodo(c.req.param("id"), c.req.param("todoId"), parsed.data);
+    if (!project) return c.json({ error: "Todo not found" }, 404);
+    return c.json({ todos: project.todos });
+  });
+
+  app.delete("/api/projects/:id/todos/:todoId", async (c) => {
+    const project = await deleteTodo(c.req.param("id"), c.req.param("todoId"));
+    if (!project) return c.json({ error: "Todo not found" }, 404);
+    return c.json({ todos: project.todos });
+  });
+
+  app.get("/api/projects/:id/assets", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({ assets: project.assets });
+  });
+
+  app.post("/api/projects/:id/assets", async (c) => {
+    const parsed = assetSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "filename is required" }, 400);
+    let buffer: Buffer;
+    if (parsed.data.contentBase64) {
+      buffer = Buffer.from(parsed.data.contentBase64, "base64");
+    } else {
+      buffer = Buffer.from(parsed.data.content ?? "", "utf8");
+    }
+    if (buffer.length === 0) return c.json({ error: "asset content is required" }, 400);
+    if (buffer.length > 1_500_000) return c.json({ error: "asset too large (1.5MB max)" }, 400);
+    const result = await addAsset(c.req.param("id"), {
+      filename: parsed.data.filename,
+      content: buffer,
+      mimeType: parsed.data.mimeType,
+    });
+    if (!result) return c.json({ error: "Project not found" }, 404);
+    return c.json({ asset: result.asset, assets: result.project.assets }, 201);
+  });
+
+  app.get("/api/projects/:id/messages", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    return c.json({ messages: project.messages });
+  });
+
+  app.post("/api/projects/:id/messages", async (c) => {
+    const parsed = messageSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "body is required" }, 400);
+    try {
+      const project = await addProjectMessage(c.req.param("id"), parsed.data.body);
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      return c.json({ messages: project.messages }, 201);
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
+  app.post("/api/projects/:id/handoffs", async (c) => {
+    const parsed = handoffSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "sessionId is required" }, 400);
+    const result = await createHandoff(c.req.param("id"), parsed.data);
+    if (!result) return c.json({ error: "Project not found" }, 404);
+    return c.json({ inboxItem: result.inboxItem, messages: result.project.messages }, 201);
+  });
+
+  app.post("/api/projects/:id/sessions", async (c) => {
+    const id = c.req.param("id");
+    const project = await getProject(id);
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const session = await createSession({ projectId: id });
+    await recordSessionBound(id, session.id);
+    return c.json(session, 201);
+  });
+
+  app.get("/api/inbox", async (c) => {
+    const items = await listInbox();
+    return c.json({
+      items,
+      unread: items.filter((i) => !i.read).length,
+    });
+  });
+
+  app.post("/api/inbox/:id/read", async (c) => {
+    const item = await markInboxRead(c.req.param("id"));
+    if (!item) return c.json({ error: "Inbox item not found" }, 404);
+    return c.json(item);
+  });
+}
