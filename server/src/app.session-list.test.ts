@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "./app.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { readEventLog } from "./store/events.ts";
+import { getSession, saveSession } from "./store/sessions.ts";
 import { loadSettings, saveSettings } from "./store/settings.ts";
 
 async function json<T>(res: Response): Promise<T> {
@@ -37,11 +38,17 @@ async function waitForStatus(
   throw new Error(`session ${id} stayed ${last?.status ?? "missing"}, wanted ${status}`);
 }
 
-function hangLlm(): Promise<{ url: string; close: () => Promise<void> }> {
+function delayedLlm(delayMs: number): Promise<{ url: string; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
-      res.writeHead(200, { "Content-Type": "text/event-stream" });
-      // Stay open until abort; do not complete the stream.
+      setTimeout(() => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "已完成整理。" } }] })}\n\n`,
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }, delayMs);
     });
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
@@ -72,46 +79,72 @@ describe("GET /api/sessions list status (Milestone Q)", () => {
     expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
   });
 
-  it("shows running then idle while another client holds the turn (stop)", async () => {
-    const hung = await hangLlm();
+  it("shows running then idle on the list while another client holds the turn", async () => {
+    const mock = await delayedLlm(250);
     const prevSettings = await loadSettings();
-    await saveSettings({ llmBaseUrl: hung.url, llmApiKey: "test", runtime: "pig" });
+    await saveSettings({ llmBaseUrl: mock.url, llmApiKey: "test", runtime: "pig" });
     const created = await json<{ id: string; status: string }>(
       await app.request("/api/sessions", { method: "POST" }),
     );
     expect(created.status).toBe("idle");
+    // app.request waits for the SSE body; poll the list while the turn is in flight.
+    const sendP = app.request(`/api/sessions/${created.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "搜索笔记并整理工作区" }),
+    });
     try {
-      const send = await app.request(`/api/sessions/${created.id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "搜索笔记并整理工作区" }),
-      });
-      expect(send.status).toBe(200);
-
       const running = await waitForStatus(app, created.id, "running");
       expect(running.title).toContain("搜索笔记");
       expect(running.status).toBe("running");
 
-      const beforeAbortLog = await readEventLog(created.id);
-      const abort = await app.request(`/api/sessions/${created.id}/abort`, { method: "POST" });
-      expect(abort.status).toBe(200);
+      const beforeDoneLog = await readEventLog(created.id);
+      const send = await sendP;
+      expect(send.status).toBe(200);
+      await send.body?.cancel().catch(() => undefined);
 
       const idle = await waitForStatus(app, created.id, "idle");
       expect(idle.status).toBe("idle");
       expect(idle.title).toContain("搜索笔记");
 
-      // List refresh is GET-only; abort may persist events, but GET must not add more.
       const afterIdle = await readEventLog(created.id);
       const listedAgain = await json<{ sessions: Listed[] }>(await app.request("/api/sessions"));
       expect(listedAgain.sessions.find((s) => s.id === created.id)?.status).toBe("idle");
       expect(await readEventLog(created.id)).toEqual(afterIdle);
-      expect(afterIdle.length).toBeGreaterThanOrEqual(beforeAbortLog.length);
-
-      await send.body?.cancel().catch(() => undefined);
+      expect(afterIdle.length).toBeGreaterThanOrEqual(beforeDoneLog.length);
     } finally {
       await saveSettings(prevSettings);
-      await hung.close();
+      await mock.close();
     }
+  }, 15_000);
+
+  it("lists idle after aborting a running snapshot (stop)", async () => {
+    const created = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    const patch = await json<{ id: string; status: string; title: string }>(
+      await app.request(`/api/sessions/${created.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "停止后应回 idle" }),
+      }),
+    );
+    // Persist the same running snapshot POST /messages writes before SSE (no second store).
+    const session = await getSession(created.id);
+    expect(session).not.toBeNull();
+    session!.status = "running";
+    session!.title = patch.title;
+    await saveSession(session!);
+
+    const running = await listRow(app, created.id);
+    expect(running?.status).toBe("running");
+    expect(running?.title).toContain("停止后应回");
+
+    const before = await readEventLog(created.id);
+    const abort = await app.request(`/api/sessions/${created.id}/abort`, { method: "POST" });
+    expect(abort.status).toBe(200);
+    const idle = await waitForStatus(app, created.id, "idle");
+    expect(idle.status).toBe("idle");
+    expect(idle.title).toContain("停止后应回");
+    expect(await readEventLog(created.id)).toEqual(before);
   });
 
   it("returns idle after a failed pig turn (not stuck running)", async () => {
