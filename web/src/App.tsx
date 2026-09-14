@@ -473,7 +473,13 @@ export function App() {
           >
             自动化
           </button>
-          <InboxMenu onOpenProject={(id) => goProjects(id)} />
+          <InboxMenu
+            onOpenProject={(id) => goProjects(id)}
+            onOpenSession={(id) => {
+              void loadSession(id);
+              goWorkstation();
+            }}
+          />
           <div className="hidden text-right text-meta text-ink-500 sm:block">
             <div>{headerHint}</div>
             <div className="max-w-[360px] truncate font-mono">
@@ -559,6 +565,7 @@ export function App() {
               onBindProject={(id) => void bindProject(id)}
               onBindExpert={(id) => void bindExpert(id)}
               onBindTeam={(id) => void bindTeam(id)}
+              onHandoffDone={() => void refreshProjects()}
             />
             <RightPanel
               artifacts={session?.artifacts ?? []}

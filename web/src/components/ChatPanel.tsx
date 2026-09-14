@@ -1,7 +1,8 @@
 import { Check, Loader2, Square, Terminal, X } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
 import type { ChatMessage, LiveTool, PlanStep, Session } from "../types";
+import { HandoffDialog } from "./HandoffDialog";
 import { MarkdownView } from "./MarkdownView";
 
 export function ChatPanel({
@@ -20,6 +21,7 @@ export function ChatPanel({
   onBindProject,
   onBindExpert,
   onBindTeam,
+  onHandoffDone,
 }: {
   session: Session | null;
   draft: string;
@@ -36,7 +38,9 @@ export function ChatPanel({
   onBindProject: (projectId: string | null) => void;
   onBindExpert: (expertId: string | null) => void;
   onBindTeam: (teamId: string | null) => void;
+  onHandoffDone?: () => void;
 }) {
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -108,6 +112,11 @@ export function ChatPanel({
                   : "项目指令将注入本会话系统提示"}
             </span>
           )}
+          {session.projectId && (
+            <button type="button" className="btn-ghost ml-auto" onClick={() => setHandoffOpen(true)}>
+              转交到收件箱
+            </button>
+          )}
         </div>
       )}
       <StepStrip steps={session?.steps ?? []} />
@@ -149,6 +158,18 @@ export function ChatPanel({
         onSend={onSend}
         onStop={onStop}
       />
+      {handoffOpen && session?.projectId && (
+        <HandoffDialog
+          projectId={session.projectId}
+          projectName={projectName}
+          session={session}
+          onClose={() => setHandoffOpen(false)}
+          onDone={() => {
+            setHandoffOpen(false);
+            onHandoffDone?.();
+          }}
+        />
+      )}
     </section>
   );
 }

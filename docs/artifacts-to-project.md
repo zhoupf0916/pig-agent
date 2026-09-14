@@ -38,4 +38,4 @@ Bound sessions show **保存到项目** on the artifacts panel (and per-row **�
 
 ## Out of scope
 
-Asset preview/download API, version history UI, Desk Remote, Firecracker, marketplace.
+Version history UI, Desk Remote, Firecracker, marketplace. Preview / download / handoff UI is Milestone F — see [project-assets.md](./project-assets.md).

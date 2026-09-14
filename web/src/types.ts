@@ -161,6 +161,18 @@ export type InboxItem = {
   createdAt: string;
   inviteToken?: string;
   sessionId?: string;
+  assetIds?: string[];
+};
+
+export type AssetPreviewKind = "text" | "markdown" | "json" | "image" | "binary";
+
+export type AssetPreview = {
+  asset: ProjectAsset;
+  kind: AssetPreviewKind;
+  content: string;
+  contentBase64?: string;
+  binary: boolean;
+  size: number;
 };
 
 export type AgentRuntime = "pig" | "codex" | "cloud";

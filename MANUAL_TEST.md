@@ -124,3 +124,19 @@ No LLM required if you seed an artifact (or finish a mock/real turn that writes 
 - [ ] Automations: pin a project, leave **运行成功后把新产物保存到项目资产** unchecked (default) — a run does not add assets
 - [ ] Check the box, run a turn that writes a file — project assets include that path
 - [ ] Default runtime is still **本机 Pig**. This is **not** Desk Remote / Firecracker / marketplace
+
+## Asset preview + session handoff (Milestone F)
+
+No LLM required. See [docs/project-assets.md](./docs/project-assets.md).
+
+- [ ] Open `#/projects`, upload a Markdown (or JSON) file — list shows filename + size
+- [ ] Click **预览** — modal renders Markdown / pretty JSON; Escape closes
+- [ ] Click **下载** — browser saves the original bytes
+- [ ] After **保存到项目** from a bound session, the asset shows **来自 `<path>`** and **来源会话** opens that session
+- [ ] Upload a small PNG — preview shows the image
+- [ ] Bound session on the project page: **转交** → note + optional recent artifacts → inbox has a 转交 item
+- [ ] Workstation with a pinned project: **转交到收件箱** does the same; inbox **打开会话** returns to the workstation
+- [ ] `GET /api/projects/<id>/assets/<assetId>` returns `{ kind, content }`
+- [ ] `GET /api/projects/<id>/assets/<assetId>/download` is `Content-Disposition: attachment`
+- [ ] `POST /api/projects/<id>/handoffs` with `{ sessionId, note, attachRecentArtifacts: true }` → 201 + inbox `kind=handoff` (and `assetIds` when files were copied)
+- [ ] Default runtime is still **本机 Pig**. This is **not** Desk Remote / Firecracker / marketplace

@@ -1,7 +1,10 @@
-import { FolderKanban, Plus, Trash2 } from "lucide-react";
+import { Download, FolderKanban, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import type { Project, ProjectSummary, SessionSummary, TodoStatus } from "../types";
+import { formatBytes, isImage, isTextLike } from "../lib/format";
+import type { Project, ProjectAsset, ProjectSummary, Session, SessionSummary, TodoStatus } from "../types";
+import { AssetPreviewModal } from "./AssetPreviewModal";
+import { HandoffDialog } from "./HandoffDialog";
 
 const TODO_COLS: { status: TodoStatus; label: string }[] = [
   { status: "todo", label: "待办" },
@@ -30,6 +33,9 @@ export function ProjectsPanel({
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [previewAsset, setPreviewAsset] = useState<ProjectAsset | null>(null);
+  const [handoffSession, setHandoffSession] = useState<Session | null>(null);
+  const [handoffBusy, setHandoffBusy] = useState<string | null>(null);
 
   const refreshList = async () => {
     const { projects: next } = await api.projects();
@@ -242,7 +248,7 @@ export function ProjectsPanel({
               <div className="mb-2 flex items-center justify-between">
                 <div className="text-meta uppercase tracking-[0.16em] text-ink-500">资产</div>
                 <label className="btn-ghost cursor-pointer">
-                  上传文本
+                  上传
                   <input
                     type="file"
                     className="hidden"
@@ -250,34 +256,57 @@ export function ProjectsPanel({
                       const file = e.target.files?.[0];
                       e.target.value = "";
                       if (!file) return;
-                      void file.text().then((content) =>
-                        api
-                          .uploadAsset(detail.id, {
-                            filename: file.name,
-                            content,
-                            mimeType: file.type || "text/plain",
-                          })
-                          .then(() => loadDetail(detail.id)),
-                      );
+                      void fileToAssetPayload(file)
+                        .then((payload) => api.uploadAsset(detail.id, payload))
+                        .then(() => loadDetail(detail.id))
+                        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
                     }}
                   />
                 </label>
               </div>
               <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-2">
                 {detail.assets.length === 0 && (
-                  <li className="px-2 py-3 text-center text-xs text-ink-500">还没有资产。上传一份 brief 即可。</li>
+                  <li className="px-2 py-3 text-center text-xs text-ink-500">还没有资产。上传一份 brief 或图片即可。</li>
                 )}
                 {detail.assets.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 px-2 py-1 text-[13px]">
-                    <span className="min-w-0 truncate font-mono">
-                      {a.filename}
+                  <li key={a.id} className="flex items-center justify-between gap-2 px-2 py-1.5 text-[13px]">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left"
+                      onClick={() => setPreviewAsset(a)}
+                    >
+                      <span className="font-mono text-ink-800 hover:text-accent">{a.filename}</span>
                       {a.sourceArtifactPath && (
                         <span className="ml-2 font-sans text-meta text-ink-400">
                           来自 {a.sourceArtifactPath}
                         </span>
                       )}
-                    </span>
-                    <span className="shrink-0 text-meta text-ink-500">{a.size} B</span>
+                    </button>
+                    <span className="shrink-0 text-meta text-ink-500">{formatBytes(a.size)}</span>
+                    {a.sourceSessionId && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-meta text-accent hover:underline"
+                        onClick={() => onOpenSession(a.sourceSessionId!)}
+                      >
+                        来源会话
+                      </button>
+                    )}
+                    <a
+                      href={api.assetDownloadUrl(detail.id, a.id)}
+                      className="btn-ghost shrink-0 px-1.5 py-1"
+                      download={a.filename}
+                      title="下载"
+                    >
+                      <Download size={12} />
+                    </a>
+                    <button
+                      type="button"
+                      className="text-meta text-accent hover:underline"
+                      onClick={() => setPreviewAsset(a)}
+                    >
+                      预览
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -298,14 +327,29 @@ export function ProjectsPanel({
                   </li>
                 )}
                 {linked.map((s) => (
-                  <li key={s.id}>
+                  <li key={s.id} className="flex items-center gap-2 rounded-[10px] px-2 py-1.5 hover:bg-ink-100">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between rounded-[10px] px-2 py-1.5 text-left hover:bg-ink-100"
+                      className="flex min-w-0 flex-1 items-center justify-between text-left"
                       onClick={() => onOpenSession(s.id)}
                     >
                       <span className="truncate text-[13px]">{s.title}</span>
-                      <span className="text-meta text-ink-500">{s.status}</span>
+                      <span className="ml-2 shrink-0 text-meta text-ink-500">{s.status}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0"
+                      disabled={handoffBusy === s.id}
+                      onClick={() => {
+                        setHandoffBusy(s.id);
+                        void api
+                          .session(s.id)
+                          .then((full) => setHandoffSession(full))
+                          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                          .finally(() => setHandoffBusy(null));
+                      }}
+                    >
+                      {handoffBusy === s.id ? "…" : "转交"}
                     </button>
                   </li>
                 ))}
@@ -378,6 +422,52 @@ export function ProjectsPanel({
           </div>
         )}
       </div>
+      {detail && previewAsset && (
+        <AssetPreviewModal
+          projectId={detail.id}
+          asset={previewAsset}
+          onClose={() => setPreviewAsset(null)}
+          onOpenSession={onOpenSession}
+        />
+      )}
+      {detail && handoffSession && (
+        <HandoffDialog
+          projectId={detail.id}
+          projectName={detail.name}
+          session={handoffSession}
+          onClose={() => setHandoffSession(null)}
+          onDone={() => {
+            setHandoffSession(null);
+            void loadDetail(detail.id);
+          }}
+        />
+      )}
     </section>
   );
+}
+
+async function fileToAssetPayload(file: File): Promise<{
+  filename: string;
+  content?: string;
+  contentBase64?: string;
+  mimeType?: string;
+}> {
+  const mime =
+    file.type ||
+    (isImage(file.name) ? "image/png" : isTextLike(file.name) ? "text/plain" : "application/octet-stream");
+  if (isImage(file.name, file.type) || !isTextLike(file.name)) {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+      reader.readAsDataURL(file);
+    });
+    const comma = dataUrl.indexOf(",");
+    return {
+      filename: file.name,
+      contentBase64: comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl,
+      mimeType: mime,
+    };
+  }
+  return { filename: file.name, content: await file.text(), mimeType: mime };
 }
