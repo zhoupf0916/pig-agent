@@ -349,6 +349,18 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Leave runtime on **本机 Pig** — local golden path unchanged
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Remote create-run progress (Milestone W)
+
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel. No public webhooks. Failures stay on Milestone L retry / abort → idle.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
+- [ ] `pnpm mock:cloud`, Settings → 云端 / remote → `http://127.0.0.1:8080`. New session, send a turn — while create-run is in flight the step strip (and the 正在思考 line) shows Chinese progress: 准备沙箱快照 → 创建远程运行 → 连接事件流
+- [ ] After the plane streams, bootstrap chips clear and the UI is the live turn (tokens / tool cards / idle)
+- [ ] Deliberate create-run failure (stop the mock / 500) — yellow banner + existing **重试 · 重新创建运行**; session is `error` / idle after abort, never stuck `running`
+- [ ] **停止** during hung create-run → idle; next send works (no 409 zombie)
+- [ ] Progress copy / banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
 ## Local-turn recoverability (Milestone M)
 
 Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO. Milestone N covers the Codex path.
@@ -382,4 +394,16 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Expire / delete the remote run (or `404` the events route) — banner reads 远程运行已过期; retry allocates a new create-run
 - [ ] **停止** while remote SSE is open → session idle; send again works (no 409 zombie)
 - [ ] Banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
+## Remote create-run progress (Milestone W)
+
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel. No public webhooks. Failures stay on Milestone L retry / abort → idle.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
+- [ ] `pnpm mock:cloud`, Settings → 云端 / remote → `http://127.0.0.1:8080`. New session, send a turn — while create-run is in flight the step strip (and the thinking line) shows Chinese progress: 准备沙箱快照 → 创建远程运行 → 连接事件流
+- [ ] After the plane streams, bootstrap chips clear and the UI is the live turn (tokens / tool cards / idle)
+- [ ] Deliberate create-run failure (stop the mock / 500) — yellow banner + existing **重试 · 重新创建运行**; session is `error` / idle after abort, never stuck `running`
+- [ ] **停止** during hung create-run → idle; next send works (no 409 zombie)
+- [ ] Progress copy / banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens
 - [ ] Automated: `pnpm test` + `pnpm typecheck`

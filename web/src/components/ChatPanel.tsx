@@ -1,6 +1,7 @@
 import { Check, Loader2, Pin, Play, Square, StickyNote, Terminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { streamingStatusLabel } from "../lib/create-run-progress";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
 import type { ChatMessage, Expert, ExpertTeam, LiveTool, PlanStep, Session, TeamRunMember } from "../types";
 import { HandoffDialog } from "./HandoffDialog";
@@ -235,7 +236,7 @@ export function ChatPanel({
           {streaming && tools.every((t) => t.done) && (
             <div className="flex items-center gap-2 text-xs text-ink-500">
               <Loader2 size={14} className="animate-spin text-accent" />
-              正在思考…
+              {streamingStatusLabel(session?.steps ?? [])}
             </div>
           )}
           <div ref={endRef} />
