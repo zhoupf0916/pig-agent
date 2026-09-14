@@ -108,7 +108,7 @@ export function SearchBox({
         />
       </div>
       {open && q.trim() && (
-        <div className="absolute left-0 right-0 z-30 mt-1 max-h-80 overflow-y-auto rounded-card border border-ink-300 bg-white p-1 shadow-lift">
+        <div className="absolute left-0 right-0 z-30 mt-1 max-h-80 overflow-y-auto rounded-card border border-ink-300 bg-panel p-1 shadow-lift">
           {busy && hits.length === 0 && (
             <p className="px-2 py-3 text-center text-xs text-ink-500">搜索中…</p>
           )}

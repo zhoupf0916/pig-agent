@@ -94,7 +94,7 @@ export function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-ink-50">
       {session && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-white/80 px-6 py-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-6 py-2">
           <label className="flex items-center gap-2">
             <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
             <select
@@ -360,8 +360,8 @@ function TeamPipeline({
   const done = members.filter((m) => m.status === "done").length;
   const running = members.filter((m) => m.status === "running").length;
   return (
-    <div className="border-b border-ink-300 bg-white/80 px-6 py-3">
-      <div className="mb-2 flex items-center justify-between text-meta text-ink-500">
+    <div className="border-b border-ink-400 bg-panel px-6 py-3">
+      <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
         <span className="uppercase tracking-[0.16em]">小队流水线 · {teamName}</span>
         <span>
           {done}/{members.length} 完成
@@ -376,7 +376,7 @@ function TeamPipeline({
             title={member.detail}
             className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(member.status === "cancelled" ? "error" : member.status)}`}
           >
-            <span className="font-mono text-[12px] opacity-70">{i + 1}</span>
+            <span className="font-mono text-[12px] text-ink-600">{i + 1}</span>
             {member.name}
           </li>
         ))}
@@ -390,8 +390,8 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   const running = steps.filter((s) => s.status === "running").length;
   const done = steps.filter((s) => s.status === "done").length;
   return (
-    <div className="border-b border-ink-300 bg-white/80 px-6 py-3">
-      <div className="mb-2 flex items-center justify-between text-meta text-ink-500">
+    <div className="border-b border-ink-400 bg-panel px-6 py-3">
+      <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
         <span className="uppercase tracking-[0.16em]">步骤</span>
         <span>
           {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
@@ -404,7 +404,7 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
             title={step.detail}
             className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(step.status)}`}
           >
-            <span className="font-mono text-[12px] opacity-70">{i + 1}</span>
+            <span className="font-mono text-[12px] text-ink-600">{i + 1}</span>
             {step.title}
           </li>
         ))}
@@ -414,10 +414,10 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
 }
 
 function tone(status: PlanStep["status"]): string {
-  if (status === "running") return "border-accent/30 bg-accent-soft text-accent";
-  if (status === "done") return "border-success/20 bg-success-soft text-success";
-  if (status === "error") return "border-danger/20 bg-danger-soft text-danger";
-  return "border-ink-300 bg-white text-ink-600";
+  if (status === "running") return "border-accent bg-accent-soft text-accent-mute";
+  if (status === "done") return "border-success bg-success-soft text-success";
+  if (status === "error") return "border-danger bg-danger-soft text-danger";
+  return "border-ink-400 bg-panel text-ink-700";
 }
 
 function MessageBlock({ message }: { message: ChatMessage }) {
@@ -425,7 +425,7 @@ function MessageBlock({ message }: { message: ChatMessage }) {
   if (message.content.startsWith("[team]")) {
     return (
       <div className="flex justify-center">
-        <div className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1 text-meta text-accent">
+        <div className="rounded-full border border-accent bg-accent-soft px-3 py-1 text-meta text-accent-mute">
           {message.content.replace(/^\[team\]\s*/, "")}
         </div>
       </div>
@@ -438,7 +438,7 @@ function MessageBlock({ message }: { message: ChatMessage }) {
         className={`max-w-[85%] rounded-card px-4 py-3 text-body ${
           mine
             ? "border border-ink-300 bg-ink-100 text-ink-800"
-            : "border border-ink-300 bg-white text-ink-800 shadow-panel"
+            : "border border-ink-300 bg-panel text-ink-800 shadow-panel"
         }`}
       >
         {mine ? (
@@ -455,11 +455,11 @@ function ToolCard({ tool }: { tool: LiveTool }) {
   const summary = summarizeArgs(tool.arguments);
   return (
     <details
-      className="rounded-card border border-ink-300 bg-white shadow-panel"
+      className="rounded-card border border-ink-400 bg-panel shadow-panel"
       open={!tool.done || !tool.ok}
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta text-ink-700">
-        <Terminal size={13} className="text-accent" />
+        <Terminal size={13} className="text-accent-mute" />
         <span className="font-medium text-ink-800">{toolLabel(tool.name)}</span>
         <span className="truncate text-ink-600">{summary}</span>
         <span className="ml-auto flex items-center gap-2 text-meta uppercase tracking-wider">
@@ -467,26 +467,26 @@ function ToolCard({ tool }: { tool: LiveTool }) {
             <span className="normal-case text-ink-600">{formatDuration(tool.durationMs)}</span>
           )}
           {!tool.done && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 text-accent">
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-medium text-accent-mute">
               <Loader2 size={11} className="animate-spin" />
               进行中
             </span>
           )}
           {tool.done && tool.ok && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-success">
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 font-medium text-success">
               <Check size={11} />
               成功
             </span>
           )}
           {tool.done && !tool.ok && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-danger">
+            <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 font-medium text-danger">
               <X size={11} />
               失败
             </span>
           )}
         </span>
       </summary>
-      <pre className="max-h-56 overflow-auto border-t border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[12px] text-ink-700">
+      <pre className="max-h-56 overflow-auto border-t border-ink-400 bg-ink-100 px-3 py-2 font-mono text-[12px] text-ink-800">
         {tool.done ? tool.output : JSON.stringify(tool.arguments, null, 2)}
       </pre>
     </details>
@@ -509,8 +509,8 @@ function Composer({
   onStop: () => void;
 }) {
   return (
-    <div className="border-t border-ink-300 bg-white/80 px-6 py-4">
-      <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-card border border-ink-300 bg-white px-3 py-2 shadow-panel">
+    <div className="border-t border-ink-300 bg-panel px-6 py-4">
+      <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-card border border-ink-400 bg-panel px-3 py-2 shadow-panel">
         <textarea
           value={draft}
           disabled={disabled || streaming}

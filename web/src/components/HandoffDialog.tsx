@@ -59,8 +59,8 @@ export function HandoffDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-800/20 p-4 backdrop-blur-[2px]">
-      <div className="w-full max-w-md rounded-card border border-ink-300 bg-white p-5 shadow-lift">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px]">
+      <div className="w-full max-w-md rounded-card border border-ink-300 bg-panel p-5 shadow-lift">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-medium text-ink-800">转交到项目收件箱</h2>

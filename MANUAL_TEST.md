@@ -195,3 +195,14 @@ Same-session chain (not handoff-per-step). Default runtime stays **本机 Pig**.
 - [ ] Project instruction + 钉住笔记 still apply to each member (same precedence: expert → project → pins)
 - [ ] Parallel teams stay one concatenated turn (no pipeline auto-run)
 - [ ] This is **not** marketplace, parallel subagents across machines, Desk Remote, embeddings, or environment builds
+
+## Theme persistence + light readability (Milestone J2)
+
+Client-only (`localStorage` key `pig-agent.theme`). Does **not** change Settings runtime (still **本机 Pig**).
+
+- [ ] First visit with empty storage is **light** (Codex-style white/gray panels, green accent)
+- [ ] Header **深色** switches to dark; a full page reload keeps dark
+- [ ] Header **浅色** switches back to light; reload keeps light
+- [ ] Light mode: step strip chips, tool cards, and artifacts / workspace rows have readable contrast (not washed-out gray-on-gray)
+- [ ] Settings still defaults to runtime **Pig**; saving settings does not reset the theme
+- [ ] This is **not** a runtime change, Desk Remote, marketplace, or environment builds

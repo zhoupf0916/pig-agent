@@ -12,7 +12,15 @@ import { SearchBox } from "./components/SearchBox";
 import { SearchPanel } from "./components/SearchPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { api, streamMessage, streamTeamRun, subscribeSessionEvents } from "./lib/api";
+import {
+  browserThemeRoot,
+  browserThemeStorage,
+  loadPersistedTheme,
+  persistTheme,
+  type Theme,
+} from "./lib/theme";
 import {
   automationsHash,
   expertsHash,
@@ -57,6 +65,7 @@ export function App() {
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => loadPersistedTheme());
   const [route, setRoute] = useState<AppRoute>(() => parseHash());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [experts, setExperts] = useState<Expert[]>([]);
@@ -535,6 +544,10 @@ export function App() {
     [bindTeam, goWorkstation, loadSession, refreshSessions, session],
   );
 
+  const setPersistedTheme = useCallback((next: Theme) => {
+    setTheme(persistTheme(next, { storage: browserThemeStorage(), root: browserThemeRoot() }));
+  }, []);
+
   const headerHint = useMemo(() => {
     if (!settings) return "正在连接本地后端…";
     if (settings.runtime === "codex") {
@@ -555,7 +568,7 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
           className="flex shrink-0 items-center gap-3 text-left"
@@ -607,6 +620,7 @@ export function App() {
               goWorkstation(id);
             }}
           />
+          <ThemeToggle theme={theme} onChange={setPersistedTheme} />
           <div className="hidden text-right text-meta text-ink-500 lg:block">
             <div>{headerHint}</div>
             <div className="max-w-[280px] truncate font-mono">

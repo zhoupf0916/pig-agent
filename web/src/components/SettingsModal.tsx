@@ -42,8 +42,8 @@ export function SettingsModal({
   const setRuntime = (runtime: AgentRuntime) => setForm({ ...form, runtime });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-800/20 p-4 backdrop-blur-[2px]">
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-card border border-ink-300 bg-white p-5 shadow-lift">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px]">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-card border border-ink-300 bg-panel p-5 shadow-lift">
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h2 className="text-base font-medium text-ink-800">设置</h2>
@@ -82,7 +82,7 @@ export function SettingsModal({
           </Field>
 
           {form.runtime === "cloud" && (
-            <div className="space-y-3 rounded-card border border-accent/25 bg-accent-soft p-3">
+            <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
               <p className="text-meta leading-relaxed text-ink-600">
                 工作台会话 / 计划 / 工具 / 产物语义不变，只换执行面。默认{" "}
                 <code className="font-mono text-ink-800">local-stub</code>
@@ -144,7 +144,7 @@ export function SettingsModal({
           )}
 
           {form.runtime === "codex" && (
-            <div className="space-y-3 rounded-card border border-accent/25 bg-accent-soft p-3">
+            <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
               <p className="text-meta leading-relaxed text-ink-600">
                 DeepSeek 走隔离 CODEX_HOME + <code className="font-mono text-ink-800">wire_api=responses</code>
                 ，模型如 <code className="font-mono text-ink-800">deepseek-flash</code>
@@ -170,7 +170,7 @@ export function SettingsModal({
                   placeholder="deepseek-flash"
                 />
               </Field>
-              <label className="flex items-start gap-2 rounded-card border border-ink-300 bg-white px-3 py-2">
+              <label className="flex items-start gap-2 rounded-card border border-ink-300 bg-panel px-3 py-2">
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -185,7 +185,7 @@ export function SettingsModal({
                 </span>
               </label>
               {form.codexNetworkAccess && (
-                <div className="rounded-card border border-warning/40 bg-warning-soft px-3 py-2 text-meta leading-relaxed text-warning">
+                <div className="rounded-card border border-warning bg-warning-soft px-3 py-2 text-meta leading-relaxed text-warning">
                   警告：开启后 Codex 的 workspace-write 沙箱可以访问外网（下载、请求第三方 API
                   等）。只在你信任当前工作区与任务时启用。不会开启 danger-full-access。
                 </div>
@@ -313,7 +313,7 @@ function RuntimeChoice({
       className={`rounded-card border px-3 py-2 text-left ${
         active
           ? "border-accent bg-accent-soft text-ink-800"
-          : "border-ink-300 bg-white text-ink-700 hover:border-ink-400 hover:bg-ink-100"
+          : "border-ink-300 bg-panel text-ink-700 hover:border-ink-400 hover:bg-ink-100"
       }`}
     >
       <div className="text-xs font-medium">{title}</div>

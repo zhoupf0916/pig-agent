@@ -55,12 +55,12 @@ export function InboxMenu({
         )}
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-80 rounded-card border border-ink-300 bg-white p-2 shadow-lift">
+        <div className="absolute right-0 z-20 mt-2 w-80 rounded-card border border-ink-300 bg-panel p-2 shadow-lift">
           <div className="mb-2 px-2 text-meta uppercase tracking-[0.16em] text-ink-500">邀请 / 转交</div>
           {items.length === 0 && <p className="px-2 py-4 text-center text-xs text-ink-500">暂无消息</p>}
           <ul className="max-h-72 space-y-1 overflow-y-auto">
             {items.map((item) => (
-              <li key={item.id} className={`rounded-[10px] px-2 py-2 ${item.read ? "bg-white" : "bg-accent-soft"}`}>
+              <li key={item.id} className={`rounded-[10px] px-2 py-2 ${item.read ? "bg-panel" : "bg-accent-soft"}`}>
                 <button
                   type="button"
                   className="w-full text-left"

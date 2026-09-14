@@ -213,7 +213,7 @@ export function ProjectsPanel({
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 {TODO_COLS.map((col) => (
-                  <div key={col.status} className="rounded-card border border-ink-300 bg-white p-2">
+                  <div key={col.status} className="rounded-card border border-ink-300 bg-panel p-2">
                     <div className="mb-2 px-1 text-meta text-ink-500">{col.label}</div>
                     <div className="space-y-2">
                       {detail.todos
@@ -281,7 +281,7 @@ export function ProjectsPanel({
                   />
                 </label>
               </div>
-              <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-2">
+              <ul className="space-y-1 rounded-card border border-ink-300 bg-panel p-2">
                 {detail.assets.length === 0 && (
                   <li className="px-2 py-3 text-center text-xs text-ink-500">还没有资产。上传一份 brief 或图片即可。</li>
                 )}
@@ -342,7 +342,7 @@ export function ProjectsPanel({
                   在此项目开任务
                 </button>
               </div>
-              <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-2">
+              <ul className="space-y-1 rounded-card border border-ink-300 bg-panel p-2">
                 {linked.length === 0 && (
                   <li className="px-2 py-3 text-center text-xs text-ink-500">
                     还没有会话。开一个任务后，项目指令会进系统提示。
