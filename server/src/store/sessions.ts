@@ -90,5 +90,9 @@ async function readSessionFile(file: string): Promise<Session> {
     status: raw.status ?? "idle",
     eventCheckpointSeq: raw.eventCheckpointSeq ?? 0,
     projectId: raw.projectId,
+    remoteRunId:
+      typeof raw.remoteRunId === "string" && raw.remoteRunId.trim()
+        ? raw.remoteRunId.trim()
+        : undefined,
   };
 }

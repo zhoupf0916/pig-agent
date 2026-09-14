@@ -10,23 +10,7 @@ import { dirname, join } from "node:path";
 import type { Artifact } from "../../types.ts";
 import { nowIso } from "../../util.ts";
 import { resolveInWorkspace } from "../sandbox.ts";
-
-const SKIP_NAMES = new Set([
-  "node_modules",
-  ".git",
-  "data",
-  "dist",
-  ".vite",
-  ".env",
-  ".env.local",
-  "coverage",
-]);
-
-function shouldSkip(name: string): boolean {
-  if (SKIP_NAMES.has(name)) return true;
-  if (name.startsWith(".env.") && name.endsWith(".local")) return true;
-  return false;
-}
+import { shouldSkipCloudHandoffName } from "./snapshot.ts";
 
 export function materializeCloudWorkspace(options: {
   sourceRoot: string;
@@ -43,7 +27,7 @@ export function materializeCloudWorkspace(options: {
       recursive: true,
       filter: (src) => {
         const base = src.split(/[\\/]/).pop() ?? src;
-        return !shouldSkip(base);
+        return !shouldSkipCloudHandoffName(base);
       },
     });
   }

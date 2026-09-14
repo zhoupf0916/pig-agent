@@ -59,6 +59,10 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] **停止** while the stub is running returns idle (same control as Pig)
 - [ ] Remote mode without a URL refuses to save (`Cloud base URL is required`)
 - [ ] Do **not** put `DEEPSEEK_API_KEY` into a worker env file or commit it
+- [ ] `pnpm mock:cloud` listens on `http://127.0.0.1:8080` (no provider key, no cluster)
+- [ ] Settings → 云端 → remote → Base URL `http://127.0.0.1:8080`. New session: `请整理工作区` — assistant text mentions `accepted workspace` and lists uploaded files (not `.env`)
+- [ ] Same session, second message `再写一个文件` — reply is `[stub] follow-up: …`. `data/sessions/<id>.json` keeps the same `remoteRunId`
+- [ ] Isolated snapshot never includes `.env*`, `id_rsa` / `*.pem`, `node_modules`, or `.git` (see [docs/cloud-runtime.md](./docs/cloud-runtime.md))
 
 ## Projects + multi-tab sync (Milestone A)
 

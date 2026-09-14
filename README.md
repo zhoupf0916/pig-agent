@@ -99,10 +99,10 @@ pnpm dev
 | --- | --- |
 | 运行时 | `pig`（不选云端则行为与以前完全一致） |
 | `cloudMode` | `local-stub`：在 `data/cloud-runs/<id>/` 隔离工作区副本上跑本机 Pig 循环 |
-| 远程 | `remote` + 控制面 origin；`POST /v1/runs` → SSE → abort |
-| 密钥 | 留在本机控制路径 / 未来 Gateway；**不会**写入 run 目录或提交 git |
+| 远程 | `remote` + 控制面 origin；`POST /v1/runs`（工作区 snapshot / 可选 repo hint）→ SSE → IDLE follow-up / abort |
+| 密钥 | 留在本机控制路径 / 未来 Gateway；**不会**写入 run 目录、snapshot 或提交 git |
 
-`local-stub` 让 `pnpm test` 和离线 mock 不需要集群。远程契约与刻意不从 [neo-cloud-agent](https://github.com/Neo2Agent/neo-cloud-agent) 搬过来的部分见 [docs/cloud-runtime.md](./docs/cloud-runtime.md)。
+`local-stub` 让 `pnpm test` 和离线 mock 不需要集群。远程 follow-up 可用 `pnpm mock:cloud`（`http://127.0.0.1:8080`）对着契约冒烟。详见 [docs/cloud-runtime.md](./docs/cloud-runtime.md)。
 
 没有可用模型时，可开离线 mock（同一套协议，用来看工具与产物）：
 
@@ -206,7 +206,7 @@ Tools resolve every path against the workspace root and refuse escapes. Shell st
 
 Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json` with an isolated `CODEX_HOME`, `wire_api=responses`, DeepSeek `deepseek-flash`, `approval_policy=never`, and `network_access=false` unless you explicitly opt in. Pig `llmBaseUrl` (`…/v1`) is never copied into the Codex provider. See [docs/codex-runtime.md](./docs/codex-runtime.md).
 
-Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks a minimal create-run / SSE / abort contract. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
+Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks create-run (workspace snapshot / optional repo hint) → SSE → IDLE follow-up / abort. `pnpm mock:cloud` is the in-repo plane. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
 
 Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, or experts marketplace.
 

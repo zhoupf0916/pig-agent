@@ -49,6 +49,7 @@ export type Session = {
   lastError?: string;
   projectId?: string;
   eventCheckpointSeq?: number;
+  remoteRunId?: string;
 };
 
 export type SessionSummary = Pick<

@@ -88,7 +88,7 @@ export function SettingsModal({
                 <code className="font-mono text-ink-800">local-stub</code>
                 ：在 <code className="font-mono text-ink-800">data/cloud-runs/&lt;id&gt;/</code>{" "}
                 隔离工作区副本上跑本机 Pig 循环，密钥留在本机控制路径，不会写入 run 目录或提交
-                git。远程模式指向未来控制面（create-run → SSE → IDLE / abort），见{" "}
+                git。远程模式指向控制面（create-run 带工作区 snapshot → SSE → IDLE follow-up / abort），见{" "}
                 <code className="font-mono text-ink-800">docs/cloud-runtime.md</code>。
               </p>
               <Field label="云端模式">
@@ -261,7 +261,7 @@ export function SettingsModal({
           )}
           {form.runtime === "cloud" && form.cloudMode === "remote" && (
             <p className="mt-2 text-meta text-ink-500">
-              远程控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染；未下发则该轮没有步骤条。
+              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。同一会话后续消息优先 follow-up；run 过期则新建。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。
             </p>
           )}
         </div>
