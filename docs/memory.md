@@ -65,4 +65,4 @@ Treat pins as user-curated facts, not a license to leave the workspace.
 
 ## Out of scope
 
-Embeddings / Mem0, marketplace, Desk Remote, expert-team sequential runner, environment builds, automatic recap after every turn.
+Embeddings / Mem0, marketplace, Desk Remote, environment builds, automatic recap after every turn. Sequential expert-team runs (Milestone I) reuse the same pin injection on each member turn.

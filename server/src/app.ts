@@ -4,7 +4,10 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { listSkills } from "./agent/skills.ts";
+import { applyTeamRunStop } from "./agent/team-run.ts";
 import { prepareUserMessage, runningTurns, runSessionTurn } from "./agent/turn.ts";
+import { getExpertTeam } from "./store/experts.ts";
+import { shouldRunSequentialTeam } from "./store/team-run-state.ts";
 import { WEB_ORIGIN } from "./config.ts";
 import { registerArtifactRoutes } from "./routes/artifacts.ts";
 import { registerAutomationRoutes } from "./routes/automations.ts";
@@ -36,6 +39,11 @@ const settingsSchema = z.object({
 
 const messageSchema = z.object({
   content: z.string().min(1).max(20_000),
+});
+
+const teamRunSchema = z.object({
+  action: z.enum(["start", "continue", "stop"]).default("start"),
+  content: z.string().min(1).max(20_000).optional(),
 });
 
 export function createApp(): Hono {
@@ -137,10 +145,14 @@ export function createApp(): Hono {
     }
     if (body.expertTeamId === null) {
       delete session.expertTeamId;
+      delete session.teamRun;
     } else if (typeof body.expertTeamId === "string") {
       const id = body.expertTeamId.trim();
       if (id) session.expertTeamId = id;
-      else delete session.expertTeamId;
+      else {
+        delete session.expertTeamId;
+        delete session.teamRun;
+      }
     }
     await saveSession(session);
     return c.json(session);
@@ -160,8 +172,7 @@ export function createApp(): Hono {
     controller?.abort();
     const session = await getSession(id);
     if (session && session.status === "running" && !controller) {
-      session.status = "idle";
-      await saveSession(session);
+      await applyTeamRunStop(session);
     }
     return c.json({ ok: true, running: Boolean(controller) });
   });
@@ -192,6 +203,80 @@ export function createApp(): Hono {
       const first = await publishPersistedEvent(id, { type: "message", message: userMsg });
       await onEvent(first.event, first.seq);
       await runSessionTurn(session, { onEvent });
+    });
+  });
+
+  app.post("/api/sessions/:id/team-run", async (c) => {
+    const id = c.req.param("id");
+    const session = await getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const parsed = teamRunSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: "Invalid team-run body" }, 400);
+    }
+    const { action, content } = parsed.data;
+
+    if (action === "stop") {
+      const controller = runningTurns.get(id);
+      controller?.abort();
+      const latest = (await getSession(id)) ?? session;
+      await applyTeamRunStop(latest);
+      return c.json({ ok: true, running: Boolean(controller), session: latest });
+    }
+
+    if (session.status === "running") {
+      return c.json({ error: "Session is already running" }, 409);
+    }
+    if (session.expertId) {
+      return c.json(
+        { error: "A pinned expertId overrides the team; unbind the expert to run the chain." },
+        400,
+      );
+    }
+    const team = session.expertTeamId ? await getExpertTeam(session.expertTeamId) : null;
+    if (!shouldRunSequentialTeam(session, team)) {
+      return c.json(
+        { error: "Pin a chain expert team (mode=chain) to run members sequentially." },
+        400,
+      );
+    }
+
+    if (action === "continue") {
+      const resumable = session.teamRun?.members.some(
+        (m) => m.status === "pending" || m.status === "error" || m.status === "running",
+      );
+      if (!session.teamRun || !resumable) {
+        return c.json({ error: "No paused team run to continue." }, 400);
+      }
+    } else {
+      const prompt = content?.trim();
+      if (prompt) {
+        prepareUserMessage(session, prompt);
+        await saveSession(session);
+      } else if (!session.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))) {
+        return c.json({ error: "Message content is required to start a team run." }, 400);
+      } else {
+        session.status = "running";
+        session.lastError = undefined;
+        await saveSession(session);
+      }
+    }
+
+    const startedUser = session.messages.filter((m) => m.role === "user").at(-1);
+
+    return streamSSE(c, async (stream) => {
+      const onEvent = async (event: import("./types.ts").AgentEvent, seq: number) => {
+        await stream.writeSSE({
+          id: String(seq),
+          event: event.type,
+          data: JSON.stringify(event),
+        });
+      };
+      if (action === "start" && startedUser && content?.trim()) {
+        const first = await publishPersistedEvent(id, { type: "message", message: startedUser });
+        await onEvent(first.event, first.seq);
+      }
+      await runSessionTurn(session, { onEvent, teamAction: action });
     });
   });
 

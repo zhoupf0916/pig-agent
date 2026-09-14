@@ -63,6 +63,11 @@ export type Session = {
   expertId?: string;
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */
   expertTeamId?: string;
+  /**
+   * Sequential chain progress (Milestone I). Same-session pig turns — not handoff-per-step.
+   * Present when a chain team run has been started on this session.
+   */
+  teamRun?: TeamRun;
 };
 
 export type SessionSummary = Pick<
@@ -86,6 +91,34 @@ export type Expert = {
 };
 
 export type ExpertTeamMode = "chain" | "parallel";
+
+/** Per-member status inside a sequential team run. */
+export type TeamRunMemberStatus = "pending" | "running" | "done" | "error" | "cancelled";
+
+export type TeamRunStatus = "idle" | "running" | "done" | "error" | "cancelled";
+
+export type TeamRunMember = {
+  expertId: string;
+  name: string;
+  kind: ExpertKind;
+  status: TeamRunMemberStatus;
+  detail?: string;
+};
+
+/**
+ * Same-session sequential pipeline. Child session ids are unused in Milestone I
+ * (`strategy` is always `"same-session"`).
+ */
+export type TeamRun = {
+  teamId: string;
+  teamName: string;
+  strategy: "same-session";
+  status: TeamRunStatus;
+  currentIndex: number;
+  members: TeamRunMember[];
+  startedAt: string;
+  updatedAt: string;
+};
 
 export type ExpertTeam = {
   id: string;
@@ -352,6 +385,7 @@ export type AgentEvent =
   | { type: "artifact"; artifact: Artifact }
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
+  | { type: "team_run"; teamRun: TeamRun }
   | { type: "done"; session: Session };
 
 export type SessionEventRecord = {

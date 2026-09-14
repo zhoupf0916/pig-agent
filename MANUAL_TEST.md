@@ -170,3 +170,18 @@ No LLM required. Recap is a heuristic template. See [docs/memory.md](./docs/memo
 - [ ] `GET /api/search?q=<pin text>` includes `{ "type": "memory", "href": "#/memory/…" }`
 - [ ] Recent pins inject into the pig system prompt only (covered by `pnpm test`); recaps do not
 - [ ] This is **not** embeddings, Mem0, marketplace, Desk Remote, or environment builds
+
+## Expert-team sequential runner (Milestone I)
+
+Same-session chain (not handoff-per-step). Default runtime stays **本机 Pig**. Sequential coverage is in `pnpm test` (scripted LLM, no live DeepSeek). See [docs/experts.md](./docs/experts.md).
+
+- [ ] Header still **工作台** / **项目** / **专家**. Default runtime is **本机 Pig**
+- [ ] Bind **编码流水线** on a session — pin row shows 小队流水线 chips (侦察 → 规划 → 实现 → 评审) and **顺序执行小队**
+- [ ] Pin a single expert as well — hint reads 已钉选单个专家，小队仅作元数据; the sequential button hides
+- [ ] `pnpm mock:llm`, Settings Pig Base URL `http://127.0.0.1:8788/v1`. New session, bind 编码流水线, click **顺序执行小队** with a short goal — `[team] 1/4 · 侦察 Scout 开始` markers appear, chips advance, session stays one transcript
+- [ ] **停止** mid-pipeline returns idle; remaining chips become cancelled; **继续小队** resumes
+- [ ] `POST /api/sessions/<id>/team-run` with `{ "action": "start", "content": "…" }` is SSE; `{ "action": "stop" }` cancels
+- [ ] A normal send on a chain-team session (no `expertId`) also starts the sequential pipeline
+- [ ] Project instruction + 钉住笔记 still apply to each member (same precedence: expert → project → pins)
+- [ ] Parallel teams stay one concatenated turn (no pipeline auto-run)
+- [ ] This is **not** marketplace, parallel subagents across machines, Desk Remote, embeddings, or environment builds

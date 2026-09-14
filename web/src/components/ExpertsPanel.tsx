@@ -146,7 +146,7 @@ export function ExpertsPanel({
             >
               <div className="truncate text-[13px] font-medium text-ink-800">{team.name}</div>
               <div className="mt-0.5 text-meta text-ink-500">
-                {team.mode === "chain" ? "接力" : "并行"} · {team.expertIds.length} 人
+                {team.mode === "chain" ? "接力（同会话顺序执行）" : "并行（仍为一条拼接指令）"} · {team.expertIds.length} 人
                 {team.bundled ? " · 内置" : ""}
               </div>
               <button

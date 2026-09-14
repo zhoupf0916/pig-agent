@@ -52,6 +52,7 @@ export type Session = {
   remoteRunId?: string;
   expertId?: string;
   expertTeamId?: string;
+  teamRun?: TeamRun;
 };
 
 export type SessionSummary = Pick<
@@ -74,6 +75,29 @@ export type Expert = {
 };
 
 export type ExpertTeamMode = "chain" | "parallel";
+
+export type TeamRunMemberStatus = "pending" | "running" | "done" | "error" | "cancelled";
+
+export type TeamRunStatus = "idle" | "running" | "done" | "error" | "cancelled";
+
+export type TeamRunMember = {
+  expertId: string;
+  name: string;
+  kind: ExpertKind;
+  status: TeamRunMemberStatus;
+  detail?: string;
+};
+
+export type TeamRun = {
+  teamId: string;
+  teamName: string;
+  strategy: "same-session";
+  status: TeamRunStatus;
+  currentIndex: number;
+  members: TeamRunMember[];
+  startedAt: string;
+  updatedAt: string;
+};
 
 export type ExpertTeam = {
   id: string;
@@ -303,4 +327,5 @@ export type AgentEvent =
   | { type: "artifact"; artifact: Artifact }
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
+  | { type: "team_run"; teamRun: TeamRun }
   | { type: "done"; session: Session };

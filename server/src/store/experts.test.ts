@@ -6,7 +6,7 @@ import {
   BUNDLED_IMPLEMENT_ID,
   BUNDLED_SCOUT_ID,
 } from "./bundled-experts.ts";
-import { resolveExpertPlaybook } from "./experts.ts";
+import { resolveExpertPlaybook, resolveTeamMemberPlaybook } from "./experts.ts";
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
@@ -132,6 +132,20 @@ describe("local experts registry", () => {
     expect(playbook.instruction).toContain("侦察 Scout");
     expect(playbook.instruction).toContain("实现 Implement");
     expect(playbook.skillIds).toContain("coding-helper");
+  });
+
+  it("resolves one chain member at a time for sequential runs", async () => {
+    const scout = await resolveTeamMemberPlaybook(BUNDLED_CODING_TEAM_ID, 0);
+    expect(scout.expert?.id).toBe(BUNDLED_SCOUT_ID);
+    expect(scout.instruction).toContain("sequential same-session step 1/4");
+    expect(scout.instruction).toContain("侦察 Scout");
+    expect(scout.instruction).not.toContain("实现 Implement");
+
+    const implement = await resolveTeamMemberPlaybook(BUNDLED_CODING_TEAM_ID, 2);
+    expect(implement.expert?.id).toBe(BUNDLED_IMPLEMENT_ID);
+    expect(implement.instruction).toContain("step 3/4");
+    expect(implement.skillIds).toContain("coding-helper");
+    expect(implement.instruction).not.toContain("侦察 Scout");
   });
 
   it("lets expertId win over the team for injected text", async () => {

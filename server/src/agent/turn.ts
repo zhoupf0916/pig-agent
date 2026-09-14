@@ -3,11 +3,13 @@ import { publishPersistedEvent } from "../store/events.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
 import { saveSession } from "../store/sessions.ts";
 import { loadSettings } from "../store/settings.ts";
+import { shouldRunSequentialTeam } from "../store/team-run-state.ts";
 import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts";
 import { newId, nowIso, truncate } from "../util.ts";
 import { runCloudAgent } from "./cloud/runtime.ts";
 import { runCodexAgent } from "./codex/runtime.ts";
 import { runAgent } from "./runtime.ts";
+import { runSequentialTeamTurn } from "./team-run.ts";
 
 export const runningTurns = new Map<string, AbortController>();
 
@@ -37,11 +39,14 @@ export type SessionTurnHooks = {
   onEvent?: (event: AgentEvent, seq: number) => Promise<void> | void;
   /** Override settings.runtime (automations default to pig). */
   runtime?: AgentRuntime;
+  /** Chain team: start resets the pipeline; continue resumes pending members. */
+  teamAction?: "start" | "continue";
 };
 
 /**
  * Shared pig/codex/cloud turn used by chat SSE and local automations.
  * Always persists events; `onEvent` is optional (SSE writes).
+ * Chain teams (no expertId) run sequential same-session member turns.
  */
 export async function runSessionTurn(
   session: Session,
@@ -62,20 +67,30 @@ export async function runSessionTurn(
 
   try {
     const runner = pickRunner(runtime);
-    const projectInstruction = await resolveProjectInstruction(session.projectId);
     const playbook = await resolveExpertPlaybook({
       expertId: session.expertId,
       expertTeamId: session.expertTeamId,
     });
-    const next = await runner({
-      session,
-      settings,
-      signal: controller.signal,
-      emit,
-      projectInstruction,
-      expertInstruction: playbook.instruction,
-      preferredSkillIds: playbook.skillIds,
-    });
+    const sequential = shouldRunSequentialTeam(session, playbook.team);
+    const next = sequential
+      ? await runSequentialTeamTurn(session, {
+          settings,
+          runtime,
+          signal: controller.signal,
+          emit,
+          flush: () => writes,
+          runner,
+          action: hooks.teamAction ?? "start",
+        })
+      : await runner({
+          session,
+          settings,
+          signal: controller.signal,
+          emit,
+          projectInstruction: await resolveProjectInstruction(session.projectId),
+          expertInstruction: playbook.instruction,
+          preferredSkillIds: playbook.skillIds,
+        });
     await writes;
     await saveSession(next);
     return next;

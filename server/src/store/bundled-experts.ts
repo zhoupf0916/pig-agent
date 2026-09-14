@@ -123,7 +123,7 @@ export const BUNDLED_TEAMS: ExpertTeam[] = [
   {
     id: BUNDLED_CODING_TEAM_ID,
     name: "编码流水线",
-    description: "侦察 → 规划 → 实现 → 评审。本会话只注入小队全部指令；真正并行/接力执行仍是后续里程碑。",
+    description: "侦察 → 规划 → 实现 → 评审。chain 小队在同一会话里顺序各跑一轮；并行跨机仍是后续里程碑。",
     mode: "chain",
     expertIds: [BUNDLED_SCOUT_ID, BUNDLED_PLAN_ID, BUNDLED_IMPLEMENT_ID, BUNDLED_REVIEW_ID],
     bundled: true,
