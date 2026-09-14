@@ -1,0 +1,29 @@
+# Example isolated Codex config written to $PIG_CODEX_HOME (default: data/codex-home).
+# Copy ideas from here — the server generates the real file at runtime.
+# NEVER put real API keys in git. Use DEEPSEEK_API_KEY or CODEX_API_KEY.
+
+model = "deepseek-flash"
+model_provider = "deepseek"
+preferred_auth_method = "apikey"
+forced_login_method = "api"
+model_reasoning_effort = "high"
+model_catalog_json = "/absolute/path/to/data/codex-home/models.json"
+
+# Non-interactive: never prompt. Do not use danger-full-access.
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# Default false. Explicit opt-in only (Settings UI + warning).
+network_access = false
+
+[model_providers.deepseek]
+name = "deepseek"
+# Provider root — NOT the pig Chat Completions path https://api.deepseek.com/v1
+base_url = "https://api.deepseek.com/"
+wire_api = "responses"
+env_key = "DEEPSEEK_API_KEY"
+
+# Trust ONLY the realpath of the configured workspace. Rewritten on workspace change.
+# [projects."/absolute/realpath/to/workspace"]
+# trust_level = "trusted"

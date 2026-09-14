@@ -6,6 +6,20 @@ import { describe, expect, it } from "vitest";
 import type { AgentEvent, Session, Settings } from "../types.ts";
 import { deliverableSummary, runAgent } from "./runtime.ts";
 
+function pigSettings(workspaceRoot: string, extra: Partial<Settings> = {}): Settings {
+  return {
+    llmBaseUrl: "https://api.deepseek.com/v1",
+    llmApiKey: "test",
+    llmModel: "deepseek-chat",
+    workspaceRoot,
+    runtime: "pig",
+    codexBinaryPath: "",
+    codexModel: "deepseek-flash",
+    codexNetworkAccess: false,
+    ...extra,
+  };
+}
+
 function sse(res: ServerResponse, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
@@ -115,12 +129,7 @@ describe("runAgent harness", () => {
       const events: AgentEvent["type"][] = [];
       const next = await runAgent({
         session: emptySession(),
-        settings: {
-          llmBaseUrl: mock.url,
-          llmApiKey: "test",
-          llmModel: "deepseek-chat",
-          workspaceRoot,
-        },
+        settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
         signal: new AbortController().signal,
         emit: (e) => events.push(e.type),
       });
@@ -174,12 +183,7 @@ describe("runAgent harness", () => {
             },
           ],
         }),
-        settings: {
-          llmBaseUrl: mock.url,
-          llmApiKey: "test",
-          llmModel: "deepseek-chat",
-          workspaceRoot,
-        },
+        settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
         signal: new AbortController().signal,
         emit: () => undefined,
       });
@@ -211,12 +215,7 @@ describe("runAgent harness", () => {
     const controller = new AbortController();
     const pending = runAgent({
       session: emptySession(),
-      settings: {
-        llmBaseUrl: hung.url,
-        llmApiKey: "test",
-        llmModel: "deepseek-chat",
-        workspaceRoot,
-      },
+      settings: pigSettings(workspaceRoot, { llmBaseUrl: hung.url }),
       signal: controller.signal,
       emit: () => undefined,
     });
@@ -247,12 +246,11 @@ describe("deliverableSummary", () => {
 
 describe("settings type smoke", () => {
   it("accepts DeepSeek-shaped settings", () => {
-    const settings: Settings = {
+    const settings: Settings = pigSettings("/tmp", {
       llmBaseUrl: "https://api.deepseek.com/v1",
-      llmApiKey: "",
-      llmModel: "deepseek-chat",
-      workspaceRoot: "/tmp",
-    };
+    });
     expect(settings.llmModel).toBe("deepseek-chat");
+    expect(settings.runtime).toBe("pig");
+    expect(settings.codexNetworkAccess).toBe(false);
   });
 });

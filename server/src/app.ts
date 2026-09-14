@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
+import { runCodexAgent } from "./agent/codex/runtime.ts";
 import { runAgent } from "./agent/runtime.ts";
 import { listSkills } from "./agent/skills.ts";
 import { WEB_ORIGIN } from "./config.ts";
@@ -19,6 +20,10 @@ const settingsSchema = z.object({
   llmApiKey: z.string().optional(),
   llmModel: z.string().min(1).optional(),
   workspaceRoot: z.string().min(1).optional(),
+  runtime: z.enum(["pig", "codex"]).optional(),
+  codexBinaryPath: z.string().optional(),
+  codexModel: z.string().min(1).optional(),
+  codexNetworkAccess: z.boolean().optional(),
 });
 
 const messageSchema = z.object({
@@ -130,7 +135,8 @@ export function createApp(): Hono {
 
       try {
         emit({ type: "message", message: userMsg });
-        const next = await runAgent({
+        const runner = settings.runtime === "codex" ? runCodexAgent : runAgent;
+        const next = await runner({
           session,
           settings,
           signal: controller.signal,
