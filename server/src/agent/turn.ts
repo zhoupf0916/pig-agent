@@ -33,7 +33,7 @@ export async function releaseStaleRunningSession(session: Session): Promise<bool
 /** Wait for an aborted turn to leave `runningTurns` so the next send is not 409. */
 export async function waitForTurnRelease(
   sessionId: string,
-  timeoutMs = 2_000,
+  timeoutMs = 3_000,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (runningTurns.has(sessionId) && Date.now() < deadline) {

@@ -405,7 +405,15 @@ async function* readSseJson(
 ): AsyncGenerator<unknown> {
   const reader = response.body?.getReader();
   if (!reader) return;
+  const decoder = new TextDecoder();
+  let buf = "";
+  let rejectAbort: ((err: Error) => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    rejectAbort = reject;
+  });
+  aborted.catch(() => undefined);
   const onAbort = () => {
+    rejectAbort?.(new Error("Aborted"));
     void reader.cancel().catch(() => undefined);
   };
   if (signal.aborted) {
@@ -413,11 +421,9 @@ async function* readSseJson(
     return;
   }
   signal.addEventListener("abort", onAbort, { once: true });
-  const decoder = new TextDecoder();
-  let buf = "";
   try {
     while (!signal.aborted) {
-      const { done, value } = await reader.read();
+      const { done, value } = await Promise.race([reader.read(), aborted]);
       if (done) break;
       buf += decoder.decode(value, { stream: true });
       buf = buf.replace(/\r\n/g, "\n");

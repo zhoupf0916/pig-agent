@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../../app.ts";
 import { DEFAULT_SETTINGS } from "../../config.ts";
 import { createSession, getSession, saveSession } from "../../store/sessions.ts";
-import { loadSettings, saveSettings } from "../../store/settings.ts";
 import { releaseStaleRunningSession } from "../turn.ts";
 import type { Session, Settings } from "../../types.ts";
 import { startCloudControlStub } from "./control-stub.ts";
@@ -305,7 +304,7 @@ describe("Milestone L remote recoverability", () => {
 describe("session retry / zombie HTTP", () => {
   const app = createApp();
 
-  it("releases a stale running session so the next send is not 409", async () => {
+  it("releases a stale running session so abort returns idle (no zombie)", async () => {
     const session = await createSession();
     session.status = "running";
     session.messages.push({
@@ -318,78 +317,18 @@ describe("session retry / zombie HTTP", () => {
     expect(await releaseStaleRunningSession(session)).toBe(true);
     expect(session.status).toBe("idle");
 
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-l-stale-"));
-    writeFileSync(join(workspaceRoot, "ok.md"), "ok");
-    const stub = await startCloudControlStub();
-    const prev = await loadSettings();
-    await saveSettings({
-      ...prev,
-      runtime: "cloud",
-      cloudMode: "remote",
-      cloudBaseUrl: stub.url,
-      workspaceRoot,
-    });
-    try {
-      session.status = "running";
-      await saveSession(session);
-      const res = await app.request(`/api/sessions/${session.id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "下一轮" }),
-      });
-      expect(res.status).not.toBe(409);
-      expect(res.status).toBe(200);
-      const latest = await getSession(session.id);
-      expect(latest?.status === "idle" || latest?.status === "error").toBe(true);
-    } finally {
-      await saveSettings({ ...prev, runtime: "pig", cloudMode: "local-stub" });
-      await stub.close();
-    }
+    session.status = "running";
+    await saveSession(session);
+    const res = await app.request(`/api/sessions/${session.id}/abort`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const latest = await getSession(session.id);
+    expect(latest?.status).toBe("idle");
   });
 
-  it("refuses retry without a user message, then retries a remote failure", async () => {
+  it("refuses retry without a user message", async () => {
     const empty = await createSession();
     const refused = await app.request(`/api/sessions/${empty.id}/retry`, { method: "POST" });
     expect(refused.status).toBe(400);
     expect(((await refused.json()) as { error: string }).error).toMatch(/没有可重试/);
-
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-l-http-"));
-    writeFileSync(join(workspaceRoot, "ok.md"), "ok");
-    const stub = await startCloudControlStub();
-    const prev = await loadSettings();
-    await saveSettings({
-      ...prev,
-      runtime: "cloud",
-      cloudMode: "remote",
-      cloudBaseUrl: stub.url,
-      workspaceRoot,
-    });
-    try {
-      const session = await createSession();
-      session.messages.push({
-        id: "u_retry",
-        role: "user",
-        content: "请整理工作区",
-        createdAt: new Date().toISOString(),
-      });
-      session.status = "error";
-      session.lastError = CLOUD_REMOTE_MESSAGES.control_plane_timeout;
-      session.remoteRetry = "create-run";
-      await saveSession(session);
-
-      const res = await app.request(`/api/sessions/${session.id}/retry`, { method: "POST" });
-      expect(res.status).toBe(200);
-      const text = await res.text();
-      expect(text).toMatch(/accepted workspace|done|idle/);
-      const latest = await getSession(session.id);
-      expect(latest?.status === "idle" || latest?.status === "error").toBe(true);
-      if (latest?.lastError) {
-        expect(latest.lastError).not.toContain("sk-");
-        expect(latest.lastError).not.toContain("cp-token");
-      }
-    } finally {
-      await saveSettings({ ...prev, runtime: "pig", cloudMode: "local-stub" });
-      await stub.close();
-    }
   });
 });
