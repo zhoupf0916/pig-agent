@@ -38,6 +38,29 @@ data: {"type":"token","text":"…"}
 
 `id` is the seq. Reconnect with `?after=<last seen id>` or `Last-Event-ID`.
 
+## Disconnect / reconnect (Milestone O)
+
+A dropped SSE (second tab already subscribed, another device, network blip) resumes from the last seen event. It does **not** reload the session snapshot or replay seq `1…lastSeen`.
+
+1. Client keeps the last seen SSE `id` (monotonic seq).
+2. Reconnect `GET /api/sessions/:id/events?after=<lastSeen>` and send `Last-Event-ID: <lastSeen>` (`after` wins if both are present).
+3. Server attaches to the in-process bus first, then reads the gap from the existing `events.jsonl` (same `publishPersistedEvent` write path — no second log).
+4. Only `seq > after` is written to the new stream. Transient `sync` frames mark catch-up vs live and are **not** persisted.
+
+```
+event: sync
+data: {"type":"sync","phase":"catching_up","after":3,"lastSeq":5,"gap":2}
+
+id: 4
+event: token
+data: {"type":"token","text":"…"}
+
+event: sync
+data: {"type":"sync","phase":"live","after":3,"lastSeq":5,"gap":0}
+```
+
+The workstation shows **正在追平未送达事件…** while `gap > 0`, then returns to idle (or the session status from the replayed events). A completed turn that finished while disconnected still ends idle.
+
 Catch-up without holding a stream (tests / scripts):
 
 ```

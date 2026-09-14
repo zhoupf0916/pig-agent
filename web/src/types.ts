@@ -401,4 +401,11 @@ export type AgentEvent =
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
   | { type: "team_run"; teamRun: TeamRun }
-  | { type: "done"; session: Session };
+  | { type: "done"; session: Session }
+  | {
+      type: "sync";
+      phase: "catching_up" | "live";
+      after: number;
+      lastSeq: number;
+      gap: number;
+    };

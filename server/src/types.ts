@@ -476,7 +476,18 @@ export type AgentEvent =
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
   | { type: "team_run"; teamRun: TeamRun }
-  | { type: "done"; session: Session };
+  | { type: "done"; session: Session }
+  /**
+   * Transient SSE-only catch-up marker (Milestone O). Never written to events.jsonl.
+   * `after` is the exclusive reconnect cursor; `gap` is how many persisted events follow.
+   */
+  | {
+      type: "sync";
+      phase: "catching_up" | "live";
+      after: number;
+      lastSeq: number;
+      gap: number;
+    };
 
 export type SessionEventRecord = {
   seq: number;

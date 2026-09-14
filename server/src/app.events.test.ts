@@ -1,21 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.ts";
-import { publishPersistedEvent } from "./store/events.ts";
+import { DEFAULT_SETTINGS } from "./config.ts";
+import { parseEventCursor } from "./routes/sync.ts";
+import { getLastEventSeq, publishPersistedEvent, readEventLog } from "./store/events.ts";
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+type SseRec = {
+  seq?: number;
+  type: string;
+  text?: string;
+  phase?: string;
+  after?: number;
+  gap?: number;
+  lastSeq?: number;
+};
+
 async function readSseRecords(
   body: ReadableStream<Uint8Array> | null,
   count: number,
   ms = 2_000,
-): Promise<Array<{ seq: number; type: string }>> {
+  opts: { includeSync?: boolean } = {},
+): Promise<SseRec[]> {
   if (!body) throw new Error("missing body");
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  const out: Array<{ seq: number; type: string }> = [];
+  const out: SseRec[] = [];
   const deadline = Date.now() + ms;
   while (out.length < count && Date.now() < deadline) {
     const remaining = deadline - Date.now();
@@ -37,8 +50,26 @@ async function readSseRecords(
         .map((l) => l.slice(5).trim())
         .join("\n");
       if (!dataLine) continue;
-      const event = JSON.parse(dataLine) as { type: string };
-      out.push({ seq: Number(idLine?.slice(3).trim() ?? 0), type: event.type });
+      const event = JSON.parse(dataLine) as {
+        type: string;
+        text?: string;
+        phase?: string;
+        after?: number;
+        gap?: number;
+        lastSeq?: number;
+      };
+      if (!opts.includeSync && event.type === "sync") continue;
+      const seqRaw = idLine?.slice(3).trim();
+      const seq = seqRaw != null && seqRaw !== "" ? Number(seqRaw) : undefined;
+      out.push({
+        seq: Number.isFinite(seq) ? seq : undefined,
+        type: event.type,
+        text: event.text,
+        phase: event.phase,
+        after: event.after,
+        gap: event.gap,
+        lastSeq: event.lastSeq,
+      });
       if (out.length >= count) break;
     }
   }
@@ -48,6 +79,25 @@ async function readSseRecords(
 
 describe("session event catch-up API", () => {
   const app = createApp();
+
+  it("keeps default runtime pig", () => {
+    expect(DEFAULT_SETTINGS.runtime).toBe("pig");
+  });
+
+  it("prefers after over Last-Event-ID for the exclusive cursor", () => {
+    expect(
+      parseEventCursor({
+        query: (k) => (k === "after" ? "4" : undefined),
+        header: (k) => (k === "Last-Event-ID" ? "1" : undefined),
+      }),
+    ).toBe(4);
+    expect(
+      parseEventCursor({
+        query: () => undefined,
+        header: (k) => (k === "Last-Event-ID" ? "9" : undefined),
+      }),
+    ).toBe(9);
+  });
 
   it("replays persisted events after a given seq", async () => {
     const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
@@ -97,5 +147,62 @@ describe("session event catch-up API", () => {
     expect(right.map((e) => e.seq)).toEqual([1, 2]);
     expect(left.map((e) => e.type)).toEqual(["token", "token"]);
     expect(right.map((e) => e.type)).toEqual(["token", "token"]);
+  });
+
+  it("reconnects from Last-Event-ID with the gap only (no full-history replay)", async () => {
+    const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    await publishPersistedEvent(session.id, { type: "status", status: "running" });
+    await publishPersistedEvent(session.id, { type: "token", text: "alpha" });
+    await publishPersistedEvent(session.id, { type: "token", text: "beta" });
+
+    const first = await app.request(`/api/sessions/${session.id}/events?after=0`);
+    const seen = await readSseRecords(first.body, 3);
+    expect(seen.map((e) => e.seq)).toEqual([1, 2, 3]);
+    expect(seen.map((e) => e.type)).toEqual(["status", "token", "token"]);
+
+    await publishPersistedEvent(session.id, { type: "token", text: "gamma" });
+    await publishPersistedEvent(session.id, { type: "status", status: "idle" });
+
+    const reconnect = await app.request(`/api/sessions/${session.id}/events`, {
+      headers: { "Last-Event-ID": "3", Accept: "text/event-stream" },
+    });
+    expect(reconnect.status).toBe(200);
+    const frames = await readSseRecords(reconnect.body, 4, 2_000, { includeSync: true });
+    const syncs = frames.filter((e) => e.type === "sync");
+    const data = frames.filter((e) => e.type !== "sync");
+
+    expect(syncs[0]?.phase).toBe("catching_up");
+    expect(syncs[0]?.after).toBe(3);
+    expect(syncs[0]?.gap).toBe(2);
+    expect(syncs.some((s) => s.phase === "live")).toBe(true);
+
+    expect(data.map((e) => e.seq)).toEqual([4, 5]);
+    expect(data.every((e) => (e.seq ?? 0) > 3)).toBe(true);
+    expect(data.some((e) => (e.seq ?? 0) <= 3)).toBe(false);
+    expect(data.map((e) => e.type)).toEqual(["token", "status"]);
+    expect(data[0]?.text).toBe("gamma");
+
+    const persisted = await readEventLog(session.id);
+    expect(persisted).toHaveLength(5);
+    expect(persisted.every((r) => r.event.type !== "sync")).toBe(true);
+    expect(await getLastEventSeq(session.id)).toBe(5);
+  });
+
+  it("reconnects with ?after= incrementally and does not dual-write", async () => {
+    const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    await publishPersistedEvent(session.id, { type: "token", text: "one" });
+    await publishPersistedEvent(session.id, { type: "token", text: "two" });
+    await publishPersistedEvent(session.id, { type: "token", text: "three" });
+
+    const before = await readEventLog(session.id);
+    const reconnect = await app.request(`/api/sessions/${session.id}/events?after=2`);
+    const frames = await readSseRecords(reconnect.body, 3, 2_000, { includeSync: true });
+    const data = frames.filter((e) => e.type !== "sync");
+    expect(data.map((e) => e.seq)).toEqual([3]);
+    expect(data.map((e) => e.text)).toEqual(["three"]);
+
+    const after = await readEventLog(session.id);
+    expect(after).toEqual(before);
+    expect(after.map((r) => r.seq)).toEqual([1, 2, 3]);
   });
 });

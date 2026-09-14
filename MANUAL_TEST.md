@@ -113,6 +113,17 @@ No LLM required for the project surface. Sync live tokens still need a model or 
 - [ ] Re-open the session (or reconnect SSE) after another tab advanced it — transcript matches without refresh-from-scratch
 - [ ] This is **not** Desk Remote / Firecracker / experts marketplace
 
+## Multi-tab / multi-device SSE catch-up (Milestone O)
+
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `events.jsonl` log. No second write path.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig
+- [ ] Two tabs (or `curl -N`) on the same session: disconnect tab B (`Ctrl-C` / close), send from tab A, reconnect B with `?after=<lastSeen>` or `Last-Event-ID` — only new seqs arrive, not seq 1…lastSeen
+- [ ] While the gap is replaying, UI shows **正在追平未送达事件…**; when the `sync` `live` frame arrives the bar clears (session idle, or still running if a turn is in flight — not stuck)
+- [ ] `curl 'http://127.0.0.1:8787/api/sessions/<id>/events?after=<n>&live=0'` returns only `seq > n`. `data/sessions/<id>/events.jsonl` has no `type: sync` rows
+- [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
 ## Local experts / playbooks (Milestone C)
 
 No LLM required for the directory. Prompt injection is covered by `pnpm test`.
