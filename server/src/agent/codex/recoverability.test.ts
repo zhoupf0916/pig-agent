@@ -70,7 +70,6 @@ function spawnThatFails(message = "spawn EACCES"): typeof spawn {
     const child = new EventEmitter() as ChildProcess;
     child.stdout = null;
     child.stderr = null;
-    child.pid = undefined;
     child.kill = () => true;
     queueMicrotask(() =>
       child.emit("error", Object.assign(new Error(message), { code: "EACCES" })),
