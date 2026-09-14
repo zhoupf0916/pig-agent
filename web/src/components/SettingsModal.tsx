@@ -37,7 +37,8 @@ export function SettingsModal({
           <div>
             <h2 className="text-base font-medium text-white">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
-              全部保存在本机 data/settings.json。默认对接 Ollama 的 OpenAI 兼容接口。
+              保存在本机 data/settings.json，覆盖 .env / .env.local。默认 DeepSeek
+              （https://api.deepseek.com/v1 · deepseek-chat）。切勿把密钥提交到仓库。
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-white">
@@ -51,16 +52,16 @@ export function SettingsModal({
               value={form.llmBaseUrl}
               onChange={(e) => setForm({ ...form, llmBaseUrl: e.target.value })}
               className="field"
-              placeholder="http://127.0.0.1:11434/v1"
+              placeholder="https://api.deepseek.com/v1"
             />
           </Field>
-          <Field label="API Key（Ollama 可填 ollama 或留空）">
+          <Field label="API Key（DeepSeek / OpenAI 兼容；Ollama 可留空）">
             <input
               type="password"
               value={form.llmApiKey}
               onChange={(e) => setForm({ ...form, llmApiKey: e.target.value })}
               className="field"
-              placeholder="ollama"
+              placeholder="sk-… 或从 DEEPSEEK_API_KEY 读取"
             />
           </Field>
           <Field label="模型">
@@ -68,7 +69,7 @@ export function SettingsModal({
               value={form.llmModel}
               onChange={(e) => setForm({ ...form, llmModel: e.target.value })}
               className="field"
-              placeholder="llama3.2"
+              placeholder="deepseek-chat"
             />
           </Field>
           <Field label="工作区根目录（沙箱，不可逃逸）">

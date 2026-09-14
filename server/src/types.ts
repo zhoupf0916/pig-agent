@@ -12,6 +12,8 @@ export type ChatMessage = {
   content: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
+  toolOk?: boolean;
+  toolDurationMs?: number;
   createdAt: string;
 };
 
@@ -22,10 +24,15 @@ export type PlanStep = {
   detail?: string;
 };
 
+export type ArtifactAction = "created" | "modified" | "deleted" | "moved";
+
 export type Artifact = {
   path: string;
-  action: "created" | "modified";
+  action: ArtifactAction;
   updatedAt: string;
+  fromPath?: string;
+  before?: string;
+  after?: string;
 };
 
 export type SessionStatus = "idle" | "running" | "error";
@@ -58,6 +65,7 @@ export type SkillMeta = {
   name: string;
   description: string;
   filename: string;
+  keywords?: string[];
 };
 
 export type Skill = SkillMeta & {
@@ -77,13 +85,14 @@ export type AgentEvent =
   | { type: "message"; message: ChatMessage }
   | { type: "step"; step: PlanStep }
   | { type: "steps"; steps: PlanStep[] }
-  | { type: "tool_start"; id: string; name: string; arguments: unknown }
+  | { type: "tool_start"; id: string; name: string; arguments: unknown; startedAt: string }
   | {
       type: "tool_end";
       id: string;
       name: string;
       ok: boolean;
       output: string;
+      durationMs: number;
     }
   | { type: "artifact"; artifact: Artifact }
   | { type: "status"; status: SessionStatus }

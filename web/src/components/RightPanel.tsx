@@ -1,10 +1,14 @@
 import { ChevronRight, FileCode, FileText, Folder } from "lucide-react";
-import { useState } from "react";
-import { formatBytes, isMarkdown } from "../lib/format";
-import type { Artifact, WorkspaceNode } from "../types";
+import { useMemo, useState } from "react";
+import { artifactLabel, formatBytes, isMarkdown } from "../lib/format";
+import type { Artifact, ArtifactAction, WorkspaceNode } from "../types";
+import { DiffView } from "./DiffView";
 import { MarkdownView } from "./MarkdownView";
 
 type Tab = "artifacts" | "workspace";
+type PreviewMode = "file" | "diff";
+
+const GROUPS: ArtifactAction[] = ["created", "modified", "moved", "deleted"];
 
 export function RightPanel({
   artifacts,
@@ -22,9 +26,17 @@ export function RightPanel({
   onOpenFile: (path: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("artifacts");
+  const [mode, setMode] = useState<PreviewMode>("file");
+  const selected = artifacts.find((a) => a.path === previewPath);
+  const grouped = useMemo(() => {
+    return GROUPS.map((action) => ({
+      action,
+      items: artifacts.filter((a) => a.action === action),
+    })).filter((g) => g.items.length > 0);
+  }, [artifacts]);
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-white/5 bg-ink-900/70 xl:w-[340px]">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-white/5 bg-ink-900/70 xl:w-[360px]">
       <div className="flex border-b border-white/5">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
@@ -44,28 +56,41 @@ export function RightPanel({
           <div className="p-3">
             {artifacts.length === 0 ? (
               <p className="px-1 pt-8 text-center text-xs text-ink-500">
-                任务中新建或修改的文件会出现在这里。
+                任务中新建、修改、移动或删除的文件会出现在这里。
               </p>
             ) : (
-              <ul className="space-y-1">
-                {artifacts.map((a) => (
-                  <li key={a.path}>
-                    <button
-                      type="button"
-                      onClick={() => onOpenFile(a.path)}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-ink-800 ${
-                        previewPath === a.path ? "bg-ink-800 text-white" : "text-ink-300"
-                      }`}
-                    >
-                      <FileCode size={14} className="text-accent" />
-                      <span className="min-w-0 flex-1 truncate">{a.path}</span>
-                      <span className="text-[10px] uppercase text-ink-500">
-                        {a.action === "created" ? "新建" : "修改"}
-                      </span>
-                    </button>
-                  </li>
+              <div className="space-y-3">
+                {grouped.map((group) => (
+                  <div key={group.action}>
+                    <div className="mb-1 px-1 text-[10px] uppercase tracking-[0.14em] text-ink-500">
+                      {artifactLabel(group.action)} · {group.items.length}
+                    </div>
+                    <ul className="space-y-1">
+                      {group.items.map((a) => (
+                        <li key={a.path}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMode(a.before !== undefined && a.after !== undefined ? "diff" : "file");
+                              onOpenFile(a.path);
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-ink-800 ${
+                              previewPath === a.path ? "bg-ink-800 text-white" : "text-ink-300"
+                            }`}
+                          >
+                            <FileCode size={14} className="text-accent" />
+                            <span className="min-w-0 flex-1 truncate">
+                              {a.action === "moved" && a.fromPath
+                                ? `${a.fromPath} → ${a.path}`
+                                : a.path}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         )}
@@ -84,14 +109,40 @@ export function RightPanel({
       </div>
 
       <div className="min-h-[42%] border-t border-white/5">
-        <div className="flex items-center justify-between px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-ink-500">
-          <span>预览</span>
-          {preview && <span className="normal-case tracking-normal">{formatBytes(preview.size)}</span>}
+        <div className="flex items-center justify-between px-3 py-2 text-[11px] text-ink-500">
+          <span className="uppercase tracking-[0.14em]">预览</span>
+          <div className="flex items-center gap-2">
+            {selected && selected.before !== undefined && selected.after !== undefined && (
+              <div className="flex rounded-md border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setMode("file")}
+                  className={`px-2 py-0.5 text-[10px] ${mode === "file" ? "bg-ink-800 text-white" : ""}`}
+                >
+                  文件
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("diff")}
+                  className={`px-2 py-0.5 text-[10px] ${mode === "diff" ? "bg-ink-800 text-white" : ""}`}
+                >
+                  对比
+                </button>
+              </div>
+            )}
+            {preview && <span className="normal-case tracking-normal">{formatBytes(preview.size)}</span>}
+          </div>
         </div>
         <div className="h-[calc(100%-32px)] overflow-auto px-3 pb-3">
-          {!preview && <p className="text-xs text-ink-500">点击产物或工作区文件以预览。</p>}
-          {preview?.binary && <p className="text-xs text-ink-500">二进制文件，无法预览。</p>}
-          {preview && !preview.binary && (
+          {!preview && !selected && <p className="text-xs text-ink-500">点击产物或工作区文件以预览。</p>}
+          {mode === "diff" && selected?.before !== undefined && selected.after !== undefined && (
+            <div>
+              <div className="mb-2 font-mono text-[11px] text-accent">{selected.path}</div>
+              <DiffView before={selected.before} after={selected.after} />
+            </div>
+          )}
+          {mode === "file" && preview?.binary && <p className="text-xs text-ink-500">二进制文件，无法预览。</p>}
+          {mode === "file" && preview && !preview.binary && (
             <div>
               <div className="mb-2 font-mono text-[11px] text-accent">{preview.path}</div>
               {isMarkdown(preview.path) ? (
@@ -101,6 +152,14 @@ export function RightPanel({
                   {preview.content}
                 </pre>
               )}
+            </div>
+          )}
+          {mode === "file" && !preview && selected?.action === "deleted" && selected.before && (
+            <div>
+              <div className="mb-2 font-mono text-[11px] text-red-300">{selected.path}（已删除）</div>
+              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-300">
+                {selected.before}
+              </pre>
             </div>
           )}
         </div>

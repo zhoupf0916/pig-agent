@@ -60,6 +60,12 @@ export function formatBytes(n?: number): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+export function formatDuration(ms?: number): string {
+  if (ms === undefined) return "";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 export function toolLabel(name: string): string {
   const map: Record<string, string> = {
     update_plan: "更新计划",
@@ -67,9 +73,36 @@ export function toolLabel(name: string): string {
     read_file: "读取文件",
     write_file: "写入文件",
     edit_file: "编辑文件",
+    apply_patch: "应用补丁",
+    search_files: "搜索文件",
+    delete_file: "删除文件",
+    move_file: "移动文件",
     run_shell: "运行命令",
+    http_fetch: "抓取网页",
     list_skills: "列出技能",
     load_skill: "加载技能",
   };
   return map[name] ?? name;
+}
+
+export function summarizeArgs(args: unknown): string {
+  if (!args || typeof args !== "object") return "";
+  const rec = args as Record<string, unknown>;
+  if (typeof rec.path === "string") return rec.path;
+  if (typeof rec.from === "string" && typeof rec.to === "string") {
+    return `${rec.from} → ${rec.to}`;
+  }
+  if (typeof rec.command === "string") return rec.command;
+  if (typeof rec.query === "string") return rec.query;
+  if (typeof rec.url === "string") return rec.url;
+  if (typeof rec.name === "string") return rec.name;
+  return "";
+}
+
+export function artifactLabel(action: string): string {
+  if (action === "created") return "新建";
+  if (action === "modified") return "修改";
+  if (action === "deleted") return "删除";
+  if (action === "moved") return "移动";
+  return action;
 }

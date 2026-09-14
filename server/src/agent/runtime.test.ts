@@ -1,16 +1,39 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { AgentEvent, Session, Settings } from "../types.ts";
-import { runAgent } from "./runtime.ts";
+import { deliverableSummary, runAgent } from "./runtime.ts";
 
 function sse(res: ServerResponse, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function startMockLlm(): Promise<{ url: string; close: () => Promise<void> }> {
+function emptySession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: "ses_test",
+    title: "test",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: "idle",
+    messages: [
+      {
+        id: "u1",
+        role: "user",
+        content: "整理工作区并写一份报告",
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    steps: [],
+    artifacts: [],
+    ...overrides,
+  };
+}
+
+function startScriptedLlm(
+  script: Array<(reqBody: string, res: ServerResponse) => void>,
+): Promise<{ url: string; close: () => Promise<void> }> {
   let turn = 0;
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.method !== "POST") {
@@ -18,37 +41,17 @@ function startMockLlm(): Promise<{ url: string; close: () => Promise<void> }> {
       res.end();
       return;
     }
-    res.writeHead(200, { "Content-Type": "text/event-stream" });
-    turn += 1;
-    if (turn === 1) {
-      sse(res, {
-        choices: [
-          {
-            delta: {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: "call_write",
-                  function: {
-                    name: "write_file",
-                    arguments: JSON.stringify({
-                      path: "AGENT.md",
-                      content: "# Agent was here\n",
-                    }),
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      });
-    } else {
-      sse(res, {
-        choices: [{ delta: { content: "已写入 AGENT.md，请在产物面板查看。" } }],
-      });
-    }
-    res.write("data: [DONE]\n\n");
-    res.end();
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(c as Buffer));
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      const handler = script[Math.min(turn, script.length - 1)];
+      turn += 1;
+      handler?.(raw, res);
+      res.write("data: [DONE]\n\n");
+      res.end();
+    });
   });
 
   return new Promise((resolve) => {
@@ -57,63 +60,199 @@ function startMockLlm(): Promise<{ url: string; close: () => Promise<void> }> {
       if (!addr || typeof addr === "string") throw new Error("no addr");
       resolve({
         url: `http://127.0.0.1:${addr.port}/v1`,
-        close: () =>
-          new Promise((r) => {
-            server.close(() => r());
-          }),
+        close: () => new Promise((r) => server.close(() => r())),
       });
     });
   });
 }
 
-const mock = await startMockLlm();
+function toolDelta(
+  res: ServerResponse,
+  calls: Array<{ id: string; name: string; args: unknown }>,
+): void {
+  sse(res, {
+    choices: [
+      {
+        delta: {
+          tool_calls: calls.map((call, index) => ({
+            index,
+            id: call.id,
+            function: { name: call.name, arguments: JSON.stringify(call.args) },
+          })),
+        },
+      },
+    ],
+  });
+}
 
-afterAll(async () => {
-  await mock.close();
+describe("runAgent harness", () => {
+  it("runs a DeepSeek-style parallel tool loop and writes an artifact summary", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-run-"));
+    writeFileSync(join(workspaceRoot, "messy.txt"), "todo: file me");
+    const mock = await startScriptedLlm([
+      (_raw, res) => {
+        toolDelta(res, [
+          {
+            id: "call_search",
+            name: "search_files",
+            args: { query: "todo", path: "." },
+          },
+          {
+            id: "call_write",
+            name: "write_file",
+            args: { path: "reports/summary.md", content: "# 报告\n\n已整理 messy.txt\n" },
+          },
+        ]);
+      },
+      (_raw, res) => {
+        sse(res, {
+          choices: [{ delta: { content: "已搜索工作区并写入 reports/summary.md，请在产物面板查看。" } }],
+        });
+      },
+    ]);
+
+    try {
+      const events: AgentEvent["type"][] = [];
+      const next = await runAgent({
+        session: emptySession(),
+        settings: {
+          llmBaseUrl: mock.url,
+          llmApiKey: "test",
+          llmModel: "deepseek-chat",
+          workspaceRoot,
+        },
+        signal: new AbortController().signal,
+        emit: (e) => events.push(e.type),
+      });
+
+      expect(readFileSync(join(workspaceRoot, "reports/summary.md"), "utf8")).toContain("报告");
+      expect(next.artifacts.some((a) => a.path === "reports/summary.md" && a.action === "created")).toBe(
+        true,
+      );
+      expect(events.filter((t) => t === "tool_start")).toHaveLength(2);
+      expect(events).toContain("artifact");
+      expect(events).toContain("done");
+      expect(next.messages.some((m) => m.role === "assistant" && m.content.includes("summary.md"))).toBe(
+        true,
+      );
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("recovers from a failed tool call and still delivers", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-rec-"));
+    const mock = await startScriptedLlm([
+      (_raw, res) => {
+        toolDelta(res, [
+          { id: "call_bad", name: "read_file", args: { path: "does-not-exist.md" } },
+        ]);
+      },
+      (_raw, res) => {
+        toolDelta(res, [
+          {
+            id: "call_ok",
+            name: "write_file",
+            args: { path: "RECOVERED.md", content: "recovered\n" },
+          },
+        ]);
+      },
+      (_raw, res) => {
+        sse(res, { choices: [{ delta: { content: "先前读取失败，已改为新建 RECOVERED.md。" } }] });
+      },
+    ]);
+
+    try {
+      const next = await runAgent({
+        session: emptySession({
+          messages: [
+            {
+              id: "u1",
+              role: "user",
+              content: "Read missing then write a file",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        settings: {
+          llmBaseUrl: mock.url,
+          llmApiKey: "test",
+          llmModel: "deepseek-chat",
+          workspaceRoot,
+        },
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(readFileSync(join(workspaceRoot, "RECOVERED.md"), "utf8")).toContain("recovered");
+      expect(next.messages.some((m) => m.role === "tool" && m.toolOk === false)).toBe(true);
+      expect(next.messages.some((m) => m.role === "tool" && m.toolOk === true)).toBe(true);
+      expect(next.status).toBe("idle");
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("stops a running turn when aborted", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-ab-"));
+    const hung = await new Promise<{ url: string; close: () => Promise<void> }>((resolve) => {
+      const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        // Stay open until the client aborts; do not complete the stream.
+      });
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
+        if (!addr || typeof addr === "string") throw new Error("no addr");
+        resolve({
+          url: `http://127.0.0.1:${addr.port}/v1`,
+          close: () => new Promise((r) => server.close(() => r())),
+        });
+      });
+    });
+    const controller = new AbortController();
+    const pending = runAgent({
+      session: emptySession(),
+      settings: {
+        llmBaseUrl: hung.url,
+        llmApiKey: "test",
+        llmModel: "deepseek-chat",
+        workspaceRoot,
+      },
+      signal: controller.signal,
+      emit: () => undefined,
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    controller.abort();
+    const next = await pending;
+    await hung.close();
+    expect(next.status).toBe("idle");
+    expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(true);
+  });
 });
 
-describe("runAgent", () => {
-  it("calls tools and writes a workspace artifact", async () => {
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-run-"));
-    const session: Session = {
-      id: "ses_test",
-      title: "test",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: "idle",
-      messages: [
-        {
-          id: "u1",
-          role: "user",
-          content: "Write AGENT.md",
-          createdAt: new Date().toISOString(),
-        },
-      ],
-      steps: [],
-      artifacts: [],
-    };
-    const settings: Settings = {
-      llmBaseUrl: mock.url,
-      llmApiKey: "test",
-      llmModel: "mock",
-      workspaceRoot,
-    };
-    const events: AgentEvent["type"][] = [];
-    const next = await runAgent({
-      session,
-      settings,
-      signal: new AbortController().signal,
-      emit: (e) => events.push(e.type),
-    });
-
-    expect(readFileSync(join(workspaceRoot, "AGENT.md"), "utf8")).toContain("Agent was here");
-    expect(next.artifacts.some((a) => a.path === "AGENT.md")).toBe(true);
-    expect(events).toContain("tool_start");
-    expect(events).toContain("tool_end");
-    expect(events).toContain("artifact");
-    expect(events).toContain("done");
-    expect(next.messages.some((m) => m.role === "assistant" && m.content.includes("AGENT.md"))).toBe(
-      true,
+describe("deliverableSummary", () => {
+  it("groups created and modified paths", () => {
+    const text = deliverableSummary(
+      emptySession({
+        artifacts: [
+          { path: "a.md", action: "created", updatedAt: new Date().toISOString() },
+          { path: "b.md", action: "modified", updatedAt: new Date().toISOString() },
+        ],
+      }),
+      "完成。",
     );
+    expect(text).toContain("新建：a.md");
+    expect(text).toContain("修改：b.md");
+  });
+});
+
+describe("settings type smoke", () => {
+  it("accepts DeepSeek-shaped settings", () => {
+    const settings: Settings = {
+      llmBaseUrl: "https://api.deepseek.com/v1",
+      llmApiKey: "",
+      llmModel: "deepseek-chat",
+      workspaceRoot: "/tmp",
+    };
+    expect(settings.llmModel).toBe("deepseek-chat");
   });
 });

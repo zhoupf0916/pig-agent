@@ -78,14 +78,14 @@ export function createApp(): Hono {
 
   app.post("/api/sessions/:id/abort", async (c) => {
     const id = c.req.param("id");
-    running.get(id)?.abort();
-    running.delete(id);
+    const controller = running.get(id);
+    controller?.abort();
     const session = await getSession(id);
-    if (session && session.status === "running") {
+    if (session && session.status === "running" && !controller) {
       session.status = "idle";
       await saveSession(session);
     }
-    return c.json({ ok: true });
+    return c.json({ ok: true, running: Boolean(controller) });
   });
 
   app.post("/api/sessions/:id/messages", async (c) => {
