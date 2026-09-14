@@ -1,4 +1,3 @@
-import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
@@ -8,11 +7,9 @@ const GROUPS: SearchHitType[] = ["session", "project", "todo", "asset", "project
 
 export function SearchPanel({
   initialQ = "",
-  onQueryChange,
   onOpenHit,
 }: {
   initialQ?: string;
-  onQueryChange: (q: string) => void;
   onOpenHit: (hit: SearchHit) => void;
 }) {
   const [q, setQ] = useState(initialQ);
@@ -78,28 +75,12 @@ export function SearchPanel({
           <div className="text-meta uppercase tracking-[0.16em] text-ink-500">本机记忆</div>
           <h2 className="mt-0.5 text-base font-medium text-ink-800">搜索会话、项目与记忆</h2>
           <p className="mt-1 text-xs text-ink-500">
-            子串 / 分词匹配，不含向量库。Ctrl+K 或 / 聚焦顶栏搜索框。
+            子串 / 分词匹配，不含向量库。只用顶栏搜索框；Ctrl+K 或 / 聚焦，Enter 更新结果。
           </p>
         </div>
-        <form
-          className="relative mb-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onQueryChange(q);
-          }}
-        >
-          <Search size={14} className="pointer-events-none absolute left-3 top-3 text-ink-500" />
-          <input
-            className="field pl-9"
-            placeholder="标题、消息、待办、资产、钉住笔记…"
-            value={q}
-            autoFocus
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </form>
         {error && <p className="mb-3 text-xs text-danger">{error}</p>}
         {!q.trim() && (
-          <p className="py-10 text-center text-sm text-ink-500">输入关键词，查找本机会话和项目记录。</p>
+          <p className="py-10 text-center text-sm text-ink-500">在顶栏输入关键词，查找本机会话和项目记录。</p>
         )}
         {q.trim() && busy && hits.length === 0 && (
           <p className="py-10 text-center text-sm text-ink-500">搜索中…</p>

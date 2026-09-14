@@ -640,7 +640,6 @@ export function App() {
         ) : route.name === "search" ? (
           <SearchPanel
             initialQ={route.q}
-            onQueryChange={(q) => goSearch(q)}
             onOpenHit={openHit}
           />
         ) : route.name === "memory" ? (

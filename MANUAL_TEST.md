@@ -4,7 +4,7 @@ Use this after `pnpm install && pnpm dev`. UI is http://127.0.0.1:5173.
 
 ## Topbar IA
 
-- [ ] Header has **one** search box (no **搜索** tab). Ctrl+K / `/` still focuses it; Enter opens `#/search`
+- [ ] Header has **one** search box (no **搜索** tab, and `#/search` has no second input). Ctrl+K / `/` still focuses it; Enter opens `#/search`
 - [ ] No **工作台** tab. Click the Pig Agent mark to return to the workstation (`#/` / current session)
 - [ ] **项目** / **专家** / **自动化** / **记忆** live under **资料库** (not primary tabs)
 - [ ] **收件箱** sits in the right cluster with **设置** (after the divider)

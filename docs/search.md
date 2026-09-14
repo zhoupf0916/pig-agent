@@ -64,8 +64,8 @@ Route hints (in addition to `href`):
 
 ## Web
 
-- Single header search box (no separate **搜索** tab) with a live dropdown. **Enter** or **查看全部结果** opens `#/search?q=`.
-- `#/search` is the full result page, grouped by type.
+- Single header search box (no separate **搜索** tab, no second box on `#/search`) with a live dropdown. **Enter** or **查看全部结果** opens `#/search?q=`.
+- `#/search` is the full result page, grouped by type. The header box stays the only query field.
 - Clicking a hit opens the session workstation, the project, a highlighted todo, the existing asset preview modal, or `#/memory/<id>`.
 - Shortcuts: `Ctrl+K` / `⌘K`, or `/` when not typing in another field.
 
