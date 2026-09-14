@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab session pins (Milestone Y)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh of the open session's 项目 / 专家 / 小队 pins. No new write path, no dual-write of sessions / `events.jsonl`. Not a credentials vault / connector / multi-agent / public webhook / sandbox change.
+
+- [ ] Two workstation tabs on the same host, same `#/sessions/<id>`. Tab A changes **项目** / **专家** / **小队** — Tab B dropdowns and hints match without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab A unbinds to **未绑定** — Tab B clears the same pin(s) the same way
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, V theme, and L/M/N / W·X cloud progress unchanged
+- [ ] Pin row / banner / session JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab theme (Milestone V)
 
 Client-only (`localStorage` key `pig-agent.theme`). Same-host Tab B follows Tab A's header 深色 / 浅色 via the `storage` event, or on focus / visibility. Does **not** change Settings runtime (still **本机 Pig**). No new key, no server persist, no dual-write of settings / sessions / events. Not a credentials vault / connector / multi-agent / sandbox change.

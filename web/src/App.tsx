@@ -35,6 +35,10 @@ import {
   startSessionListSync,
 } from "./lib/session-list-sync";
 import {
+  applySessionPinSnapshot,
+  startSessionPinSync,
+} from "./lib/session-pin-sync";
+import {
   applyWorkspaceTreeSnapshot,
   startWorkspaceTreeSync,
 } from "./lib/workspace-tree-sync";
@@ -239,6 +243,18 @@ export function App() {
       onList: (next) => setSessions((prev) => applySessionListSnapshot(prev, next)),
     });
   }, []);
+
+  useEffect(() => {
+    if (!activeId) return;
+    return startSessionPinSync({
+      sessionId: activeId,
+      fetchList: async () => {
+        const { sessions: next } = await api.sessions();
+        return next;
+      },
+      onPins: (next) => setSession((prev) => applySessionPinSnapshot(prev, next)),
+    });
+  }, [activeId]);
 
   useEffect(() => {
     return startSettingsSurfaceSync({
