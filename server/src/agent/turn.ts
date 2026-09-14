@@ -39,7 +39,7 @@ export type SessionTurnHooks = {
   onEvent?: (event: AgentEvent, seq: number) => Promise<void> | void;
   /** Override settings.runtime (automations default to pig). */
   runtime?: AgentRuntime;
-  /** Chain team: start resets the pipeline; continue resumes pending members. */
+  /** Chain team: start resets the pipeline; continue resumes pending/error/cancelled members. */
   teamAction?: "start" | "continue";
 };
 

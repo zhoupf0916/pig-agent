@@ -95,9 +95,16 @@ export function cancelRemainingMembers(teamRun: TeamRun, fromIndex: number, deta
   teamRun.updatedAt = nowIso();
 }
 
+/** Statuses the UI treats as 「继续小队」 and the runner can resume. */
+export function isResumableMemberStatus(status: TeamRunMemberStatus): boolean {
+  return status === "pending" || status === "error" || status === "running" || status === "cancelled";
+}
+
+export function hasResumableMember(teamRun: TeamRun | undefined): boolean {
+  return Boolean(teamRun?.members.some((m) => isResumableMemberStatus(m.status)));
+}
+
 export function firstResumableIndex(teamRun: TeamRun): number {
-  const idx = teamRun.members.findIndex(
-    (m) => m.status === "pending" || m.status === "error" || m.status === "running",
-  );
+  const idx = teamRun.members.findIndex((m) => isResumableMemberStatus(m.status));
   return idx >= 0 ? idx : teamRun.members.length;
 }

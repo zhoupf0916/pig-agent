@@ -23,6 +23,8 @@ export {
   buildTeamRun,
   cancelRemainingMembers,
   firstResumableIndex,
+  hasResumableMember,
+  isResumableMemberStatus,
   normalizeTeamRun,
   shouldRunSequentialTeam,
 } from "../store/team-run-state.ts";
@@ -83,7 +85,7 @@ export type SequentialTeamHooks = {
   emit: (event: AgentEvent) => void;
   flush: () => Promise<void>;
   runner: Runner;
-  /** start = reset pipeline; continue = resume first pending/error member. */
+  /** start = reset pipeline; continue = resume first pending/error/cancelled member. */
   action?: "start" | "continue";
 };
 

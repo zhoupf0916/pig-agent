@@ -7,7 +7,9 @@ import { createApp } from "../app.ts";
 import { createMemory } from "../store/memory.ts";
 import { createExpert, createExpertTeam } from "../store/experts.ts";
 import { createSession, saveSession } from "../store/sessions.ts";
-import { shouldRunSequentialTeam } from "../store/team-run-state.ts";
+import { firstResumableIndex, hasResumableMember, shouldRunSequentialTeam } from "../store/team-run-state.ts";
+import { loadSettings, saveSettings } from "../store/settings.ts";
+import { getSession } from "../store/sessions.ts";
 import type { AgentEvent, ExpertTeam, Session, Settings, TeamRun } from "../types.ts";
 import { runAgent } from "./runtime.ts";
 import { runSequentialTeamTurn, wrapMemberEmit } from "./team-run.ts";
@@ -117,6 +119,54 @@ async function makeChainPair(): Promise<{ team: ExpertTeam; scoutId: string; pla
   });
   return { team, scoutId: scout.id, planId: plan.id };
 }
+
+function cancelledTeamRun(overrides: Partial<TeamRun> = {}): TeamRun {
+  return {
+    teamId: "team_x",
+    teamName: "x",
+    strategy: "same-session",
+    status: "cancelled",
+    currentIndex: 0,
+    members: [
+      { expertId: "a", name: "A", kind: "scout", status: "done" },
+      { expertId: "b", name: "B", kind: "plan", status: "cancelled" },
+    ],
+    startedAt: "",
+    updatedAt: "",
+    ...overrides,
+  };
+}
+
+describe("firstResumableIndex", () => {
+  it("treats cancelled members as resumable after a stop", () => {
+    const stopped = cancelledTeamRun();
+    expect(hasResumableMember(stopped)).toBe(true);
+    expect(firstResumableIndex(stopped)).toBe(1);
+  });
+
+  it("skips finished members and resumes from the first cancelled or error", () => {
+    const mixed = cancelledTeamRun({
+      members: [
+        { expertId: "a", name: "A", kind: "scout", status: "done" },
+        { expertId: "b", name: "B", kind: "plan", status: "cancelled" },
+        { expertId: "c", name: "C", kind: "implement", status: "cancelled" },
+      ],
+    });
+    expect(firstResumableIndex(mixed)).toBe(1);
+  });
+
+  it("returns length when every member is done", () => {
+    const done = cancelledTeamRun({
+      status: "done",
+      members: [
+        { expertId: "a", name: "A", kind: "scout", status: "done" },
+        { expertId: "b", name: "B", kind: "plan", status: "done" },
+      ],
+    });
+    expect(hasResumableMember(done)).toBe(false);
+    expect(firstResumableIndex(done)).toBe(2);
+  });
+});
 
 describe("shouldRunSequentialTeam", () => {
   it("requires chain mode and no expertId", () => {
@@ -267,6 +317,52 @@ describe("runSequentialTeamTurn", () => {
     }
   });
 
+  it("continues from the first cancelled member after a stop", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-team-cont-cancel-"));
+    const { team, scoutId, planId } = await makeChainPair();
+    const session = await createSession({ expertTeamId: team.id });
+    session.messages = emptySession().messages;
+    session.teamRun = {
+      teamId: team.id,
+      teamName: team.name,
+      strategy: "same-session",
+      status: "cancelled",
+      currentIndex: 1,
+      members: [
+        { expertId: scoutId, name: "测试侦察", kind: "scout", status: "done" },
+        { expertId: planId, name: "测试规划", kind: "plan", status: "cancelled", detail: "Stopped" },
+      ],
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await saveSession(session);
+
+    const mock = await startScriptedLlm([
+      (_raw, res) => {
+        sse(res, { choices: [{ delta: { content: "从取消处继续规划。" } }] });
+      },
+    ]);
+
+    try {
+      const next = await runSequentialTeamTurn(session, {
+        settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
+        runtime: "pig",
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        flush: async () => undefined,
+        runner: runAgent,
+        action: "continue",
+      });
+      expect(mock.bodies).toHaveLength(1);
+      expect(mock.bodies[0]).toContain("UNIQUE_PLAN_INSTRUCTION");
+      expect(mock.bodies[0]).not.toContain("UNIQUE_SCOUT_INSTRUCTION");
+      expect(next.teamRun?.members.map((m) => m.status)).toEqual(["done", "done"]);
+      expect(next.teamRun?.status).toBe("done");
+    } finally {
+      await mock.close();
+    }
+  });
+
   it("cancels remaining members when aborted mid-chain", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-team-ab-"));
     const { team } = await makeChainPair();
@@ -309,6 +405,28 @@ describe("runSequentialTeamTurn", () => {
     expect(next.teamRun?.members[0]?.status).toBe("done");
     expect(next.teamRun?.members[1]?.status).toBe("cancelled");
     expect(next.teamRun?.status).toBe("cancelled");
+
+    const resumeMock = await startScriptedLlm([
+      (_raw, res) => {
+        sse(res, { choices: [{ delta: { content: "中断后继续第二步。" } }] });
+      },
+    ]);
+    try {
+      const resumed = await runSequentialTeamTurn(next, {
+        settings: pigSettings(workspaceRoot, { llmBaseUrl: resumeMock.url }),
+        runtime: "pig",
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        flush: async () => undefined,
+        runner: runAgent,
+        action: "continue",
+      });
+      expect(resumeMock.bodies).toHaveLength(1);
+      expect(resumed.teamRun?.members.map((m) => m.status)).toEqual(["done", "done"]);
+      expect(resumed.teamRun?.status).toBe("done");
+    } finally {
+      await resumeMock.close();
+    }
   });
 });
 
@@ -376,6 +494,72 @@ describe("POST /api/sessions/:id/team-run", () => {
     expect(stop.status).toBe(200);
     const body = await json<{ ok: boolean; session: { teamRun?: TeamRun } }>(stop);
     expect(body.ok).toBe(true);
+  });
+
+  it("returns 200 for continue after start then stop when members are cancelled", async () => {
+    let firstStarted!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      firstStarted = resolve;
+    });
+    const mock = await startScriptedLlm([
+      (_raw, _res) => {
+        firstStarted();
+        return { keepOpen: true };
+      },
+      (_raw, res) => {
+        sse(res, { choices: [{ delta: { content: "停止后继续第一步。" } }] });
+      },
+      (_raw, res) => {
+        sse(res, { choices: [{ delta: { content: "停止后继续第二步。" } }] });
+      },
+    ]);
+    const prevSettings = await loadSettings();
+    await saveSettings({ llmBaseUrl: mock.url, llmApiKey: "test", runtime: "pig" });
+    try {
+      const { team } = await makeChainPair();
+      const session = await json<{ id: string }>(
+        await app.request("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expertTeamId: team.id }),
+        }),
+      );
+
+      const startPromise = app.request(`/api/sessions/${session.id}/team-run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start", content: "摸清工作区并给出下一步" }),
+      });
+
+      await firstGate;
+      const stop = await app.request(`/api/sessions/${session.id}/team-run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop" }),
+      });
+      expect(stop.status).toBe(200);
+      const stopped = await json<{ session: Session }>(stop);
+      expect(stopped.session.teamRun?.members.some((m) => m.status === "cancelled")).toBe(true);
+
+      const startRes = await startPromise;
+      expect(startRes.status).toBe(200);
+
+      const afterStop = await getSession(session.id);
+      expect(afterStop?.status).not.toBe("running");
+      expect(afterStop?.teamRun?.members.some((m) => m.status === "cancelled")).toBe(true);
+      expect(hasResumableMember(afterStop?.teamRun)).toBe(true);
+
+      const cont = await app.request(`/api/sessions/${session.id}/team-run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "continue" }),
+      });
+      expect(cont.status).toBe(200);
+      expect(cont.headers.get("content-type") ?? "").toMatch(/text\/event-stream/);
+    } finally {
+      await saveSettings(prevSettings);
+      await mock.close();
+    }
   });
 
   it("rejects a parallel team", async () => {

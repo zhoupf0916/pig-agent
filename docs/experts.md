@@ -100,7 +100,7 @@ The same bound block is used by:
 | action | Behavior |
 | --- | --- |
 | `start` | Reset the pipeline and run every member. `content` becomes the user message; if omitted, the last real user message is reused. SSE. |
-| `continue` | Resume the first pending / error / running member (after stop or a failed step). SSE. |
+| `continue` | Resume the first pending / error / running / cancelled member (after stop or a failed step). SSE. |
 | `stop` | Abort the in-flight turn and mark remaining members `cancelled`. |
 
 A regular `POST /api/sessions/:id/messages` on a chain-team session (no `expertId`) also **starts** a sequential run, then auto-continues after each member idle. `POST /api/sessions/:id/abort` and the workstation **停止** button cancel the rest of the chain.
