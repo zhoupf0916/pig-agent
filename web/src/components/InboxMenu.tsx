@@ -87,7 +87,17 @@ export function InboxMenu({
 
   return (
     <div className="relative" ref={rootRef}>
-      <button type="button" className="btn-ghost" onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className="btn-ghost"
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (next) void refresh().catch(() => undefined);
+            return next;
+          });
+        }}
+      >
         <Inbox size={14} />
         收件箱
         {unread > 0 && (
