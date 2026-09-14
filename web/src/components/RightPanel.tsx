@@ -41,7 +41,7 @@ export function RightPanel({
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
           {artifacts.length > 0 && (
-            <span className="ml-1 rounded-full bg-accent-soft px-1.5 text-[10px] text-accent">
+            <span className="ml-1 rounded-full bg-accent-soft px-1.5 text-meta text-accent">
               {artifacts.length}
             </span>
           )}
@@ -62,7 +62,7 @@ export function RightPanel({
               <div className="space-y-3">
                 {grouped.map((group) => (
                   <div key={group.action}>
-                    <div className="mb-1 px-1 text-[10px] uppercase tracking-[0.14em] text-ink-500">
+                    <div className="mb-1 px-1 text-meta uppercase tracking-[0.14em] text-ink-500">
                       {artifactLabel(group.action)} · {group.items.length}
                     </div>
                     <ul className="space-y-1">
@@ -98,7 +98,7 @@ export function RightPanel({
         )}
         {tab === "workspace" && (
           <div className="p-3">
-            <div className="mb-2 truncate px-1 font-mono text-[10px] text-ink-500" title={workspaceRoot}>
+            <div className="mb-2 truncate px-1 font-mono text-meta text-ink-500" title={workspaceRoot}>
               {workspaceRoot || "未配置工作区"}
             </div>
             {tree ? (
@@ -111,7 +111,7 @@ export function RightPanel({
       </div>
 
       <div className="min-h-[42%] border-t border-ink-300 bg-white">
-        <div className="flex items-center justify-between px-3 py-2 text-[11px] text-ink-500">
+        <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-500">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">
             {selected && selected.before !== undefined && selected.after !== undefined && (
@@ -119,7 +119,7 @@ export function RightPanel({
                 <button
                   type="button"
                   onClick={() => setMode("file")}
-                  className={`px-2 py-0.5 text-[11px] ${
+                  className={`px-2 py-0.5 text-meta ${
                     mode === "file" ? "bg-accent text-white" : "bg-white text-ink-600 hover:bg-ink-200"
                   }`}
                 >
@@ -128,7 +128,7 @@ export function RightPanel({
                 <button
                   type="button"
                   onClick={() => setMode("diff")}
-                  className={`px-2 py-0.5 text-[11px] ${
+                  className={`px-2 py-0.5 text-meta ${
                     mode === "diff" ? "bg-accent text-white" : "bg-white text-ink-600 hover:bg-ink-200"
                   }`}
                 >
@@ -143,18 +143,18 @@ export function RightPanel({
           {!preview && !selected && <p className="text-xs text-ink-500">点击产物或工作区文件以预览。</p>}
           {mode === "diff" && selected?.before !== undefined && selected.after !== undefined && (
             <div>
-              <div className="mb-2 font-mono text-[11px] text-accent">{selected.path}</div>
+              <div className="mb-2 font-mono text-meta text-accent">{selected.path}</div>
               <DiffView before={selected.before} after={selected.after} />
             </div>
           )}
           {mode === "file" && preview?.binary && <p className="text-xs text-ink-500">二进制文件，无法预览。</p>}
           {mode === "file" && preview && !preview.binary && (
             <div>
-              <div className="mb-2 font-mono text-[11px] text-accent">{preview.path}</div>
+              <div className="mb-2 font-mono text-meta text-accent">{preview.path}</div>
               {isMarkdown(preview.path) ? (
                 <MarkdownView text={preview.content} />
               ) : (
-                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-700">
+                <pre className="whitespace-pre-wrap font-mono text-[13px] leading-5 text-ink-700">
                   {preview.content}
                 </pre>
               )}
@@ -162,8 +162,8 @@ export function RightPanel({
           )}
           {mode === "file" && !preview && selected?.action === "deleted" && selected.before && (
             <div>
-              <div className="mb-2 font-mono text-[11px] text-danger">{selected.path}（已删除）</div>
-              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-700">
+              <div className="mb-2 font-mono text-meta text-danger">{selected.path}（已删除）</div>
+              <pre className="whitespace-pre-wrap font-mono text-[13px] leading-5 text-ink-700">
                 {selected.before}
               </pre>
             </div>

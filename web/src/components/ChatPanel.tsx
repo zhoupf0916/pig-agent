@@ -158,7 +158,7 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   const done = steps.filter((s) => s.status === "done").length;
   return (
     <div className="border-b border-ink-300 bg-white/80 px-6 py-3">
-      <div className="mb-2 flex items-center justify-between text-[11px] text-ink-500">
+      <div className="mb-2 flex items-center justify-between text-meta text-ink-500">
         <span className="uppercase tracking-[0.16em]">步骤</span>
         <span>
           {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
@@ -169,9 +169,9 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
           <li
             key={step.id}
             title={step.detail}
-            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${tone(step.status)}`}
+            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(step.status)}`}
           >
-            <span className="font-mono text-[10px] opacity-70">{i + 1}</span>
+            <span className="font-mono text-[12px] opacity-70">{i + 1}</span>
             {step.title}
           </li>
         ))}
@@ -220,7 +220,7 @@ function ToolCard({ tool }: { tool: LiveTool }) {
         <Terminal size={13} className="text-accent" />
         <span className="font-medium text-ink-800">{toolLabel(tool.name)}</span>
         <span className="truncate text-ink-600">{summary}</span>
-        <span className="ml-auto flex items-center gap-2 text-[11px] uppercase tracking-wider">
+        <span className="ml-auto flex items-center gap-2 text-meta uppercase tracking-wider">
           {tool.durationMs !== undefined && (
             <span className="normal-case text-ink-600">{formatDuration(tool.durationMs)}</span>
           )}
@@ -287,7 +287,7 @@ function Composer({
           <button
             type="button"
             onClick={onStop}
-            className="mb-1 inline-flex items-center gap-1 rounded-btn bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-red-500"
+            className="mb-1 inline-flex items-center gap-1 rounded-btn bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
           >
             <Square size={12} />
             停止
@@ -303,7 +303,7 @@ function Composer({
           </button>
         )}
       </div>
-      <p className="mx-auto mt-2 max-w-3xl text-[11px] text-ink-500">
+      <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
         Enter 发送 · Shift+Enter 换行 · 运行中可点停止 · 文件与命令仅作用于本地工作区
       </p>
     </div>

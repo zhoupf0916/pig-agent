@@ -18,7 +18,7 @@ export function Sidebar({
     <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-ink-300 bg-ink-100 lg:w-[240px]">
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.16em] text-ink-500">会话</div>
+          <div className="text-meta uppercase tracking-[0.16em] text-ink-500">会话</div>
           <div className="mt-0.5 text-sm font-medium text-ink-800">任务列表</div>
         </div>
         <button type="button" onClick={onCreate} className="btn-primary px-2.5 py-1.5">
@@ -48,7 +48,7 @@ export function Sidebar({
               )}
               <button type="button" onClick={() => onSelect(s.id)} className="min-w-0 flex-1 text-left">
                 <div className="truncate text-[13px] font-medium">{s.title}</div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-500">
+                <div className="mt-0.5 flex items-center gap-2 text-meta text-ink-500">
                   <StatusDot status={s.status} />
                   {new Date(s.updatedAt).toLocaleTimeString()}
                 </div>

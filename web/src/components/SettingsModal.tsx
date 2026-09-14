@@ -83,7 +83,7 @@ export function SettingsModal({
         </div>
 
         <div className="mt-4 rounded-card border border-ink-300 bg-ink-100 p-3">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-ink-500">本地技能</div>
+          <div className="text-meta uppercase tracking-[0.14em] text-ink-500">本地技能</div>
           <ul className="mt-2 space-y-1.5">
             {skills.map((s) => (
               <li key={s.name} className="text-xs text-ink-700">
@@ -95,7 +95,7 @@ export function SettingsModal({
           </ul>
         </div>
 
-        {error && <p className="mt-3 text-xs text-red-700">{error}</p>}
+        {error && <p className="mt-3 text-xs text-danger">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-quiet">
@@ -127,7 +127,7 @@ export function SettingsModal({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[11px] text-ink-500">{label}</div>
+      <div className="mb-1 text-meta text-ink-500">{label}</div>
       {children}
     </label>
   );

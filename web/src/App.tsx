@@ -278,11 +278,11 @@ export function App() {
           </div>
           <div>
             <div className="text-sm font-medium text-ink-800">Pig Agent</div>
-            <div className="text-[11px] text-ink-500">纯本地 · 纯 Web 工作台</div>
+            <div className="text-meta text-ink-500">纯本地 · 纯 Web 工作台</div>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden text-right text-[11px] text-ink-500 sm:block">
+          <div className="hidden text-right text-meta text-ink-500 sm:block">
             <div>{headerHint}</div>
             <div className="max-w-[360px] truncate font-mono">
               {settings?.workspaceRoot ?? ""}

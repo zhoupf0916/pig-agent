@@ -4,6 +4,23 @@
 
 :root {
   color-scheme: light;
+  --bg-app: #f7f7f8;
+  --bg-panel: #ffffff;
+  --bg-subtle: #f3f4f6;
+  --bg-hover: #eef0f3;
+  --border-default: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #10a37f;
+  --accent-soft: #e6f6f1;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --success: #059669;
+  --code-bg: #f3f4f6;
 }
 
 html,
@@ -14,8 +31,8 @@ body,
 
 body {
   margin: 0;
-  background: #f7f7f8;
-  color: #111827;
+  background: var(--bg-app);
+  color: var(--text-primary);
   font-size: 15px;
   line-height: 1.6;
 }
