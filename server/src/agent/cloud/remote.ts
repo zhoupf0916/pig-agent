@@ -5,10 +5,16 @@ import {
   CLOUD_ABORT_PATH,
   CLOUD_CREATE_RUN_PATH,
   CLOUD_EVENTS_PATH,
+  CLOUD_FOLLOW_UP_PATH,
   CloudRuntimeError,
 } from "./contract.ts";
 import { mapCloudEvent } from "./events.ts";
-import { assertNoSecretsInPayload, buildCreateRunRequest } from "./request.ts";
+import {
+  assertNoSecretsInPayload,
+  buildCreateRunRequest,
+  buildFollowUpRequest,
+  buildRemoteWorkspaceHandoff,
+} from "./request.ts";
 
 export async function runRemoteCloudAgent(options: {
   session: Session;
@@ -19,11 +25,13 @@ export async function runRemoteCloudAgent(options: {
 }): Promise<Session> {
   const { settings, signal, emit } = options;
   const fetchFn = options.fetchImpl ?? fetch;
+  const keepRunId = options.session.remoteRunId;
   const session: Session = {
     ...options.session,
     status: "running",
     lastError: undefined,
     updatedAt: nowIso(),
+    remoteRunId: keepRunId,
   };
   emit({ type: "status", status: "running" });
 
@@ -36,25 +44,38 @@ export async function runRemoteCloudAgent(options: {
     headers.authorization = `Bearer ${settings.cloudToken.trim()}`;
   }
 
-  const body = buildCreateRunRequest(session, settings);
-  assertNoSecretsInPayload(body, settings);
+  let runId = session.remoteRunId?.trim() ?? "";
 
-  let runId = "";
   try {
-    const created = await fetchFn(`${base}${CLOUD_CREATE_RUN_PATH}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (!created.ok) {
-      const text = await created.text().catch(() => "");
-      throw new CloudRuntimeError(
-        `Create run failed (${created.status})${text ? `: ${text.slice(0, 240)}` : ""}`,
-      );
+    if (runId) {
+      const follow = await postFollowUp(fetchFn, base, runId, session, settings, headers, signal);
+      if (follow !== "ok") {
+        runId = "";
+        delete session.remoteRunId;
+      }
     }
-    runId = readRunId(await created.json());
-    if (!runId) throw new CloudRuntimeError("Control plane did not return a run id");
+
+    if (!runId) {
+      const workspace = buildRemoteWorkspaceHandoff(settings);
+      const body = buildCreateRunRequest(session, settings, workspace);
+      assertNoSecretsInPayload(body, settings);
+      const created = await fetchFn(`${base}${CLOUD_CREATE_RUN_PATH}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!created.ok) {
+        const text = await created.text().catch(() => "");
+        throw new CloudRuntimeError(
+          `Create run failed (${created.status})${text ? `: ${text.slice(0, 240)}` : ""}`,
+        );
+      }
+      runId = readRunId(await created.json());
+      if (!runId) throw new CloudRuntimeError("Control plane did not return a run id");
+    }
+
+    session.remoteRunId = runId;
 
     const eventsRes = await fetchFn(`${base}${CLOUD_EVENTS_PATH(runId)}`, {
       method: "GET",
@@ -113,6 +134,34 @@ export async function runRemoteCloudAgent(options: {
     emit({ type: "status", status: session.status });
     emit({ type: "done", session });
     return session;
+  }
+}
+
+async function postFollowUp(
+  fetchFn: typeof fetch,
+  base: string,
+  runId: string,
+  session: Session,
+  settings: Settings,
+  headers: Record<string, string>,
+  signal: AbortSignal,
+): Promise<"ok" | "expired"> {
+  const body = buildFollowUpRequest(session);
+  assertNoSecretsInPayload(body, settings);
+  try {
+    const res = await fetchFn(`${base}${CLOUD_FOLLOW_UP_PATH(runId)}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (res.ok) return "ok";
+    return "expired";
+  } catch (err) {
+    if (signal.aborted || (err instanceof Error && err.message === "Aborted")) {
+      throw err instanceof Error ? err : new Error("Aborted");
+    }
+    return "expired";
   }
 }
 
@@ -207,11 +256,13 @@ function applyRemoteEvent(session: Session, event: AgentEvent): void {
     return;
   }
   if (event.type === "done") {
+    const keep = session.remoteRunId;
     session.status = event.session.status;
     session.messages = event.session.messages;
     session.steps = event.session.steps;
     session.artifacts = event.session.artifacts;
     session.lastError = event.session.lastError;
+    session.remoteRunId = keep ?? event.session.remoteRunId;
   }
 }
 

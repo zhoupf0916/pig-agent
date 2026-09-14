@@ -54,6 +54,11 @@ export type Session = {
    * Late joiners load the snapshot then subscribe with `after=eventCheckpointSeq`.
    */
   eventCheckpointSeq?: number;
+  /**
+   * Last remote control-plane run id (`runtime=cloud` + `cloudMode=remote`).
+   * IDLE user turns prefer `POST /v1/runs/:id/follow-ups`.
+   */
+  remoteRunId?: string;
 };
 
 export type SessionSummary = Pick<

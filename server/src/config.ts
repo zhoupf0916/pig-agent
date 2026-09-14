@@ -83,6 +83,15 @@ export function resolveCloudToken(env: NodeJS.ProcessEnv = process.env): string 
   return env.PIG_CLOUD_TOKEN?.trim() || env.CLOUD_TOKEN?.trim() || "";
 }
 
+/** Optional clone hint for remote create-run. Snapshot is still preferred when the workspace exists. */
+export function resolveCloudRepoUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PIG_CLOUD_REPO_URL?.trim() || "";
+}
+
+export function resolveCloudRepoRef(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PIG_CLOUD_REPO_REF?.trim() || "";
+}
+
 /** Isolated per-run workspaces for the local-stub cloud worker. */
 export function resolveCloudRunsDir(env: NodeJS.ProcessEnv = process.env): string {
   const override = env.PIG_CLOUD_RUNS_DIR?.trim();

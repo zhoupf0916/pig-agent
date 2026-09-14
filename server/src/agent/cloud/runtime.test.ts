@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Session, Settings } from "../../types.ts";
-import { buildCreateRunRequest } from "./request.ts";
+import { startCloudControlStub } from "./control-stub.ts";
+import { buildCreateRunRequest, buildRemoteWorkspaceHandoff } from "./request.ts";
 import { runCloudAgent } from "./runtime.ts";
 import { materializeCloudWorkspace } from "./workspace.ts";
 
@@ -209,6 +210,21 @@ describe("create-run payload", () => {
     expect(dumped).not.toContain(settings.cloudToken);
     expect(body.prompt).toContain("整理");
     expect(body.sessionId).toBe("ses_cloud");
+    expect(body.workspace).toBeUndefined();
+  });
+
+  it("attaches a sandbox-safe snapshot without secrets", () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-hand-"));
+    writeFileSync(join(workspaceRoot, "ok.md"), "visible");
+    writeFileSync(join(workspaceRoot, ".env"), "DEEPSEEK_API_KEY=sk-host-control-path-secret\n");
+    const settings = cloudSettings(workspaceRoot);
+    const body = buildCreateRunRequest(emptySession(), settings, buildRemoteWorkspaceHandoff(settings));
+    const dumped = JSON.stringify(body);
+    expect(body.workspace?.snapshot?.encoding).toBe("tar.gz");
+    expect(body.workspace?.snapshot?.files).toContain("ok.md");
+    expect(body.workspace?.snapshot?.files?.some((f) => f.includes(".env"))).toBe(false);
+    expect(dumped).not.toContain(settings.llmApiKey);
+    expect(dumped).not.toContain("sk-host-control-path-secret");
   });
 });
 
@@ -218,6 +234,7 @@ describe("workspace materialize", () => {
     const runsRoot = mkdtempSync(join(tmpdir(), "pig-cloud-mat-"));
     writeFileSync(join(source, "ok.md"), "visible");
     writeFileSync(join(source, ".env.local"), "SECRET=1\n");
+    writeFileSync(join(source, "id_rsa"), "fake-key");
     const isolated = materializeCloudWorkspace({
       sourceRoot: source,
       runId: "run_test",
@@ -226,6 +243,7 @@ describe("workspace materialize", () => {
     });
     expect(readFileSync(join(isolated.workspaceRoot, "ok.md"), "utf8")).toBe("visible");
     expect(existsSync(join(isolated.workspaceRoot, ".env.local"))).toBe(false);
+    expect(existsSync(join(isolated.workspaceRoot, "id_rsa"))).toBe(false);
   });
 });
 
@@ -385,5 +403,83 @@ describe("remote cloud runtime", () => {
     expect(next.status).toBe("idle");
     expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(true);
     expect(aborted).toBe(true);
+  });
+
+  it("uploads a snapshot, persists run id, prefers follow-up, then falls back when expired", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-fu-"));
+    const runsRoot = mkdtempSync(join(tmpdir(), "pig-cloud-fu-runs-"));
+    writeFileSync(join(workspaceRoot, "ok.md"), "visible");
+    writeFileSync(join(workspaceRoot, ".env"), "DEEPSEEK_API_KEY=sk-host-control-path-secret\n");
+    writeFileSync(join(workspaceRoot, "id_rsa"), "fake-key");
+
+    const stub = await startCloudControlStub({ runsRoot });
+    try {
+      const settings = cloudSettings(workspaceRoot, {
+        cloudMode: "remote",
+        cloudBaseUrl: stub.url,
+      });
+
+      const first = await runCloudAgent({
+        session: emptySession(),
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(first.remoteRunId).toMatch(/^run_/);
+      expect(first.messages.some((m) => m.content.includes("accepted workspace"))).toBe(true);
+      const stored = stub.runs.get(first.remoteRunId!);
+      expect(stored?.files).toContain("ok.md");
+      expect(stored?.files.some((f) => f.includes(".env"))).toBe(false);
+      expect(stored?.files).not.toContain("id_rsa");
+      expect(stored?.prompts).toEqual(["整理工作区并写一份报告"]);
+
+      const second = await runCloudAgent({
+        session: {
+          ...first,
+          messages: [
+            ...first.messages,
+            {
+              id: "u2",
+              role: "user",
+              content: "再写一个文件",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(second.remoteRunId).toBe(first.remoteRunId);
+      expect(second.messages.some((m) => m.content.includes("[stub] follow-up: 再写一个文件"))).toBe(
+        true,
+      );
+      expect(stored?.prompts).toEqual(["整理工作区并写一份报告", "再写一个文件"]);
+
+      stored!.status = "expired";
+      const third = await runCloudAgent({
+        session: {
+          ...second,
+          messages: [
+            ...second.messages,
+            {
+              id: "u3",
+              role: "user",
+              content: "新的一轮",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(third.remoteRunId).toBeTruthy();
+      expect(third.remoteRunId).not.toBe(first.remoteRunId);
+      expect(third.messages.some((m) => m.content.includes("accepted workspace"))).toBe(true);
+      expect(stub.runs.get(third.remoteRunId!)?.prompts).toEqual(["新的一轮"]);
+    } finally {
+      await stub.close();
+    }
   });
 });

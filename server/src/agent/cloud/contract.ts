@@ -11,11 +11,26 @@ export const CLOUD_EVENTS_PATH = (runId: string) => `/v1/runs/${runId}/events`;
 export const CLOUD_ABORT_PATH = (runId: string) => `/v1/runs/${runId}/abort`;
 export const CLOUD_FOLLOW_UP_PATH = (runId: string) => `/v1/runs/${runId}/follow-ups`;
 
+export type CloudWorkspaceHandoff = {
+  snapshot?: {
+    encoding: "tar.gz";
+    data: string;
+    files: string[];
+    skipped: string[];
+    byteSize: number;
+    truncated?: boolean;
+  };
+  repoUrl?: string;
+  ref?: string;
+};
+
 export type CloudCreateRunRequest = {
   prompt: string;
   sessionId: string;
   messages: Array<Pick<ChatMessage, "id" | "role" | "content" | "createdAt">>;
   model?: string;
+  /** First turn only. Follow-ups reuse the worker workspace. */
+  workspace?: CloudWorkspaceHandoff;
 };
 
 export type CloudCreateRunResponse = {
@@ -25,6 +40,12 @@ export type CloudCreateRunResponse = {
 
 export type CloudFollowUpRequest = {
   prompt: string;
+};
+
+export type CloudFollowUpResponse = {
+  ok: boolean;
+  id?: string;
+  status?: "queued" | "running" | "idle" | "expired";
 };
 
 export type CloudAbortResponse = {

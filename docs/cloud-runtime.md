@@ -14,10 +14,11 @@ This is **not** a fork or vendored copy of [neo-cloud-agent](https://github.com/
 | --- | --- | --- |
 | `runtime` | `pig` | Existing sessions keep the local pig loop |
 | `cloudMode` | `local-stub` | CI and `pnpm test` need no cluster |
-| Isolated workspace | `data/cloud-runs/<id>/workspace/` | Copy of the host workspace; `.env*` / `node_modules` / `.git` skipped |
+| Isolated workspace | `data/cloud-runs/<id>/workspace/` | Copy of the host workspace; `.env*` / keys / `node_modules` / `.git` skipped |
 | Provider keys | host settings / `.env.local` | Stub reuses the in-process pig loop; keys are not copied into the run dir |
-| Remote payload | prompt + recent messages + model name | No `llmApiKey`, no `cloudToken`, no absolute local secrets |
+| Remote payload | prompt + recent messages + model + workspace handoff | No `llmApiKey`, no `cloudToken`, no absolute local secrets |
 | Abort | same `AbortSignal` as pig/codex | Stub cancels the inner loop; remote also `POST /v1/runs/:id/abort` |
+| Follow-up | last `remoteRunId` on the pig session | IDLE turns `POST /v1/runs/:id/follow-ups`; missing/expired → new create-run |
 
 Never commit API keys or control-plane tokens. Use `.env.local` (gitignored) or the Settings UI (writes `data/settings.json`, also gitignored).
 
@@ -38,14 +39,30 @@ This is how automated tests and offline smoke work.
 
 ### `remote`
 
-When mode is `remote` and `cloudBaseUrl` is set, the host is a **client** of a future control plane:
+When mode is `remote` and `cloudBaseUrl` is set, the host is a **client** of a control plane (real or `pnpm mock:cloud`):
 
-1. `POST {cloudBaseUrl}/v1/runs`
-2. `GET {cloudBaseUrl}/v1/runs/{id}/events` (SSE)
-3. Map inbound frames onto pig `AgentEvent`s
-4. On stop: abort the SSE and `POST /v1/runs/{id}/abort`
+1. First turn (or after an expired run): `POST {cloudBaseUrl}/v1/runs` with prompt + recent messages + a workspace handoff
+2. Persist the returned `runId` on the pig session as `remoteRunId`
+3. `GET {cloudBaseUrl}/v1/runs/{id}/events` (SSE) → map onto pig `AgentEvent`s
+4. Later IDLE user turns: `POST /v1/runs/{id}/follow-ups` then subscribe to events again
+5. If follow-up returns 404/410 (or the run id is missing): fall back to a new `POST /v1/runs` with a fresh snapshot
+6. On stop: abort the SSE and `POST /v1/runs/{id}/abort` (the session still keeps `remoteRunId` so the next message can follow up)
 
-This MVP does **not** upload the local workspace tree to the remote plane. A later control plane that actually provisions workers should accept a workspace snapshot or repo hint; the workstation UI does not need to change.
+### Workspace handoff
+
+`POST /v1/runs` may include `workspace`. Pig always tries to send a **tar.gz snapshot** of the configured sandbox. You can also set a repo hint via env (`PIG_CLOUD_REPO_URL` / `PIG_CLOUD_REPO_REF`) so a plane can clone instead of (or in addition to) unpacking the archive.
+
+| Uploaded | Skipped |
+| --- | --- |
+| Regular files under the workspace root (text + small binaries) | `.env`, `.env.*` (any env file) |
+| | Private key names: `id_rsa` / `id_ed25519` / `*.pem` / `*.key` / `*.p12` / `*.pfx` / `*.keystore` |
+| | `node_modules`, `.git`, `.ssh`, `data`, `dist`, `.vite`, `coverage` |
+| | Symlinks, non-files, paths > 100 chars, files > 512 KiB |
+| | Archive over 4 MiB uncompressed / 400 files (`truncated: true`) |
+
+The snapshot is `gzip(ustar)` base64. The plane must not treat it as a place to inject provider keys. `assertNoSecretsInPayload` refuses to send if `llmApiKey` or `cloudToken` appears anywhere in the JSON (including file bytes).
+
+Follow-ups do **not** re-upload the tree; the worker is expected to keep its workspace.
 
 ## Minimal control-plane contract
 
@@ -60,9 +77,22 @@ This MVP does **not** upload the local workspace tree to the remote plane. A lat
   "messages": [
     { "id": "msg_…", "role": "user", "content": "…", "createdAt": "…" }
   ],
-  "model": "deepseek-chat"
+  "model": "deepseek-chat",
+  "workspace": {
+    "snapshot": {
+      "encoding": "tar.gz",
+      "data": "<base64 gzip ustar>",
+      "files": ["README.md", "notes/todo.txt"],
+      "skipped": [".env", "node_modules", ".git"],
+      "byteSize": 1234
+    },
+    "repoUrl": "https://github.com/acme/app.git",
+    "ref": "main"
+  }
 }
 ```
+
+`workspace.snapshot` is omitted only when the workspace root is missing. `repoUrl` / `ref` are omitted unless `PIG_CLOUD_REPO_URL` / `PIG_CLOUD_REPO_REF` are set.
 
 Response: `{ "id": "run_…", "status": "running" }` (`runId` or `{ run: { id } }` also accepted).
 
@@ -90,9 +120,11 @@ Unknown types are dropped so a richer plane cannot break the workstation.
 
 `{ "ok": true }`. Pig’s **停止** button already aborts the host `AbortSignal`; the cloud runtime also notifies the plane.
 
-### `POST /v1/runs/{id}/follow-ups` (documented, not sent yet)
+### `POST /v1/runs/{id}/follow-ups`
 
-`{ "prompt": "…" }` — neo-style follow-up / steer while IDLE or RUNNING. This MVP starts a **new** `/v1/runs` per user turn and includes recent messages, so the UI multi-turn path works without storing a remote run id. A later host can switch to follow-ups without changing cards.
+`{ "prompt": "…" }` — neo-style follow-up / steer after the previous turn went IDLE (also accepted while RUNNING). Response `{ "ok": true, "id": "run_…" }`.
+
+The workstation persists `remoteRunId` on the session JSON (`data/sessions/<id>.json`). The next user message prefers this route. **404 / 410 / network miss** → new `POST /v1/runs` with a fresh snapshot. No UI card changes.
 
 ## Pointing at a future real control plane
 
@@ -103,9 +135,12 @@ PIG_CLOUD_BASE_URL=http://127.0.0.1:8080
 PIG_CLOUD_TOKEN=          # optional
 # optional isolated stub dir (default ./data/cloud-runs)
 # PIG_CLOUD_RUNS_DIR=./data/cloud-runs
+# optional repo hint (clone instead of / in addition to the snapshot)
+# PIG_CLOUD_REPO_URL=https://github.com/acme/app.git
+# PIG_CLOUD_REPO_REF=main
 ```
 
-Or Settings → 云端 → remote → paste the origin. Then implement the four routes above. The workstation does not embed Firecracker, an LLM gateway, or a worker image.
+Or Settings → 云端 → remote → paste the origin. For CI / offline smoke, `pnpm mock:cloud` speaks the four routes above (keys stay on the pig host). The workstation does not embed Firecracker, an LLM gateway, or a worker image.
 
 ## What we deliberately did not copy from neo-cloud-agent
 
@@ -123,8 +158,9 @@ Those stay out of pig-agent. The seam is the small HTTP+SSE contract and the `Ag
 ## Smoke (no live DeepSeek)
 
 ```bash
-pnpm test                 # includes local-stub + scripted LLM
+pnpm test                 # local-stub + in-repo control stub (snapshot + follow-up)
 pnpm typecheck
+pnpm mock:cloud           # http://127.0.0.1:8080 — no cluster, no provider keys
 ```
 
-Manual: `pnpm mock:llm`, Settings → 云端 → local-stub, send a “写一个文件” turn. See [MANUAL_TEST.md](../MANUAL_TEST.md).
+Manual: `pnpm mock:llm`, Settings → 云端 → local-stub, send a “写一个文件” turn. Remote follow-up smoke: `pnpm mock:cloud`, Settings → remote → `http://127.0.0.1:8080`, send two messages; `data/sessions/<id>.json` keeps the same `remoteRunId`. See [MANUAL_TEST.md](../MANUAL_TEST.md).

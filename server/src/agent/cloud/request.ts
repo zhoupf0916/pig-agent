@@ -1,5 +1,6 @@
 import type { Session, Settings } from "../../types.ts";
-import type { CloudCreateRunRequest } from "./contract.ts";
+import type { CloudCreateRunRequest, CloudWorkspaceHandoff } from "./contract.ts";
+import { collectWorkspaceHandoff, resolveCloudRepoHint } from "./snapshot.ts";
 
 /**
  * Body sent to a remote control plane. Intentionally omits API keys, cloud
@@ -8,9 +9,10 @@ import type { CloudCreateRunRequest } from "./contract.ts";
 export function buildCreateRunRequest(
   session: Session,
   settings: Settings,
+  workspace?: CloudWorkspaceHandoff,
 ): CloudCreateRunRequest {
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
-  return {
+  const body: CloudCreateRunRequest = {
     prompt: lastUser?.content ?? "",
     sessionId: session.id,
     messages: session.messages
@@ -23,6 +25,23 @@ export function buildCreateRunRequest(
       })),
     model: settings.llmModel,
   };
+  if (workspace && (workspace.snapshot || workspace.repoUrl || workspace.ref)) {
+    body.workspace = workspace;
+  }
+  return body;
+}
+
+export function buildFollowUpRequest(session: Session): { prompt: string } {
+  const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
+  return { prompt: lastUser?.content ?? "" };
+}
+
+/** Snapshot of sandbox-safe files plus optional env repo hint. */
+export function buildRemoteWorkspaceHandoff(settings: Settings): CloudWorkspaceHandoff {
+  return collectWorkspaceHandoff({
+    workspaceRoot: settings.workspaceRoot,
+    ...resolveCloudRepoHint(),
+  });
 }
 
 export function assertNoSecretsInPayload(payload: unknown, settings: Settings): void {

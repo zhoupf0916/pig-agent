@@ -4,6 +4,8 @@ import {
   DEEPSEEK_BASE_URL,
   resolveCloudBaseUrl,
   resolveCloudMode,
+  resolveCloudRepoRef,
+  resolveCloudRepoUrl,
   resolveCloudToken,
   resolveCodexApiKey,
   resolveCodexBaseUrl,
@@ -64,5 +66,9 @@ describe("Cloud env isolation", () => {
     );
     expect(resolveCloudToken({ CLOUD_TOKEN: "tok" } as NodeJS.ProcessEnv)).toBe("tok");
     expect(resolveCloudToken({} as NodeJS.ProcessEnv)).toBe("");
+    expect(resolveCloudRepoUrl({ PIG_CLOUD_REPO_URL: "https://example.com/app.git" } as NodeJS.ProcessEnv)).toBe(
+      "https://example.com/app.git",
+    );
+    expect(resolveCloudRepoRef({ PIG_CLOUD_REPO_REF: "main" } as NodeJS.ProcessEnv)).toBe("main");
   });
 });
