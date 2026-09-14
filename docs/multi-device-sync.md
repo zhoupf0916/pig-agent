@@ -90,6 +90,10 @@ The live `GET …/events` connection stays open after a turn ends, so a follow-u
 
 Transcript SSE is per-session. The workstation sidebar is a **read-only** refresh of `GET /api/sessions` (status / title / `updatedAt`). Another tab on the same host that starts or finishes a turn does not need a full page reload. This does **not** dual-write session JSON or append `events.jsonl`.
 
+## Execution-surface chip (Milestone R)
+
+The top-bar runtime chip (本机 Pig / 本机 Codex / 云端) is a **read-only** refresh of `GET /api/settings`. Another same-host tab that saves a runtime change in Settings updates the chip on focus, visibility, or a short poll — no full page reload. Chip copy still comes from the existing execution-surface descriptors. Default runtime stays **pig**. This does **not** PUT settings or write sessions / `events.jsonl`.
+
 ## What this is not
 
 - No Redis / MySQL bus

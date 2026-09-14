@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab execution-surface chip (Milestone R)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/settings` refresh. No second write path, no settings dual-write, no events.jsonl change. Not a credentials vault / connector / multi-agent change.
+
+- [ ] Two workstation tabs on the same host. Tab A Settings: switch runtime (Codex or 云端) and **保存** — Tab B top-bar chip matches (本机 Codex / 云端 · …) without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab A switches back to **本机 Pig（默认）** and saves — both tabs show **本机 Pig**; chip copy is the existing execution-surface label (not a third status string)
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P drafts, Q sidebar running→idle, and L/M/N retry / abort paths unchanged
+- [ ] Chip / banner / settings never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Cross-tab session sidebar status (Milestone Q)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh. No second write path, no events.jsonl change. Not a credentials vault / connector / multi-agent change.
