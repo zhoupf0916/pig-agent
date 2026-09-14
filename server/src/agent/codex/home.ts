@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
@@ -7,7 +7,7 @@ import {
   resolveCodexHome,
 } from "../../config.ts";
 import type { Settings } from "../../types.ts";
-import { CODEX_MODELS_CATALOG } from "./models-catalog.ts";
+import { assertModelsHaveBaseInstructions, CODEX_MODELS_CATALOG } from "./models-catalog.ts";
 
 export class CodexTrustError extends Error {
   constructor(message: string) {
@@ -140,9 +140,26 @@ export async function syncCodexHome(
   });
 
   const configPath = join(home, "config.toml");
-  await writeFile(join(home, "models.json"), `${JSON.stringify(CODEX_MODELS_CATALOG, null, 2)}\n`, "utf8");
+  const catalogPath = join(home, "models.json");
+  await writeFile(catalogPath, `${JSON.stringify(CODEX_MODELS_CATALOG, null, 2)}\n`, "utf8");
+  // Validate the file Codex will actually load — not just the in-memory template.
+  assertCodexModelsCatalogFile(catalogPath);
   await writeFile(configPath, config, "utf8");
   return { home, workspaceRealPath, configPath };
+}
+
+/** Read the on-disk catalog that `model_catalog_json` points at and require `base_instructions`. */
+export function assertCodexModelsCatalogFile(catalogPath: string): void {
+  if (!existsSync(catalogPath)) {
+    throw new Error(`Codex models catalog file is missing: ${catalogPath}`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(catalogPath, "utf8"));
+  } catch {
+    throw new Error(`Codex models catalog is not valid JSON: ${catalogPath}`);
+  }
+  assertModelsHaveBaseInstructions(parsed, catalogPath);
 }
 
 export function trustedProjectsInToml(toml: string): string[] {

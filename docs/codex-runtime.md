@@ -3,8 +3,10 @@
 Pig Agent’s default backend is still the built-in **pig** OpenAI-compatible tool-calling loop. Codex is an **opt-in** alternative that shells out to:
 
 ```bash
-codex exec --json --skip-git-repo-check -C <realpath-workspace> …
+codex exec --json --skip-git-repo-check --ephemeral --color never -C <realpath-workspace> …
 ```
+
+`--ephemeral` keeps session state out of isolated `CODEX_HOME`. `--color never` disables ANSI so `--json` lines stay parseable.
 
 Stdin is closed (`stdio: ignore` / `</dev/null>`). Approval is `never` via isolated config — not `danger-full-access`.
 
