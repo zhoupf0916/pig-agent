@@ -7,7 +7,7 @@ import { listSkills } from "./agent/skills.ts";
 import { applyTeamRunStop } from "./agent/team-run.ts";
 import { prepareUserMessage, runningTurns, runSessionTurn } from "./agent/turn.ts";
 import { getExpertTeam } from "./store/experts.ts";
-import { shouldRunSequentialTeam } from "./store/team-run-state.ts";
+import { hasResumableMember, shouldRunSequentialTeam } from "./store/team-run-state.ts";
 import { WEB_ORIGIN } from "./config.ts";
 import { registerArtifactRoutes } from "./routes/artifacts.ts";
 import { registerAutomationRoutes } from "./routes/automations.ts";
@@ -242,11 +242,11 @@ export function createApp(): Hono {
     }
 
     if (action === "continue") {
-      const resumable = session.teamRun?.members.some(
-        (m) => m.status === "pending" || m.status === "error" || m.status === "running",
-      );
-      if (!session.teamRun || !resumable) {
-        return c.json({ error: "No paused team run to continue." }, 400);
+      if (!hasResumableMember(session.teamRun)) {
+        return c.json(
+          { error: "没有可继续的小队成员（需要未完成、出错或已取消的成员）。" },
+          400,
+        );
       }
     } else {
       const prompt = content?.trim();
