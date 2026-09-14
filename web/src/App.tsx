@@ -555,7 +555,7 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex items-center justify-between gap-3 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
           className="flex shrink-0 items-center gap-3 text-left"
@@ -565,19 +565,19 @@ export function App() {
           <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
             P
           </div>
-          <div>
+          <div className="hidden min-[420px]:block">
             <div className="text-sm font-medium text-ink-800">Pig Agent</div>
             <div className="text-meta text-ink-500">本机与云端同一协议</div>
           </div>
         </button>
-        <div className="min-w-0 max-w-lg flex-1">
+        <div className="order-3 min-w-0 w-full flex-1 basis-full md:order-none md:max-w-lg md:basis-auto">
           <SearchBox
             initialQ={route.name === "search" ? route.q ?? "" : ""}
             onOpenAll={(q) => goSearch(q)}
             onOpenHit={openHit}
           />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <LibraryMenu
             active={isLibraryPage(route.name) ? route.name : undefined}
             onProjects={() => goProjects(route.name === "projects" ? route.projectId : undefined)}
