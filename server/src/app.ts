@@ -2,25 +2,20 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
-import { runCloudAgent } from "./agent/cloud/runtime.ts";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
-import { runCodexAgent } from "./agent/codex/runtime.ts";
-import { runAgent } from "./agent/runtime.ts";
 import { listSkills } from "./agent/skills.ts";
+import { prepareUserMessage, runningTurns, runSessionTurn } from "./agent/turn.ts";
 import { WEB_ORIGIN } from "./config.ts";
+import { registerAutomationRoutes } from "./routes/automations.ts";
 import { registerExpertRoutes } from "./routes/experts.ts";
 import { registerProjectRoutes } from "./routes/projects.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
-import { resolveExpertPlaybook } from "./store/experts.ts";
-import { recordSessionBound, resolveProjectInstruction } from "./store/projects.ts";
 import { publishPersistedEvent } from "./store/events.ts";
+import { recordSessionBound } from "./store/projects.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
-import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "./types.ts";
-import { newId, nowIso, truncate } from "./util.ts";
+import type { Session } from "./types.ts";
 import { buildTree, readWorkspaceText } from "./workspace.ts";
-
-const running = new Map<string, AbortController>();
 
 const settingsSchema = z.object({
   llmBaseUrl: z.string().min(1).optional(),
@@ -78,6 +73,7 @@ export function createApp(): Hono {
 
   registerProjectRoutes(app);
   registerExpertRoutes(app);
+  registerAutomationRoutes(app);
   registerSyncRoutes(app);
 
   app.get("/api/sessions", async (c) => c.json({ sessions: await listSessions() }));
@@ -145,8 +141,8 @@ export function createApp(): Hono {
   });
 
   app.delete("/api/sessions/:id", async (c) => {
-    running.get(c.req.param("id"))?.abort();
-    running.delete(c.req.param("id"));
+    runningTurns.get(c.req.param("id"))?.abort();
+    runningTurns.delete(c.req.param("id"));
     const ok = await deleteSession(c.req.param("id"));
     if (!ok) return c.json({ error: "Session not found" }, 404);
     return c.json({ ok: true });
@@ -154,7 +150,7 @@ export function createApp(): Hono {
 
   app.post("/api/sessions/:id/abort", async (c) => {
     const id = c.req.param("id");
-    const controller = running.get(id);
+    const controller = runningTurns.get(id);
     controller?.abort();
     const session = await getSession(id);
     if (session && session.status === "running" && !controller) {
@@ -176,65 +172,20 @@ export function createApp(): Hono {
       return c.json({ error: "Message content is required" }, 400);
     }
 
-    const userMsg: ChatMessage = {
-      id: newId("msg"),
-      role: "user",
-      content: parsed.data.content.trim(),
-      createdAt: nowIso(),
-    };
-    session.messages.push(userMsg);
-    if (session.title === "新任务" || session.messages.filter((m) => m.role === "user").length === 1) {
-      session.title = truncate(userMsg.content, 36);
-    }
-    session.status = "running";
+    const userMsg = prepareUserMessage(session, parsed.data.content);
     await saveSession(session);
 
-    const settings = await loadSettings();
-    const controller = new AbortController();
-    running.set(id, controller);
-
     return streamSSE(c, async (stream) => {
-      let writes = Promise.resolve();
-      const emit = (event: AgentEvent) => {
-        writes = writes.then(async () => {
-          const record = await publishPersistedEvent(id, event);
-          await stream.writeSSE({
-            id: String(record.seq),
-            event: event.type,
-            data: JSON.stringify(event),
-          });
+      const onEvent = async (event: import("./types.ts").AgentEvent, seq: number) => {
+        await stream.writeSSE({
+          id: String(seq),
+          event: event.type,
+          data: JSON.stringify(event),
         });
       };
-
-      try {
-        emit({ type: "message", message: userMsg });
-        const runner = pickRunner(settings.runtime);
-        const projectInstruction = await resolveProjectInstruction(session.projectId);
-        const playbook = await resolveExpertPlaybook({
-          expertId: session.expertId,
-          expertTeamId: session.expertTeamId,
-        });
-        const next = await runner({
-          session,
-          settings,
-          signal: controller.signal,
-          emit,
-          projectInstruction,
-          expertInstruction: playbook.instruction,
-          preferredSkillIds: playbook.skillIds,
-        });
-        await writes;
-        await saveSession(next);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        session.status = "error";
-        session.lastError = message;
-        await saveSession(session);
-        await emit({ type: "error", message });
-        await emit({ type: "done", session });
-      } finally {
-        running.delete(id);
-      }
+      const first = await publishPersistedEvent(id, { type: "message", message: userMsg });
+      await onEvent(first.event, first.seq);
+      await runSessionTurn(session, { onEvent });
     });
   });
 
@@ -273,12 +224,6 @@ export function createApp(): Hono {
   });
 
   return app;
-}
-
-function pickRunner(runtime: AgentRuntime) {
-  if (runtime === "codex") return runCodexAgent;
-  if (runtime === "cloud") return runCloudAgent;
-  return runAgent;
 }
 
 export type { Session };

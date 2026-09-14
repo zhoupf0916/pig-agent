@@ -1,5 +1,7 @@
 import type {
   AgentEvent,
+  AgentRuntime,
+  Automation,
   Expert,
   ExpertKind,
   ExpertTeam,
@@ -206,6 +208,53 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<ExpertTeam>(r)),
+
+  automations: () => fetch("/api/automations").then((r) => json<{ automations: Automation[] }>(r)),
+
+  automation: (id: string) => fetch(`/api/automations/${id}`).then((r) => json<Automation>(r)),
+
+  createAutomation: (input: {
+    name: string;
+    prompt: string;
+    enabled?: boolean;
+    schedule?: string | null;
+    expertId?: string;
+    expertTeamId?: string;
+    projectId?: string;
+    runtime?: AgentRuntime;
+  }) =>
+    fetch("/api/automations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Automation>(r)),
+
+  patchAutomation: (
+    id: string,
+    patch: {
+      name?: string;
+      prompt?: string;
+      enabled?: boolean;
+      schedule?: string | null;
+      expertId?: string | null;
+      expertTeamId?: string | null;
+      projectId?: string | null;
+      runtime?: AgentRuntime;
+    },
+  ) =>
+    fetch(`/api/automations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<Automation>(r)),
+
+  deleteAutomation: (id: string) =>
+    fetch(`/api/automations/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+
+  runAutomation: (id: string) =>
+    fetch(`/api/automations/${id}/run`, { method: "POST" }).then((r) =>
+      json<{ automation: Automation; session: Session }>(r),
+    ),
 
   tree: () =>
     fetch("/api/workspace/tree").then((r) =>
