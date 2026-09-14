@@ -91,7 +91,7 @@ export async function runRemoteCloudAgent(options: {
     const message = err instanceof Error ? err.message : String(err);
     const aborted = message === "Aborted" || err instanceof DOMException || signal.aborted;
     if (runId) {
-      void abortRemoteRun(fetchFn, base, runId, headers);
+      await abortRemoteRun(fetchFn, base, runId, headers);
     }
     if (aborted) {
       const stop: ChatMessage = {
