@@ -333,6 +333,13 @@ export type CloudRepoHintStatus = {
   refSource?: CloudHintSource;
 };
 
+export type CloudInstallHints = {
+  install?: string;
+  deps?: string[];
+  tools?: string[];
+  setup?: string[];
+};
+
 export type CloudStatus = {
   mode: CloudMode;
   remoteUrlConfigured: boolean;
@@ -340,6 +347,8 @@ export type CloudStatus = {
   envJson?: CloudEnvJsonStatus;
   repoHint?: CloudRepoHintStatus;
   effectiveBaseUrl?: string;
+  installHints?: CloudInstallHints;
+  installHintsFile?: string;
 };
 
 export type Settings = {

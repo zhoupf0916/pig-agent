@@ -134,8 +134,9 @@ export function SettingsModal({
                     ）。优先级：本页填写 &gt; 仓库根目录{" "}
                     <code className="font-mono text-ink-800">env.json</code> &gt; 环境变量{" "}
                     <code className="font-mono text-ink-800">PIG_CLOUD_REPO_*</code>
-                    。Token / API Key 不要写入 env.json，见{" "}
-                    <code className="font-mono text-ink-800">env.json.example</code>。
+                    。Token / API Key 不要写入 env.json / environment.json。安装提示（deps / tools / setup）见{" "}
+                    <code className="font-mono text-ink-800">environment.json.example</code>
+                    ，只指导 worker 预备，不会写入密钥。
                   </p>
                   <Field label="仓库 URL（可选；remote clone hint）">
                     <input
@@ -206,6 +207,14 @@ export function SettingsModal({
                       }（${hintSourceLabel(settings.cloudStatus.repoHint.repoUrlSource)}）`}
                     />
                   )}
+                  <StatusLine
+                    ok={Boolean(settings.cloudStatus.installHints)}
+                    label={
+                      settings.cloudStatus.installHints
+                        ? `environment.json 安装提示${formatInstallHints(settings.cloudStatus.installHints)}`
+                        : "environment.json 安装提示未找到（可复制 environment.json.example）"
+                    }
+                  />
                 </ul>
               )}
             </div>
@@ -404,6 +413,21 @@ function hintSourceLabel(source: string | undefined): string {
   if (source === "env.json") return "env.json";
   if (source === "env") return "环境变量";
   return "未设置";
+}
+
+function formatInstallHints(hints: {
+  install?: string;
+  deps?: string[];
+  tools?: string[];
+  setup?: string[];
+}): string {
+  const bits = [
+    hints.install ? `install=${hints.install}` : "",
+    hints.deps?.length ? `deps=${hints.deps.join(",")}` : "",
+    hints.tools?.length ? `tools=${hints.tools.join(",")}` : "",
+    hints.setup?.length ? `setup=${hints.setup.join(",")}` : "",
+  ].filter(Boolean);
+  return bits.length ? `：${bits.join(" · ")}` : "";
 }
 
 function formatEnvJsonHints(hints: {

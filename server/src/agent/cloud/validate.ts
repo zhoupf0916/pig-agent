@@ -1,4 +1,5 @@
 import type { CloudStatus, Settings } from "../../types.ts";
+import { hasInstallHints, loadInstallHints } from "./environment-json.ts";
 import {
   ENV_JSON_FILENAME,
   loadCloudEnvJson,
@@ -23,6 +24,7 @@ export function inspectCloudStatus(
     envJson: file.hints,
     env: options.env,
   });
+  const install = loadInstallHints({ workspaceRoot: settings.workspaceRoot });
   return {
     mode: settings.cloudMode,
     remoteUrlConfigured: Boolean(effectiveBaseUrl),
@@ -36,6 +38,9 @@ export function inspectCloudStatus(
     },
     ...(repoHint.repoUrl || repoHint.ref ? { repoHint } : {}),
     ...(effectiveBaseUrl ? { effectiveBaseUrl } : {}),
+    ...(hasInstallHints(install.hints)
+      ? { installHints: install.hints, installHintsFile: install.file }
+      : {}),
   };
 }
 

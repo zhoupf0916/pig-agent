@@ -1,0 +1,6 @@
+{
+  "install": "pnpm install",
+  "deps": ["node>=20", "pnpm"],
+  "tools": ["git"],
+  "setup": ["pnpm install"]
+}

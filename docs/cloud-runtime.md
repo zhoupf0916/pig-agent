@@ -60,6 +60,30 @@ Precedence for remote-cloud hints (each field independently; empty Settings fiel
 
 `env.json` is discoverable in Settings → 云端 → remote (status + **填入 env.json 提示**). It must not contain tokens or API keys — those stay in `.env.local` or the Settings token field. The loader drops keys matching `token` / `apiKey` / `password` / `secret` even if someone adds them.
 
+### environment.json install hints (worker / local prep)
+
+Remote create-run can **ship** sanitized Cursor-style install hints and the control plane can **read** them from the payload or from `environment.json` inside the unpacked snapshot.
+
+Looked up in order (first file that has install/deps/tools/setup wins):
+
+1. `{workspace}/environment.json`
+2. `{workspace}/.cursor/environment.json`
+3. `{workspace}/env.json`
+4. same three names at the pig-agent repo root
+
+Documented shape ([`environment.json.example`](../environment.json.example)):
+
+```json
+{
+  "install": "pnpm install",
+  "deps": ["node>=20", "pnpm"],
+  "tools": ["git"],
+  "setup": ["pnpm install"]
+}
+```
+
+These hints **only guide worker / local prep**. Pig never writes `DEEPSEEK_API_KEY` / `PIG_CLOUD_TOKEN` / other provider keys into `data/cloud-runs/<id>/`, into the snapshot, or into repo sample files. Strings that look like keys (`sk-…`, `BEGIN … PRIVATE KEY`, `DEEPSEEK_API_KEY=…`) are dropped. Settings → 云端 → remote shows whether install hints were found. Default `runtime=pig` is unchanged; when remote is off the local golden path ignores these files except as ordinary workspace text.
+
 | Uploaded | Skipped |
 | --- | --- |
 | Regular files under the workspace root (text + small binaries) | `.env`, `.env.*` (any env file) |
@@ -95,12 +119,18 @@ Follow-ups do **not** re-upload the tree; the worker is expected to keep its wor
       "byteSize": 1234
     },
     "repoUrl": "https://github.com/acme/app.git",
-    "ref": "main"
+    "ref": "main",
+    "installHints": {
+      "install": "pnpm install",
+      "deps": ["node>=20", "pnpm"],
+      "tools": ["git"],
+      "setup": ["pnpm install"]
+    }
   }
 }
 ```
 
-`workspace.snapshot` is omitted only when the workspace root is missing. `repoUrl` / `ref` are omitted unless Settings, `env.json`, or `PIG_CLOUD_REPO_*` supplies them.
+`workspace.snapshot` is omitted only when the workspace root is missing. `repoUrl` / `ref` are omitted unless Settings, `env.json`, or `PIG_CLOUD_REPO_*` supplies them. `installHints` is omitted unless an `environment.json` (or alias) has non-secret install/deps/tools/setup.
 
 Response: `{ "id": "run_…", "status": "running" }` (`runId` or `{ run: { id } }` also accepted).
 
