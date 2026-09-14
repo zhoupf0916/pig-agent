@@ -349,7 +349,7 @@ export function AutomationsPanel({
               </span>
             </label>
 
-            <div className="rounded-card border border-ink-300 bg-white px-3 py-3 text-xs text-ink-600">
+            <div className="rounded-card border border-ink-300 bg-panel px-3 py-3 text-xs text-ink-600">
               <div>运行时：{detail.runtime}（默认 pig，不改全局设置）</div>
               <div className="mt-1">
                 上次运行：{detail.lastRunAt ? formatTime(detail.lastRunAt) : "尚未运行"}

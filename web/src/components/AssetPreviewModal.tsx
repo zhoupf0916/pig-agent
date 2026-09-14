@@ -49,8 +49,8 @@ export function AssetPreviewModal({
   const sourcePath = preview?.asset.sourceArtifactPath ?? asset.sourceArtifactPath;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-800/20 p-4 backdrop-blur-[2px]">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-card border border-ink-300 bg-white shadow-lift">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px]">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-card border border-ink-300 bg-panel shadow-lift">
         <div className="flex items-start justify-between gap-3 border-b border-ink-200 px-4 py-3">
           <div className="min-w-0">
             <h2 className="truncate font-mono text-sm text-ink-800">{asset.filename}</h2>

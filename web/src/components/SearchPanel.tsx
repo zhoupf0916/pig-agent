@@ -94,7 +94,7 @@ export function SearchPanel({
               <div className="mb-2 text-meta uppercase tracking-[0.16em] text-ink-500">
                 {searchHitLabel(group.type)}
               </div>
-              <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-1">
+              <ul className="space-y-1 rounded-card border border-ink-300 bg-panel p-1">
                 {group.hits.map((hit) => (
                   <li key={`${hit.type}:${hit.id}`}>
                     <button

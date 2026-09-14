@@ -142,7 +142,7 @@ export function ExpertsPanel({
           {teams.map((team) => (
             <div
               key={team.id}
-              className="rounded-card border border-ink-300 bg-white px-2.5 py-2 text-left"
+              className="rounded-card border border-ink-300 bg-panel px-2.5 py-2 text-left"
             >
               <div className="truncate text-[13px] font-medium text-ink-800">{team.name}</div>
               <div className="mt-0.5 text-meta text-ink-500">
@@ -262,7 +262,7 @@ export function ExpertsPanel({
                 {(detail.skillIds.length ? detail.skillIds : ["（无）"]).map((id) => (
                   <span
                     key={id}
-                    className="rounded-full border border-ink-300 bg-white px-2 py-0.5 text-meta text-ink-600"
+                    className="rounded-full border border-ink-300 bg-panel px-2 py-0.5 text-meta text-ink-600"
                   >
                     {id}
                   </span>

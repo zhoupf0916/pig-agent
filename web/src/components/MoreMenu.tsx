@@ -63,7 +63,7 @@ export function MoreMenu({
       </button>
       {open && (
         <div
-          className="absolute right-0 z-20 mt-2 w-56 rounded-card border border-ink-300 bg-white p-1 shadow-lift"
+          className="absolute right-0 z-20 mt-2 w-56 rounded-card border border-ink-300 bg-panel p-1 shadow-lift"
           role="menu"
         >
           {ITEMS.map((item) => {

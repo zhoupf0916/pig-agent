@@ -49,8 +49,8 @@ export function PinNoteDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-900/30 px-4">
-      <div className="w-full max-w-md rounded-card border border-ink-300 bg-white p-4 shadow-lift">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-overlay px-4">
+      <div className="w-full max-w-md rounded-card border border-ink-300 bg-panel p-4 shadow-lift">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-medium text-ink-800">钉住到本机记忆</div>

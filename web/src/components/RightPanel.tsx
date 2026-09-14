@@ -93,7 +93,7 @@ export function RightPanel({
 
   return (
     <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-ink-300 bg-ink-100 xl:w-[360px]">
-      <div className="flex border-b border-ink-300 bg-white/60">
+      <div className="flex border-b border-ink-400 bg-panel">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
           {artifacts.length > 0 && (
@@ -111,8 +111,8 @@ export function RightPanel({
         {tab === "artifacts" && (
           <div className="p-3">
             {bound && artifacts.length > 0 && (
-              <div className="mb-3 flex items-center justify-between gap-2 rounded-card border border-ink-300 bg-white px-2 py-1.5">
-                <p className="min-w-0 truncate text-meta text-ink-500">
+              <div className="mb-3 flex items-center justify-between gap-2 rounded-card border border-ink-400 bg-panel px-2 py-1.5">
+                <p className="min-w-0 truncate text-meta text-ink-600">
                   项目 {projectName ?? projectId}
                 </p>
                 <button
@@ -147,7 +147,7 @@ export function RightPanel({
               <div className="space-y-3">
                 {grouped.map((group) => (
                   <div key={group.action}>
-                    <div className="mb-1 px-1 text-meta uppercase tracking-[0.14em] text-ink-500">
+                    <div className="mb-1 px-1 text-meta uppercase tracking-[0.14em] text-ink-600">
                       {artifactLabel(group.action)} · {group.items.length}
                     </div>
                     <ul className="space-y-1">
@@ -162,10 +162,10 @@ export function RightPanel({
                             className={`flex min-w-0 flex-1 items-center gap-2 rounded-btn px-2 py-2 text-left text-xs hover:bg-ink-200 ${
                               previewPath === a.path
                                 ? "bg-accent-soft text-ink-800"
-                                : "text-ink-700"
+                                : "text-ink-800"
                             }`}
                           >
-                            <FileCode size={14} className="text-accent" />
+                            <FileCode size={14} className="text-accent-mute" />
                             <span className="min-w-0 flex-1 truncate">
                               {a.action === "moved" && a.fromPath
                                 ? `${a.fromPath} → ${a.path}`
@@ -206,8 +206,8 @@ export function RightPanel({
         )}
       </div>
 
-      <div className="min-h-[42%] border-t border-ink-300 bg-white">
-        <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-500">
+      <div className="min-h-[42%] border-t border-ink-400 bg-panel">
+        <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-600">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">
             {selected && selected.before !== undefined && selected.after !== undefined && (
@@ -216,7 +216,7 @@ export function RightPanel({
                   type="button"
                   onClick={() => setMode("file")}
                   className={`px-2 py-0.5 text-meta ${
-                    mode === "file" ? "bg-accent text-white" : "bg-white text-ink-600 hover:bg-ink-200"
+                    mode === "file" ? "bg-accent text-white" : "bg-panel text-ink-700 hover:bg-ink-200"
                   }`}
                 >
                   文件
@@ -225,7 +225,7 @@ export function RightPanel({
                   type="button"
                   onClick={() => setMode("diff")}
                   className={`px-2 py-0.5 text-meta ${
-                    mode === "diff" ? "bg-accent text-white" : "bg-white text-ink-600 hover:bg-ink-200"
+                    mode === "diff" ? "bg-accent text-white" : "bg-panel text-ink-700 hover:bg-ink-200"
                   }`}
                 >
                   对比
@@ -284,7 +284,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`flex-1 px-3 py-2.5 text-xs font-medium ${
-        active ? "border-b-2 border-accent text-ink-800" : "text-ink-500 hover:text-ink-700"
+        active ? "border-b-2 border-accent text-ink-800" : "text-ink-600 hover:text-ink-800"
       }`}
     >
       {children}
@@ -316,7 +316,7 @@ function FileTree({
         }`}
         style={{ paddingLeft: 8 + depth * 12 }}
       >
-        <FileText size={13} className="shrink-0 text-ink-400" />
+        <FileText size={13} className="shrink-0 text-ink-600" />
         <span className="truncate">{node.name}</span>
       </button>
     );
@@ -331,7 +331,7 @@ function FileTree({
           className="flex w-full items-center gap-1 rounded-btn py-1 text-left text-xs text-ink-700 hover:bg-ink-200"
           style={{ paddingLeft: 8 + depth * 12 }}
         >
-          <ChevronRight size={12} className={`shrink-0 text-ink-400 transition ${open ? "rotate-90" : ""}`} />
+          <ChevronRight size={12} className={`shrink-0 text-ink-600 transition ${open ? "rotate-90" : ""}`} />
           <Folder size={13} className="text-warning" />
           <span className="truncate">{node.name}</span>
         </button>
