@@ -1,0 +1,18 @@
+{
+  "models": [
+    {
+      "slug": "deepseek-flash",
+      "display_name": "DeepSeek-Flash",
+      "description": "Template only. Pig Agent writes a full catalog (with base_instructions) into the isolated CODEX_HOME at runtime.",
+      "input_modalities": ["text"],
+      "context_window": 1048576,
+      "max_context_window": 1048576,
+      "default_reasoning_level": "high",
+      "supported_in_api": true,
+      "visibility": "list",
+      "apply_patch_tool_type": "freeform",
+      "shell_type": "shell_command",
+      "base_instructions": "You are Codex running as an optional backend for Pig Agent. Stay inside the workspace. Prefer small reviewable edits. Summarize what changed."
+    }
+  ]
+}

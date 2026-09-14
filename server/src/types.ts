@@ -54,11 +54,30 @@ export type SessionSummary = Pick<
   "id" | "title" | "createdAt" | "updatedAt" | "status"
 >;
 
+export type AgentRuntime = "pig" | "codex";
+
+export type CodexStatus = {
+  binaryFound: boolean;
+  homeWritable: boolean;
+  apiKeyPresent: boolean;
+};
+
 export type Settings = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
   workspaceRoot: string;
+  /** Default pig loop. `codex` is an optional subprocess backend. */
+  runtime: AgentRuntime;
+  /** Empty = look up `codex` on PATH (or `CODEX_BIN`). */
+  codexBinaryPath: string;
+  /** Codex model slug, e.g. deepseek-flash. Not the pig Chat Completions model. */
+  codexModel: string;
+  /**
+   * Outbound network inside Codex workspace-write sandbox.
+   * Default false; must be an explicit opt-in.
+   */
+  codexNetworkAccess: boolean;
 };
 
 export type SkillMeta = {

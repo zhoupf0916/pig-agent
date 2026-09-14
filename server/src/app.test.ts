@@ -39,6 +39,14 @@ describe("HTTP API", () => {
     expect(((await got.json()) as { id: string }).id).toBe(session.id);
   });
 
+  it("defaults settings runtime to pig", async () => {
+    const res = await app.request("/api/settings");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { runtime: string; codexNetworkAccess: boolean };
+    expect(body.runtime).toBe("pig");
+    expect(body.codexNetworkAccess).toBe(false);
+  });
+
   it("lists shipped skills", async () => {
     const res = await app.request("/api/skills");
     const body = (await res.json()) as { skills: Array<{ name: string }> };

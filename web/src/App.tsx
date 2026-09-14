@@ -264,6 +264,10 @@ export function App() {
 
   const headerHint = useMemo(() => {
     if (!settings) return "正在连接本地后端…";
+    if (settings.runtime === "codex") {
+      const net = settings.codexNetworkAccess ? " · 外网已开" : "";
+      return `codex · ${settings.codexModel}${net}`;
+    }
     const model = settings.llmModel;
     const host = settings.llmBaseUrl.replace(/^https?:\/\//, "");
     return `${model} · ${host}`;

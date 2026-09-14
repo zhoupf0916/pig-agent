@@ -81,6 +81,10 @@ export function toolLabel(name: string): string {
     http_fetch: "抓取网页",
     list_skills: "列出技能",
     load_skill: "加载技能",
+    command_execution: "运行命令",
+    file_change: "变更文件",
+    web_search: "网页搜索",
+    mcp_tool_call: "MCP 工具",
   };
   return map[name] ?? name;
 }

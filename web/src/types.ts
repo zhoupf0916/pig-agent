@@ -54,12 +54,25 @@ export type SessionSummary = Pick<
   "id" | "title" | "createdAt" | "updatedAt" | "status"
 >;
 
+export type AgentRuntime = "pig" | "codex";
+
+export type CodexStatus = {
+  binaryFound: boolean;
+  homeWritable: boolean;
+  apiKeyPresent: boolean;
+};
+
 export type Settings = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
   workspaceRoot: string;
   workspaceExists?: boolean;
+  runtime: AgentRuntime;
+  codexBinaryPath: string;
+  codexModel: string;
+  codexNetworkAccess: boolean;
+  codexStatus?: CodexStatus;
 };
 
 export type SkillMeta = {

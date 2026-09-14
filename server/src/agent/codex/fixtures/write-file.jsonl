@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"0199a213-81c0-7800-8aa1-bbab2a035a53"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"bash -lc ls","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"bash -lc ls","aggregated_output":"notes\ndrafts\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"file_change","changes":[{"path":"hello.md","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_4","type":"file_change","changes":[{"path":"hello.md","kind":"add"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"已写入 hello.md，请在产物面板查看。"}}
+{"type":"turn.completed","usage":{"input_tokens":120,"cached_input_tokens":0,"output_tokens":40}}

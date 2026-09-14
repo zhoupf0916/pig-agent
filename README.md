@@ -69,6 +69,24 @@ pnpm dev
 | Ollama | `http://127.0.0.1:11434/v1` | 需支持 tool calling 的模型 |
 | OpenAI | `https://api.openai.com/v1` | 用 `OPENAI_API_KEY` |
 
+### 可选：Codex 运行时
+
+默认仍是 **pig**（上面的 Chat Completions 循环）。设置里可把运行时切到 **codex**，此时后端走隔离的 `CODEX_HOME` 并执行 `codex exec --json`（stdin 关闭，`approval_policy=never`），再映射成现有的 `AgentEvent` SSE。
+
+| 项 | 默认 / 要求 |
+| --- | --- |
+| 运行时 | `pig`（不选 Codex 则行为与以前完全一致） |
+| Codex 沙箱 | `workspace-write`，**`network_access=false`**（外网需在设置里显式勾选，有警告） |
+| 模型 | `deepseek-flash`（Responses API；`wire_api=chat` 会被现代 Codex 拒绝） |
+| Provider URL | `https://api.deepseek.com/`（**不会**把 pig 的 `llmBaseUrl` `…/v1` 映射进去） |
+| 密钥 | 只用环境变量 `DEEPSEEK_API_KEY` / `CODEX_API_KEY` |
+| 工作区信任 | 仅 `realpath(workspaceRoot)`，切换工作区会重写 `[projects."…"]` |
+| 中止 | 杀进程组，1.5s 后 SIGKILL |
+
+安装 `@openai/codex` **0.154.x**（或兼容的 CLI），在设置中选择 Codex，发一条「写一个文件」即可看到工具卡片与产物。多轮只拼接最近若干条用户/助手文本，**没有 Codex 原生跨轮记忆**。
+
+已知缺口（刻意不做）：skills 桥、update_plan/步骤条、细粒度 token 流、danger-full-access。详见 [docs/codex-runtime.md](./docs/codex-runtime.md)。仓库里只有 [examples/codex/](./examples/codex/) 模板，不要提交真实密钥。
+
 没有可用模型时，可开离线 mock（同一套协议，用来看工具与产物）：
 
 ```bash
@@ -169,4 +187,6 @@ data/           Created at runtime (sessions + settings) — gitignored
 
 Tools resolve every path against the workspace root and refuse escapes. Shell still runs on the host with `cwd=workspace` — treat the workspace as trusted-and-bounded, not as a full OS jail. `http_fetch` blocks private IPs and redirects.
 
-Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace. Do not commit real API keys.
+Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json` with an isolated `CODEX_HOME`, `wire_api=responses`, DeepSeek `deepseek-flash`, `approval_policy=never`, and `network_access=false` unless you explicitly opt in. Pig `llmBaseUrl` (`…/v1`) is never copied into the Codex provider. See [docs/codex-runtime.md](./docs/codex-runtime.md).
+
+Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access. Do not commit real API keys.
