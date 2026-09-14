@@ -13,8 +13,8 @@ import {
 function memoryStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };
   return {
-    getItem(key: string) {
-      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+    getItem(key: string): string | null {
+      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] ?? null : null;
     },
     setItem(key: string, value: string) {
       data[key] = value;
