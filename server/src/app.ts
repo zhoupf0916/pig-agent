@@ -6,6 +6,10 @@ import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { listSkills } from "./agent/skills.ts";
 import { applyTeamRunStop } from "./agent/team-run.ts";
 import {
+  hasRetryableUserGoal,
+  rewindToLastUserGoal,
+} from "./agent/local-errors.ts";
+import {
   prepareUserMessage,
   releaseStaleRunningSession,
   runningTurns,
@@ -187,6 +191,7 @@ export function createApp(): Hono {
         latest.status = "idle";
         latest.lastError = undefined;
         latest.remoteRetry = undefined;
+        latest.localRetry = undefined;
         await saveSession(latest);
       }
     }
@@ -203,13 +208,23 @@ export function createApp(): Hono {
     if (session.status === "running") {
       await releaseStaleRunningSession(session);
     }
-    if (!session.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))) {
-      return c.json({ error: "没有可重试的消息。" }, 400);
+    if (!hasRetryableUserGoal(session)) {
+      session.localRetry = "unavailable";
+      session.lastError = session.lastError ?? "无法重试本轮。没有可重试的用户目标。";
+      await saveSession(session);
+      return c.json({ error: "没有可重试的消息。", localRetry: "unavailable" }, 400);
+    }
+
+    // Remote L keeps transcript for follow-up / create-run. Local pig rewinds
+    // to the last user goal so 重试本轮 does not duplicate-insert the message.
+    if (!session.remoteRetry) {
+      rewindToLastUserGoal(session);
     }
 
     session.status = "running";
     session.lastError = undefined;
     session.remoteRetry = undefined;
+    session.localRetry = undefined;
     await saveSession(session);
 
     return streamSSE(c, async (stream) => {
@@ -312,6 +327,7 @@ export function createApp(): Hono {
       } else {
         session.status = "running";
         session.lastError = undefined;
+        session.localRetry = undefined;
         await saveSession(session);
       }
     }

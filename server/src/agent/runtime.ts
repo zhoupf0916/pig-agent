@@ -9,7 +9,12 @@ import type {
 import { newId, nowIso, safeJsonParse } from "../util.ts";
 import { formatMemoryPinBlock, listRecentPinTexts } from "../store/memory.ts";
 import { formatBoundInstructionBlock } from "./bound-instructions.ts";
-import { LlmError, complete } from "./openai.ts";
+import {
+  LOCAL_TURN_MESSAGES,
+  decideLocalRetry,
+  formatLocalTurnError,
+} from "./local-errors.ts";
+import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
 import { executeTool, summarizeToolArgs, type ToolContext } from "./tools.ts";
@@ -101,6 +106,7 @@ export async function runAgent(options: {
     ...options.session,
     status: "running",
     lastError: undefined,
+    localRetry: undefined,
     updatedAt: nowIso(),
   };
   emit({ type: "status", status: "running" });
@@ -281,6 +287,9 @@ export async function runAgent(options: {
         });
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
           forceSummary = true;
+          session.lastError = LOCAL_TURN_MESSAGES.tool_failed;
+          session.localRetry = decideLocalRetry(session);
+          emit({ type: "error", message: session.lastError });
         }
       } else {
         consecutiveErrors = 0;
@@ -300,13 +309,8 @@ export async function runAgent(options: {
     emit({ type: "message", message: overflow });
     return finishIdle(session, emit);
   } catch (err) {
-    const message =
-      err instanceof LlmError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : String(err);
-    const aborted = message === "Aborted" || signal.aborted;
+    const raw = err instanceof Error ? err.message : String(err);
+    const aborted = raw === "Aborted" || signal.aborted;
     if (aborted) {
       const stop: ChatMessage = {
         id: newId("msg"),
@@ -318,10 +322,14 @@ export async function runAgent(options: {
       emit({ type: "message", message: stop });
       session.status = "idle";
       session.lastError = undefined;
+      session.localRetry = undefined;
     } else {
-      session.status = "error";
-      session.lastError = message;
-      emit({ type: "error", message });
+      // Recoverable idle + banner — session must not stick in running.
+      session.status = "idle";
+      session.lastError = formatLocalTurnError(err);
+      session.localRetry = decideLocalRetry(session);
+      session.remoteRetry = undefined;
+      emit({ type: "error", message: session.lastError });
     }
     session.updatedAt = nowIso();
     emit({ type: "status", status: session.status });

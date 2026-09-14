@@ -10,7 +10,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 ### 它做什么
 
-- **对话 / 任务**：流式回复、步骤条、带耗时的工具卡片（参数摘要 / 成功失败）、**停止**当前一轮
+- **对话 / 任务**：流式回复、步骤条、带耗时的工具卡片（参数摘要 / 成功失败）、**停止**当前一轮；本机失败可 **重试本轮**
 - **产物面板**：按新建 / 修改 / 移动 / 删除分组；文本文件可看前后对比
 - **工作区浏览器**：浏览沙箱根目录并预览
 - **Agent 运行时**：OpenAI 兼容 Chat Completions 的 tool-calling 循环（`tool_choice=auto`，并行工具失败则回退）；有最大轮次、连续失败恢复、结束后的用户可见摘要
@@ -26,7 +26,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 会话写在 `data/sessions/`，项目写在 `data/projects/`，专家写在 `data/experts/`，自动化写在 `data/automations/`，记忆写在 `data/memory/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
 
-这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。顶栏与设置会标出当前执行面（Pig / Codex / 云端含 remote URL）；远程断连 / 超时 / 过期给出可读中文原因并可重试（继续跟进或重新创建运行），停止后下一轮不会僵尸。
+这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。顶栏与设置会标出当前执行面（Pig / Codex / 云端含 remote URL）；本机 Pig 密钥/网关/工具失败给出可读中文原因并可 **重试本轮**（不重复插入用户消息，会话回到 idle）；远程断连 / 超时 / 过期给出可读中文原因并可重试（继续跟进或重新创建运行），停止后下一轮不会僵尸。
 
 ### 快速开始
 

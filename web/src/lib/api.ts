@@ -482,7 +482,7 @@ export async function streamMessage(
   await readSseStream(res.body, onEvent);
 }
 
-/** Re-run the last user turn (follow-up or new create-run). Does not add a message. */
+/** Re-run the last user turn (pig 重试本轮, or remote follow-up / create-run). Does not add a message. */
 export async function streamRetry(
   sessionId: string,
   onEvent: (event: AgentEvent, seq?: number) => void,

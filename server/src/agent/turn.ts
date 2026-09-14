@@ -6,8 +6,10 @@ import { loadSettings } from "../store/settings.ts";
 import { shouldRunSequentialTeam } from "../store/team-run-state.ts";
 import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts";
 import { newId, nowIso, truncate } from "../util.ts";
+import { decideRemoteRetry, formatCloudRemoteError } from "./cloud/errors.ts";
 import { runCloudAgent } from "./cloud/runtime.ts";
 import { runCodexAgent } from "./codex/runtime.ts";
+import { decideLocalRetry, formatLocalTurnError } from "./local-errors.ts";
 import { runAgent } from "./runtime.ts";
 import { runSequentialTeamTurn } from "./team-run.ts";
 
@@ -62,6 +64,7 @@ export function prepareUserMessage(session: Session, content: string): ChatMessa
   session.status = "running";
   session.lastError = undefined;
   session.remoteRetry = undefined;
+  session.localRetry = undefined;
   return userMsg;
 }
 
@@ -125,11 +128,20 @@ export async function runSessionTurn(
     await saveSession(next);
     return next;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    session.status = "error";
-    session.lastError = message;
+    if (runtime === "cloud") {
+      session.status = "error";
+      session.lastError = formatCloudRemoteError(err);
+      session.remoteRetry = decideRemoteRetry(err, session.remoteRunId);
+      if (session.remoteRetry === "create-run") delete session.remoteRunId;
+      session.localRetry = undefined;
+    } else {
+      session.status = "idle";
+      session.lastError = formatLocalTurnError(err);
+      session.localRetry = decideLocalRetry(session);
+      session.remoteRetry = undefined;
+    }
     await saveSession(session);
-    await emit({ type: "error", message });
+    await emit({ type: "error", message: session.lastError });
     await emit({ type: "done", session });
     await writes;
     return session;

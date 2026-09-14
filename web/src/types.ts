@@ -40,6 +40,9 @@ export type SessionStatus = "idle" | "running" | "error";
 /** How the workstation retries a failed remote turn. Default runtime stays pig. */
 export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 
+/** How the workstation retries a failed local pig turn (Milestone M). */
+export type LocalRetryKind = "turn" | "unavailable";
+
 export type Session = {
   id: string;
   title: string;
@@ -51,6 +54,7 @@ export type Session = {
   artifacts: Artifact[];
   lastError?: string;
   remoteRetry?: RemoteRetryKind;
+  localRetry?: LocalRetryKind;
   projectId?: string;
   eventCheckpointSeq?: number;
   remoteRunId?: string;

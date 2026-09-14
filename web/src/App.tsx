@@ -325,7 +325,16 @@ export function App() {
       return;
     }
     if (event.type === "error") {
-      setSession((prev) => (prev ? { ...prev, lastError: event.message, status: "error" } : prev));
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              lastError: event.message,
+              status: prev.remoteRetry ? "error" : "idle",
+              localRetry: prev.remoteRetry ? prev.localRetry : "turn",
+            }
+          : prev,
+      );
       return;
     }
     if (event.type === "team_run") {
@@ -391,10 +400,11 @@ export function App() {
           prev
             ? {
                 ...prev,
-                status: "error",
+                status: "idle",
                 lastError: redactSecretsForDisplay(
                   err instanceof Error ? err.message : String(err),
                 ),
+                localRetry: "turn",
               }
             : prev,
         );
@@ -417,7 +427,7 @@ export function App() {
     setStreaming(false);
     setSession((prev) =>
       prev
-        ? { ...prev, status: "idle", lastError: undefined, remoteRetry: undefined }
+        ? { ...prev, status: "idle", lastError: undefined, remoteRetry: undefined, localRetry: undefined }
         : prev,
     );
   }, [session]);
@@ -428,7 +438,7 @@ export function App() {
     setLiveTools([]);
     setSession((prev) =>
       prev
-        ? { ...prev, status: "running", lastError: undefined, remoteRetry: undefined }
+        ? { ...prev, status: "running", lastError: undefined, remoteRetry: undefined, localRetry: undefined }
         : prev,
     );
     const controller = new AbortController();
@@ -443,10 +453,11 @@ export function App() {
           prev
             ? {
                 ...prev,
-                status: "error",
+                status: "idle",
                 lastError: redactSecretsForDisplay(
                   err instanceof Error ? err.message : String(err),
                 ),
+                localRetry: prev.remoteRetry ? undefined : "turn",
               }
             : prev,
         );
@@ -685,10 +696,10 @@ export function App() {
           <button
             type="button"
             className="btn-ghost shrink-0 text-xs"
-            disabled={streaming}
+            disabled={streaming || session.localRetry === "unavailable"}
             onClick={() => void retry()}
           >
-            {retryActionLabel(session.remoteRetry)}
+            {retryActionLabel(session.remoteRetry, session.localRetry)}
           </button>
         </div>
       )}

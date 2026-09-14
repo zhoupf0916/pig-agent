@@ -115,6 +115,12 @@ export function SettingsModal({
               />
             </div>
           </Field>
+          {form.runtime === "pig" && (
+            <p className="text-meta leading-relaxed text-ink-600">
+              密钥无效、网关不可达或工具连续失败时会显示中文原因，并可「重试本轮」（不重复插入用户消息）。会话回到
+              idle，不会卡在运行中。
+            </p>
+          )}
 
           {form.runtime === "cloud" && (
             <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
