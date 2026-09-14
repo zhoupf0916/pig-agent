@@ -173,8 +173,12 @@ export function AutomationsPanel({
                 </div>
                 <div className="mt-0.5 truncate text-meta text-ink-500">
                   {automationLastRunLabel(item.lastRunAt)}
-                  {item.lastSessionId ? ` · ${automationLastSessionLabel(item.lastSessionId)}` : ""}
                 </div>
+                {automationLastSessionLabel(item.lastSessionId) && (
+                  <div className="mt-0.5 truncate text-meta text-ink-500">
+                    {automationLastSessionLabel(item.lastSessionId)}
+                  </div>
+                )}
                 {listError && (
                   <div className="mt-0.5 truncate text-meta text-danger">{listError}</div>
                 )}
