@@ -1,9 +1,10 @@
-import { Pin, Search, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
+import { isMorePage, MoreMenu } from "./components/MoreMenu";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
@@ -554,68 +555,51 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex items-center justify-between gap-3 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
-        <div className="flex shrink-0 items-center gap-3">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
+        <button
+          type="button"
+          className="flex shrink-0 items-center gap-3 text-left"
+          aria-label="回到工作台"
+          onClick={() => goWorkstation(activeId ?? undefined)}
+        >
           <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
             P
           </div>
-          <div>
+          <div className="hidden min-[420px]:block">
             <div className="text-sm font-medium text-ink-800">Pig Agent</div>
-            <div className="text-meta text-ink-500">工作台 · 本机与云端同一协议</div>
+            <div className="text-meta text-ink-500">本机与云端同一协议</div>
           </div>
-        </div>
-        <div className="hidden min-w-0 max-w-lg flex-1 md:block">
+        </button>
+        <div className="order-3 min-w-0 w-full flex-1 basis-full md:order-none md:max-w-lg md:basis-auto">
           <SearchBox
             initialQ={route.name === "search" ? route.q ?? "" : ""}
             onOpenAll={(q) => goSearch(q)}
             onOpenHit={openHit}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            className={route.name === "workstation" ? "btn-primary" : "btn-ghost"}
-            onClick={() => goWorkstation(activeId ?? undefined)}
-          >
-            工作台
-          </button>
-          <button
-            type="button"
-            className={route.name === "projects" ? "btn-primary" : "btn-ghost"}
+            className={route.name === "projects" ? "btn-nav-active" : "btn-nav"}
             onClick={() => goProjects(route.name === "projects" ? route.projectId : undefined)}
           >
             项目
           </button>
           <button
             type="button"
-            className={route.name === "experts" ? "btn-primary" : "btn-ghost"}
+            className={route.name === "experts" ? "btn-nav-active" : "btn-nav"}
             onClick={() => goExperts(route.name === "experts" ? route.expertId : undefined)}
           >
             专家
           </button>
-          <button
-            type="button"
-            className={route.name === "automations" ? "btn-primary" : "btn-ghost"}
-            onClick={() => goAutomations(route.name === "automations" ? route.automationId : undefined)}
-          >
-            自动化
-          </button>
-          <button
-            type="button"
-            className={route.name === "memory" ? "btn-primary" : "btn-ghost"}
-            onClick={() => goMemory(route.name === "memory" ? route.noteId : undefined)}
-          >
-            <Pin size={14} />
-            记忆
-          </button>
-          <button
-            type="button"
-            className={route.name === "search" ? "btn-primary" : "btn-ghost"}
-            onClick={() => goSearch(route.name === "search" ? route.q : undefined)}
-          >
-            <Search size={14} />
-            搜索
-          </button>
+          <MoreMenu
+            active={isMorePage(route.name) ? route.name : undefined}
+            onMemory={() => goMemory(route.name === "memory" ? route.noteId : undefined)}
+            onAutomations={() =>
+              goAutomations(route.name === "automations" ? route.automationId : undefined)
+            }
+          />
+          <div className="hidden h-4 w-px bg-ink-300 sm:block" aria-hidden />
           <InboxMenu
             onOpenProject={(id) => goProjects(id)}
             onOpenSession={(id) => {
@@ -623,9 +607,9 @@ export function App() {
               goWorkstation(id);
             }}
           />
-          <div className="hidden text-right text-meta text-ink-500 sm:block">
+          <div className="hidden text-right text-meta text-ink-500 lg:block">
             <div>{headerHint}</div>
-            <div className="max-w-[360px] truncate font-mono">
+            <div className="max-w-[280px] truncate font-mono">
               {settings?.workspaceRoot ?? ""}
             </div>
           </div>
@@ -668,7 +652,6 @@ export function App() {
         ) : route.name === "search" ? (
           <SearchPanel
             initialQ={route.q}
-            onQueryChange={(q) => goSearch(q)}
             onOpenHit={openHit}
           />
         ) : route.name === "memory" ? (

@@ -2,6 +2,16 @@
 
 Use this after `pnpm install && pnpm dev`. UI is http://127.0.0.1:5173.
 
+## Topbar IA
+
+- [ ] Header has **one** search box (no **搜索** tab, and `#/search` has no second input). Ctrl+K / `/` still focuses it; Enter opens `#/search`
+- [ ] No **工作台** tab. Click the Pig Agent mark to return to the workstation (`#/` / current session)
+- [ ] L1 shows **项目** and **专家** as visible buttons (not inside a menu)
+- [ ] **更多** overflow contains only **记忆** and **自动化**
+- [ ] **收件箱** sits in the right cluster with **设置** (after the divider)
+- [ ] Selected nav is underline + soft ink — **not** a solid-green pill
+- [ ] Workstation surface is unchanged: sessions / chat / plan / tool cards / artifacts / workspace
+
 ## Smoke (no LLM required)
 
 - [ ] Page loads: left sessions, center chat, right artifacts/workspace
@@ -68,7 +78,7 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 
 No LLM required for the project surface. Sync live tokens still need a model or `pnpm mock:llm`.
 
-- [ ] Header shows **工作台** / **项目** / **收件箱**. Default runtime is still **本机 Pig**
+- [ ] Header: brand → workstation, L1 **项目**, **收件箱** in the right cluster. Default runtime is still **本机 Pig**
 - [ ] Open `#/projects`, create a project, write an instruction, add a todo, upload a small text asset
 - [ ] **在此项目开任务** creates a session bound to the project; chat header shows the project name
 - [ ] Invite generates a placeholder token and an unread inbox item; mark read from the inbox menu
@@ -85,7 +95,7 @@ No LLM required for the project surface. Sync live tokens still need a model or 
 
 No LLM required for the directory. Prompt injection is covered by `pnpm test`.
 
-- [ ] Header shows **工作台** / **项目** / **专家**. Default runtime is still **本机 Pig**
+- [ ] Header L1 shows **专家**. Default runtime is still **本机 Pig**
 - [ ] Open `#/experts` — bundled **侦察 Scout** / **规划 Plan** / **实现 Implement** / **评审 Review** and team **编码流水线** are listed
 - [ ] Create a custom expert, edit its instruction, reload — JSON persists under `data/experts/`
 - [ ] **绑定到当前会话** (or the workstation **专家** select) sets `session.expertId`; hint reads 专家指令将注入 / 先于项目指令
@@ -100,7 +110,7 @@ No LLM required for the directory. Prompt injection is covered by `pnpm test`.
 
 No public webhooks. The in-process scheduler starts with `pnpm dev` / `pnpm start` (not with `createApp()` in unit tests). See [docs/automations.md](./docs/automations.md).
 
-- [ ] Header shows **工作台** / **项目** / **专家** / **自动化**. Default runtime is still **本机 Pig**
+- [ ] Header: **更多** → **自动化**. Default runtime is still **本机 Pig**
 - [ ] Open `#/automations`, create an automation with a prompt, leave schedule empty (manual-only)
 - [ ] Optionally pin an expert and/or project, toggle **启用**
 - [ ] **立即运行** creates a new session, opens the workstation, and shows the prompt as the first user message
@@ -145,7 +155,7 @@ No LLM required. See [docs/project-assets.md](./docs/project-assets.md).
 
 No LLM required. No embeddings. See [docs/search.md](./docs/search.md).
 
-- [ ] Header shows a search box (desktop) and a **搜索** nav item. Default runtime is still **本机 Pig**
+- [ ] Header has a single search box (no **搜索** tab). Default runtime is still **本机 Pig**
 - [ ] Open `#/search`, type a unique phrase from a session title or recent user/assistant message — a **会话** hit appears
 - [ ] Click the session hit — workstation opens that transcript (`#/sessions/<id>`)
 - [ ] Search a project name / instruction / todo / comment — typed hits navigate to `#/projects/<id>` (todo is highlighted)
@@ -159,7 +169,7 @@ No LLM required. No embeddings. See [docs/search.md](./docs/search.md).
 
 No LLM required. Recap is a heuristic template. See [docs/memory.md](./docs/memory.md).
 
-- [ ] Header shows **记忆**. Default runtime is still **本机 Pig**
+- [ ] Header: **更多** → **记忆**. Default runtime is still **本机 Pig**
 - [ ] Open `#/memory`, add a pin with unique text + optional tags — JSON appears under `data/memory/`
 - [ ] Edit the pin, reload — text persists. Delete removes the file
 - [ ] Workstation: **钉住笔记** binds the current `sessionId` (and `projectId` when bound)
@@ -175,7 +185,7 @@ No LLM required. Recap is a heuristic template. See [docs/memory.md](./docs/memo
 
 Same-session chain (not handoff-per-step). Default runtime stays **本机 Pig**. Sequential coverage is in `pnpm test` (scripted LLM, no live DeepSeek). See [docs/experts.md](./docs/experts.md).
 
-- [ ] Header still **工作台** / **项目** / **专家**. Default runtime is **本机 Pig**
+- [ ] Header still brand → workstation and L1 **专家**. Default runtime is **本机 Pig**
 - [ ] Bind **编码流水线** on a session — pin row shows 小队流水线 chips (侦察 → 规划 → 实现 → 评审) and **顺序执行小队**
 - [ ] Pin a single expert as well — hint reads 已钉选单个专家，小队仅作元数据; the sequential button hides
 - [ ] `pnpm mock:llm`, Settings Pig Base URL `http://127.0.0.1:8788/v1`. New session, bind 编码流水线, click **顺序执行小队** with a short goal — `[team] 1/4 · 侦察 Scout 开始` markers appear, chips advance, session stays one transcript
