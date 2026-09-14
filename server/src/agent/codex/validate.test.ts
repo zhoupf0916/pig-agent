@@ -31,7 +31,7 @@ describe("Codex startup validation", () => {
     const status = inspectCodexStatus(s, env);
     expect(status.binaryFound).toBe(false);
     expect(status.apiKeyPresent).toBe(false);
-    expect(() => assertCodexReady(s, env)).toThrow(/Codex binary not found/);
+    expect(() => assertCodexReady(s, env)).toThrow(/未找到 Codex 二进制/);
   });
 
   it("accepts DEEPSEEK_API_KEY from the environment", () => {

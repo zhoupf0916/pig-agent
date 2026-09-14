@@ -2,13 +2,9 @@ import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { resolveCodexApiKey, resolveCodexHome } from "../../config.ts";
 import type { CodexStatus, Settings } from "../../types.ts";
+import { CodexValidationError } from "./errors.ts";
 
-export class CodexValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CodexValidationError";
-  }
-}
+export { CodexValidationError } from "./errors.ts";
 
 export function resolveCodexBinary(
   binaryPath: string,
@@ -80,17 +76,13 @@ export function assertCodexReady(
   const binary = resolveCodexBinary(settings.codexBinaryPath, env);
   const home = resolveCodexHome(env);
   if (!status.binaryFound) {
-    throw new CodexValidationError(
-      `Codex binary not found (${binary}). Install @openai/codex 0.154.x+ or set the Codex binary path / CODEX_BIN.`,
-    );
+    throw new CodexValidationError("binary_missing", binary);
   }
   if (!status.homeWritable) {
-    throw new CodexValidationError(`CODEX_HOME is not writable: ${home}`);
+    throw new CodexValidationError("home_unwritable", home);
   }
   if (!status.apiKeyPresent) {
-    throw new CodexValidationError(
-      "Missing DEEPSEEK_API_KEY or CODEX_API_KEY. Codex keys come from the environment only — never commit them.",
-    );
+    throw new CodexValidationError("api_key_missing");
   }
   return { binary, home };
 }

@@ -50,6 +50,10 @@ Each run builds one prompt from the last N **user/assistant text** messages, plu
 
 Tool calls are stored as pig `session.messages`: an assistant message with `toolCalls` plus a synthetic `role: "tool"` result. Reloading the session rebuilds tool cards the same way as the pig runtime.
 
+## Recoverability (Milestone N)
+
+Missing binary, unwritable `CODEX_HOME`, missing env key, spawn/start failure, or a Codex session error (`turn.failed` / non-zero exit) surface as a readable **Chinese** `session.lastError` plus **重试本轮**. The session returns to **idle** (not stuck `running` / `error`). Retry rewinds to the last user goal and does not insert a second copy of that message. Secrets (`sk-…`, `Bearer`, `DEEPSEEK_API_KEY` / `CODEX_API_KEY` assignments) are redacted. Default runtime stays **pig**.
+
 ## Known gaps (MVP)
 
 - No skills bridge (`list_skills` / `load_skill` are pig-only)

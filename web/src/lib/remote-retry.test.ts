@@ -8,7 +8,7 @@ describe("remote retry labels", () => {
     expect(retryActionLabel("unavailable")).toBe("重试");
   });
 
-  it("labels a local pig failure as 重试本轮", () => {
+  it("labels a local pig or Codex failure as 重试本轮", () => {
     expect(retryActionLabel(undefined, "turn")).toBe("重试本轮");
     expect(retryActionLabel()).toBe("重试本轮");
     expect(retryActionLabel(undefined, "unavailable")).toBe("无法重试");

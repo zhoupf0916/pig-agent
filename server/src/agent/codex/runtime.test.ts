@@ -98,7 +98,8 @@ describe("runCodexAgent", () => {
       signal: new AbortController().signal,
       emit: () => undefined,
     });
-    expect(next.status).toBe("error");
-    expect(next.lastError).toMatch(/Codex binary not found/);
+    expect(next.status).toBe("idle");
+    expect(next.lastError).toMatch(/未找到 Codex 二进制/);
+    expect(next.localRetry).toBe("turn");
   });
 });

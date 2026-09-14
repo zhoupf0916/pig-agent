@@ -215,7 +215,7 @@ export function createApp(): Hono {
       return c.json({ error: "没有可重试的消息。", localRetry: "unavailable" }, 400);
     }
 
-    // Remote L keeps transcript for follow-up / create-run. Local pig rewinds
+    // Remote L keeps transcript for follow-up / create-run. Local pig/codex rewind
     // to the last user goal so 重试本轮 does not duplicate-insert the message.
     if (!session.remoteRetry) {
       rewindToLastUserGoal(session);

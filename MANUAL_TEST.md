@@ -55,6 +55,7 @@ Use this after `pnpm install && pnpm dev`. UI is http://127.0.0.1:5173.
 - [ ] Reload the session — tool cards remain (synthetic tool messages persisted)
 - [ ] **停止** kills the Codex process group
 - [ ] Changing workspace rewrites isolated `data/codex-home/config.toml` `[projects."<realpath>"]` only
+- [ ] Deliberate Codex failure (no binary / bad config) — Chinese reason + **重试本轮**; session idle. See Milestone N
 
 ## Cloud runtime (optional)
 
@@ -261,7 +262,7 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 
 ## Local-turn recoverability (Milestone M)
 
-Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / Milestone N.
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO. Milestone N covers the Codex path.
 
 - [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig
 - [ ] Deliberate Pig failure (bad API key / closed LLM port / tool loop that cannot recover) — yellow banner shows a **Chinese** reason (密钥无效 / 无法连接 LLM 网关 / 工具调用失败). Session is **idle**, not stuck `running`
@@ -270,9 +271,20 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Remote L still works: 云端 / remote **重试 · 继续跟进** / **重试 · 重新创建运行** / abort → idle. Do not regress #24
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Codex-turn recoverability (Milestone N)
+
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / Milestone O.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig unless you are testing Codex
+- [ ] Settings → **本机 Codex**, deliberate failure (missing binary path / bad config / no CLI) — yellow banner shows a **Chinese** reason (未找到 Codex 二进制 / 进程启动失败 / 本轮执行失败). Session is **idle**, not stuck `running`
+- [ ] Click **重试本轮** — the same user goal runs again (or the banner clearly says **无法重试** / still unavailable). The transcript does **not** get a second copy of that user message
+- [ ] Switch back to **本机 Pig** — Milestone M 重试本轮 / idle still works. Remote L **重试 · 继续跟进** / **重试 · 重新创建运行** / abort → idle still works
+- [ ] Banner / session JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` / `CODEX_API_KEY` values in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
 ## Remote recoverability (Milestone L)
 
-Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO. Milestone M covers the local pig path.
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO. Milestone M covers the local pig path; Milestone N covers Codex.
 
 - [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
 - [ ] Settings → 云端 / remote without a URL — Chinese reason（未配置控制面 URL）, not a hang; **重试** stays available / clearly unavailable until a URL is set
