@@ -20,6 +20,18 @@ describe("HTTP API", () => {
     expect(names).toContain("drafts");
   });
 
+  it("GET /api/workspace/tree is a read-only snapshot (no secrets, no settings write)", async () => {
+    const before = await loadSettings();
+    const res = await app.request("/api/workspace/tree");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { root?: string; tree: { name?: string; type?: string } };
+    expect(body.tree?.type).toBe("dir");
+    expect(JSON.stringify(body)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    const after = await loadSettings();
+    expect(after).toEqual(before);
+    expect(after.runtime).toBe("pig");
+  });
+
   it("rejects workspace path escapes", async () => {
     const res = await app.request("/api/workspace/resolve", {
       method: "POST",
