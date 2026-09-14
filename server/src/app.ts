@@ -10,6 +10,7 @@ import { registerArtifactRoutes } from "./routes/artifacts.ts";
 import { registerAutomationRoutes } from "./routes/automations.ts";
 import { registerExpertRoutes } from "./routes/experts.ts";
 import { registerProjectRoutes } from "./routes/projects.ts";
+import { registerSearchRoutes } from "./routes/search.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { publishPersistedEvent } from "./store/events.ts";
 import { recordSessionBound } from "./store/projects.ts";
@@ -76,6 +77,7 @@ export function createApp(): Hono {
   registerExpertRoutes(app);
   registerAutomationRoutes(app);
   registerArtifactRoutes(app);
+  registerSearchRoutes(app);
   registerSyncRoutes(app);
 
   app.get("/api/sessions", async (c) => c.json({ sessions: await listSessions() }));

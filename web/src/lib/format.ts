@@ -114,6 +114,15 @@ export function summarizeArgs(args: unknown): string {
   return "";
 }
 
+export function searchHitLabel(type: string): string {
+  if (type === "session") return "会话";
+  if (type === "project") return "项目";
+  if (type === "todo") return "待办";
+  if (type === "asset") return "资产";
+  if (type === "project_message") return "动态";
+  return type;
+}
+
 export function artifactLabel(action: string): string {
   if (action === "created") return "新建";
   if (action === "modified") return "修改";

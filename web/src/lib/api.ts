@@ -11,6 +11,7 @@ import type {
   Project,
   ProjectAsset,
   ProjectSummary,
+  SearchResponse,
   Session,
   SessionSummary,
   Settings,
@@ -312,6 +313,12 @@ export const api = {
         skipped: Array<{ artifactPath: string; reason: string }>;
       }>(r),
     ),
+
+  search: (q: string, limit?: number) => {
+    const params = new URLSearchParams({ q });
+    if (typeof limit === "number") params.set("limit", String(limit));
+    return fetch(`/api/search?${params}`).then((r) => json<SearchResponse>(r));
+  },
 
   tree: () =>
     fetch("/api/workspace/tree").then((r) =>
