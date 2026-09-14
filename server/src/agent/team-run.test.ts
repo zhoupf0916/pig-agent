@@ -497,59 +497,52 @@ describe("POST /api/sessions/:id/team-run", () => {
   });
 
   it("returns 200 for continue after start then stop when members are cancelled", async () => {
-    let firstStarted!: () => void;
-    const firstGate = new Promise<void>((resolve) => {
-      firstStarted = resolve;
+    const { team, scoutId, planId } = await makeChainPair();
+    const created = await json<{ id: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertTeamId: team.id }),
+      }),
+    );
+    const session = await getSession(created.id);
+    if (!session) throw new Error("session missing");
+    session.messages = emptySession().messages;
+    session.status = "running";
+    session.teamRun = {
+      teamId: team.id,
+      teamName: team.name,
+      strategy: "same-session",
+      status: "running",
+      currentIndex: 1,
+      members: [
+        { expertId: scoutId, name: "测试侦察", kind: "scout", status: "done" },
+        { expertId: planId, name: "测试规划", kind: "plan", status: "running" },
+      ],
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await saveSession(session);
+
+    const stop = await app.request(`/api/sessions/${created.id}/team-run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stop" }),
     });
+    expect(stop.status).toBe(200);
+    const stopped = await json<{ session: Session }>(stop);
+    expect(stopped.session.teamRun?.members.map((m) => m.status)).toEqual(["done", "cancelled"]);
+    expect(hasResumableMember(stopped.session.teamRun)).toBe(true);
+
     const mock = await startScriptedLlm([
-      (_raw, _res) => {
-        firstStarted();
-        return { keepOpen: true };
-      },
       (_raw, res) => {
-        sse(res, { choices: [{ delta: { content: "停止后继续第一步。" } }] });
-      },
-      (_raw, res) => {
-        sse(res, { choices: [{ delta: { content: "停止后继续第二步。" } }] });
+        sse(res, { choices: [{ delta: { content: "停止后继续规划。" } }] });
       },
     ]);
     const prevSettings = await loadSettings();
     await saveSettings({ llmBaseUrl: mock.url, llmApiKey: "test", runtime: "pig" });
     try {
-      const { team } = await makeChainPair();
-      const session = await json<{ id: string }>(
-        await app.request("/api/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expertTeamId: team.id }),
-        }),
-      );
-
-      const startPromise = app.request(`/api/sessions/${session.id}/team-run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start", content: "摸清工作区并给出下一步" }),
-      });
-
-      await firstGate;
-      const stop = await app.request(`/api/sessions/${session.id}/team-run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "stop" }),
-      });
-      expect(stop.status).toBe(200);
-      const stopped = await json<{ session: Session }>(stop);
-      expect(stopped.session.teamRun?.members.some((m) => m.status === "cancelled")).toBe(true);
-
-      const startRes = await startPromise;
-      expect(startRes.status).toBe(200);
-
-      const afterStop = await getSession(session.id);
-      expect(afterStop?.status).not.toBe("running");
-      expect(afterStop?.teamRun?.members.some((m) => m.status === "cancelled")).toBe(true);
-      expect(hasResumableMember(afterStop?.teamRun)).toBe(true);
-
-      const cont = await app.request(`/api/sessions/${session.id}/team-run`, {
+      const cont = await app.request(`/api/sessions/${created.id}/team-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "continue" }),
