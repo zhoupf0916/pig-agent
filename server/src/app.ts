@@ -5,7 +5,13 @@ import { z } from "zod";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { listSkills } from "./agent/skills.ts";
 import { applyTeamRunStop } from "./agent/team-run.ts";
-import { prepareUserMessage, runningTurns, runSessionTurn } from "./agent/turn.ts";
+import {
+  prepareUserMessage,
+  releaseStaleRunningSession,
+  runningTurns,
+  runSessionTurn,
+  waitForTurnRelease,
+} from "./agent/turn.ts";
 import { getExpertTeam } from "./store/experts.ts";
 import { hasResumableMember, shouldRunSequentialTeam } from "./store/team-run-state.ts";
 import { WEB_ORIGIN } from "./config.ts";
@@ -172,19 +178,61 @@ export function createApp(): Hono {
     const id = c.req.param("id");
     const controller = runningTurns.get(id);
     controller?.abort();
+    await waitForTurnRelease(id);
     const session = await getSession(id);
-    if (session && session.status === "running" && !controller) {
+    if (session && session.status === "running" && !runningTurns.has(id)) {
       await applyTeamRunStop(session);
+      const latest = (await getSession(id)) ?? session;
+      if (latest.status === "running") {
+        latest.status = "idle";
+        latest.lastError = undefined;
+        latest.remoteRetry = undefined;
+        await saveSession(latest);
+      }
     }
     return c.json({ ok: true, running: Boolean(controller) });
+  });
+
+  app.post("/api/sessions/:id/retry", async (c) => {
+    const id = c.req.param("id");
+    const session = await getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    if (runningTurns.has(id)) {
+      return c.json({ error: "会话仍在运行。请先停止后再重试。" }, 409);
+    }
+    if (session.status === "running") {
+      await releaseStaleRunningSession(session);
+    }
+    if (!session.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))) {
+      return c.json({ error: "没有可重试的消息。" }, 400);
+    }
+
+    session.status = "running";
+    session.lastError = undefined;
+    session.remoteRetry = undefined;
+    await saveSession(session);
+
+    return streamSSE(c, async (stream) => {
+      const onEvent = async (event: import("./types.ts").AgentEvent, seq: number) => {
+        await stream.writeSSE({
+          id: String(seq),
+          event: event.type,
+          data: JSON.stringify(event),
+        });
+      };
+      await runSessionTurn(session, { onEvent });
+    });
   });
 
   app.post("/api/sessions/:id/messages", async (c) => {
     const id = c.req.param("id");
     const session = await getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
+    if (runningTurns.has(id)) {
+      return c.json({ error: "会话仍在运行。请先停止后再发送。" }, 409);
+    }
     if (session.status === "running") {
-      return c.json({ error: "Session is already running" }, 409);
+      await releaseStaleRunningSession(session);
     }
     const parsed = messageSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -221,13 +269,17 @@ export function createApp(): Hono {
     if (action === "stop") {
       const controller = runningTurns.get(id);
       controller?.abort();
+      await waitForTurnRelease(id);
       const latest = (await getSession(id)) ?? session;
       await applyTeamRunStop(latest);
       return c.json({ ok: true, running: Boolean(controller), session: latest });
     }
 
+    if (runningTurns.has(id)) {
+      return c.json({ error: "会话仍在运行。请先停止后再发送。" }, 409);
+    }
     if (session.status === "running") {
-      return c.json({ error: "Session is already running" }, 409);
+      await releaseStaleRunningSession(session);
     }
     if (session.expertId) {
       return c.json(

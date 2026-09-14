@@ -26,7 +26,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 会话写在 `data/sessions/`，项目写在 `data/projects/`，专家写在 `data/experts/`，自动化写在 `data/automations/`，记忆写在 `data/memory/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
 
-这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。顶栏与设置会标出当前执行面（Pig / Codex / 云端含 remote URL）；远程失败给出可读中文原因。
+这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。顶栏与设置会标出当前执行面（Pig / Codex / 云端含 remote URL）；远程断连 / 超时 / 过期给出可读中文原因并可重试（继续跟进或重新创建运行），停止后下一轮不会僵尸。
 
 ### 快速开始
 
@@ -103,7 +103,7 @@ pnpm dev
 | --- | --- |
 | 运行时 | `pig`（不选云端则行为与以前完全一致） |
 | `cloudMode` | `local-stub`：在 `data/cloud-runs/<id>/` 隔离工作区副本上跑本机 Pig 循环 |
-| 远程 | `remote` + 控制面 origin；`POST /v1/runs`（工作区 snapshot / 可选 repo hint）→ SSE → IDLE follow-up / abort |
+| 远程 | `remote` + 控制面 origin；`POST /v1/runs`（工作区 snapshot / 可选 repo hint）→ SSE → IDLE follow-up / abort；失败可重试 |
 | 密钥 | 留在本机控制路径 / 未来 Gateway；**不会**写入 run 目录、snapshot 或提交 git |
 
 `local-stub` 让 `pnpm test` 和离线 mock 不需要集群。远程 follow-up 可用 `pnpm mock:cloud`（`http://127.0.0.1:8080`）对着契约冒烟。详见 [docs/cloud-runtime.md](./docs/cloud-runtime.md)。
@@ -210,7 +210,7 @@ Tools resolve every path against the workspace root and refuse escapes. Shell st
 
 Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json` with an isolated `CODEX_HOME`, `wire_api=responses`, DeepSeek `deepseek-flash`, `approval_policy=never`, and `network_access=false` unless you explicitly opt in. Pig `llmBaseUrl` (`…/v1`) is never copied into the Codex provider. See [docs/codex-runtime.md](./docs/codex-runtime.md).
 
-Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks create-run (workspace snapshot / optional repo hint / sanitized `environment.json` install hints) → SSE → IDLE follow-up / abort. Non-secret host hints (control-plane URL, repo URL / ref) can live in `env.json` (`env.json.example`). Worker/local prep hints (install / deps / tools / setup) live in Cursor-style `environment.json` (`environment.json.example`) and are shipped on create-run or read from the snapshot — never provider keys. Precedence for host hints: Settings/UI → `env.json` → `PIG_CLOUD_*`. Tokens stay in `.env.local` / Settings. `pnpm mock:cloud` is the in-repo plane. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
+Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks create-run (workspace snapshot / optional repo hint / sanitized `environment.json` install hints) → SSE → IDLE follow-up / abort. Disconnect / timeout / expired run show a readable Chinese reason and **Retry** (follow-up or new create-run); abort returns idle so the next send is not a zombie. Non-secret host hints (control-plane URL, repo URL / ref) can live in `env.json` (`env.json.example`). Worker/local prep hints (install / deps / tools / setup) live in Cursor-style `environment.json` (`environment.json.example`) and are shipped on create-run or read from the snapshot — never provider keys. Precedence for host hints: Settings/UI → `env.json` → `PIG_CLOUD_*`. Tokens stay in `.env.local` / Settings. `pnpm mock:cloud` is the in-repo plane. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
 
 Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Named local invites can be accepted, declined, revoked, or redeemed by token on one Pig host ([docs/project-invites.md](./docs/project-invites.md)). Bound sessions can copy artifacts into project assets ([docs/artifacts-to-project.md](./docs/artifacts-to-project.md)). Project assets can be previewed (text / Markdown / JSON / image) and downloaded, and a bound session can be handed off into the project inbox (optional recent artifacts) — see [docs/project-assets.md](./docs/project-assets.md). Local experts are JSON playbooks under `data/experts/` (see [docs/experts.md](./docs/experts.md)); expert text precedes project text in the system prompt. A pinned `mode=chain` team runs members as sequential same-session pig turns (`POST /api/sessions/:id/team-run`). Local automations (`data/automations/`, `#/automations`) can manually or on a simple cron start a pig session with pinned expert/project — optional `saveArtifactsToProject` (default off); no public webhooks (see [docs/automations.md](./docs/automations.md)). Local search (`GET /api/search`, header / `#/search`) is substring/token match over session transcripts, project records, and writable memory notes — no embeddings ([docs/search.md](./docs/search.md)). Pins / recaps live under `data/memory/` (`#/memory`); recent pins inject into the pig system prompt only ([docs/memory.md](./docs/memory.md)). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, experts marketplace, or public webhooks.
 

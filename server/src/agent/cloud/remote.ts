@@ -11,9 +11,12 @@ import { resolveEffectiveCloudBaseUrl } from "./env-json.ts";
 import {
   DEFAULT_CLOUD_CONTROL_TIMEOUT_MS,
   cloudRemoteError,
+  decideRemoteRetry,
   formatCloudRemoteError,
   isCloudTimeoutError,
+  isExpiredHttpStatus,
   isUserAbort,
+  redactCloudErrorDetail,
 } from "./errors.ts";
 import { mapCloudEvent } from "./events.ts";
 import {
@@ -41,6 +44,7 @@ export async function runRemoteCloudAgent(options: {
     ...options.session,
     status: "running",
     lastError: undefined,
+    remoteRetry: undefined,
     updatedAt: nowIso(),
     remoteRunId: keepRunId,
   };
@@ -60,10 +64,20 @@ export async function runRemoteCloudAgent(options: {
   }
 
   let runId = session.remoteRunId?.trim() ?? "";
+  let eventsHold: Response | undefined;
 
   try {
     if (runId) {
-      const follow = await postFollowUp(fetchFn, base, runId, session, settings, headers, signal);
+      const follow = await postFollowUp(
+        fetchFn,
+        base,
+        runId,
+        session,
+        settings,
+        headers,
+        signal,
+        timeoutMs,
+      );
       if (follow !== "ok") {
         runId = "";
         delete session.remoteRunId;
@@ -88,7 +102,7 @@ export async function runRemoteCloudAgent(options: {
         const text = await created.text().catch(() => "");
         throw cloudRemoteError(
           "create_run_failed",
-          `（HTTP ${created.status}）${text ? text.slice(0, 240) : ""}`,
+          `（HTTP ${created.status}）${text ? redactCloudErrorDetail(text.slice(0, 240)) : ""}`,
         );
       }
       runId = readRunId(await created.json());
@@ -97,7 +111,7 @@ export async function runRemoteCloudAgent(options: {
 
     session.remoteRunId = runId;
 
-    const eventsRes = await fetchUntilHeaders(
+    const eventsRes = (eventsHold = await fetchUntilHeaders(
       fetchFn,
       `${base}${CLOUD_EVENTS_PATH(runId)}`,
       {
@@ -111,31 +125,57 @@ export async function runRemoteCloudAgent(options: {
       },
       signal,
       timeoutMs,
-    );
+      { holdUserAbort: true },
+    ));
     if (!eventsRes.ok || !eventsRes.body) {
+      releaseHeldUserAbort(eventsRes);
+      if (isExpiredHttpStatus(eventsRes.status)) {
+        delete session.remoteRunId;
+        runId = "";
+        throw cloudRemoteError("run_expired");
+      }
       throw cloudRemoteError("subscribe_failed", `（HTTP ${eventsRes.status}）`);
     }
 
-    for await (const raw of readSseJson(eventsRes, signal)) {
-      for (const event of mapCloudEvent(raw)) {
-        applyRemoteEvent(session, event);
-        // Host emits a single `done` after the stream so the UI always gets
-        // the accumulated pig session, not a remote-shaped snapshot.
-        if (event.type !== "done") emit(event);
+    try {
+      for await (const raw of readSseJson(eventsRes, signal)) {
+        for (const event of mapCloudEvent(raw)) {
+          const mapped =
+            event.type === "error"
+              ? { ...event, message: formatCloudRemoteError(event.message) }
+              : event;
+          applyRemoteEvent(session, mapped);
+          // Host emits a single `done` after the stream so the UI always gets
+          // the accumulated pig session, not a remote-shaped snapshot.
+          if (mapped.type !== "done") emit(mapped);
+        }
       }
+    } finally {
+      releaseHeldUserAbort(eventsRes);
     }
 
     if (signal.aborted) throw new Error("Aborted");
-    if (session.status === "running") {
-      session.status = "idle";
-      emit({ type: "status", status: "idle" });
+    if (session.status === "error") {
+      session.lastError = formatCloudRemoteError(session.lastError ?? "云端远程执行失败。");
+      session.remoteRetry = decideRemoteRetry(session.lastError, session.remoteRunId);
+      if (session.remoteRetry === "create-run") delete session.remoteRunId;
+      session.updatedAt = nowIso();
+      emit({ type: "done", session });
+      return session;
     }
+    if (session.status === "running") {
+      throw cloudRemoteError("disconnected");
+    }
+    session.remoteRetry = undefined;
     session.updatedAt = nowIso();
     emit({ type: "done", session });
     return session;
   } catch (err) {
+    releaseHeldUserAbort(eventsHold);
     const aborted = isUserAbort(err, signal);
-    if (runId) {
+    // Only user abort notifies the plane. Timeout / disconnect keep remoteRunId
+    // so 重试 can follow-up instead of killing a still-running worker.
+    if (aborted && runId) {
       await abortRemoteRun(fetchFn, base, runId, headers);
     }
     if (aborted) {
@@ -149,10 +189,15 @@ export async function runRemoteCloudAgent(options: {
       emit({ type: "message", message: stop });
       session.status = "idle";
       session.lastError = undefined;
+      session.remoteRetry = undefined;
     } else {
       const message = formatCloudRemoteError(err);
       session.status = "error";
       session.lastError = message;
+      session.remoteRetry = decideRemoteRetry(err, session.remoteRunId ?? runId);
+      if (session.remoteRetry === "create-run") {
+        delete session.remoteRunId;
+      }
       emit({ type: "error", message });
     }
     session.updatedAt = nowIso();
@@ -164,7 +209,8 @@ export async function runRemoteCloudAgent(options: {
 
 /**
  * Timeout applies only until response headers arrive so SSE bodies can run longer
- * than the control-plane connect budget.
+ * than the control-plane connect budget. `holdUserAbort` keeps the user signal
+ * linked after headers so 停止 cancels the SSE body (no zombie running turn).
  */
 async function fetchUntilHeaders(
   fetchFn: typeof fetch,
@@ -172,25 +218,41 @@ async function fetchUntilHeaders(
   init: RequestInit,
   userSignal: AbortSignal,
   timeoutMs: number,
+  options: { holdUserAbort?: boolean } = {},
 ): Promise<Response> {
   const ctrl = new AbortController();
   const onUserAbort = () => ctrl.abort(userSignal.reason);
   if (userSignal.aborted) throw new Error("Aborted");
   userSignal.addEventListener("abort", onUserAbort);
   const timer = setTimeout(() => ctrl.abort("cloud-timeout"), timeoutMs);
+  const unlink = () => userSignal.removeEventListener("abort", onUserAbort);
   try {
-    return await fetchFn(url, { ...init, signal: ctrl.signal });
+    const response = await fetchFn(url, { ...init, signal: ctrl.signal });
+    clearTimeout(timer);
+    if (options.holdUserAbort) {
+      heldUserAborts.set(response, unlink);
+    } else {
+      unlink();
+    }
+    return response;
   } catch (err) {
+    clearTimeout(timer);
+    unlink();
     if (isUserAbort(err, userSignal)) throw new Error("Aborted");
     if (ctrl.signal.aborted && !userSignal.aborted) {
       throw cloudRemoteError("control_plane_timeout");
     }
     if (isCloudTimeoutError(err, userSignal)) throw cloudRemoteError("control_plane_timeout");
     throw err;
-  } finally {
-    clearTimeout(timer);
-    userSignal.removeEventListener("abort", onUserAbort);
   }
+}
+
+const heldUserAborts = new WeakMap<Response, () => void>();
+
+function releaseHeldUserAbort(response?: Response): void {
+  if (!response) return;
+  heldUserAborts.get(response)?.();
+  heldUserAborts.delete(response);
 }
 
 async function postFollowUp(
@@ -201,22 +263,28 @@ async function postFollowUp(
   settings: Settings,
   headers: Record<string, string>,
   signal: AbortSignal,
+  timeoutMs: number,
 ): Promise<"ok" | "expired"> {
   const body = buildFollowUpRequest(session);
   assertNoSecretsInPayload(body, settings);
   try {
-    const res = await fetchFn(`${base}${CLOUD_FOLLOW_UP_PATH(runId)}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
+    const res = await fetchUntilHeaders(
+      fetchFn,
+      `${base}${CLOUD_FOLLOW_UP_PATH(runId)}`,
+      { method: "POST", headers, body: JSON.stringify(body) },
       signal,
-    });
+      timeoutMs,
+    );
     if (res.ok) return "ok";
     return "expired";
   } catch (err) {
-    if (signal.aborted || (err instanceof Error && err.message === "Aborted")) {
+    if (isUserAbort(err, signal)) {
       throw err instanceof Error ? err : new Error("Aborted");
     }
+    if (err && typeof err === "object" && "code" in err && err.code === "control_plane_timeout") {
+      throw err;
+    }
+    if (isCloudTimeoutError(err, signal)) throw cloudRemoteError("control_plane_timeout");
     return "expired";
   }
 }
@@ -337,6 +405,14 @@ async function* readSseJson(
 ): AsyncGenerator<unknown> {
   const reader = response.body?.getReader();
   if (!reader) return;
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  if (signal.aborted) {
+    onAbort();
+    return;
+  }
+  signal.addEventListener("abort", onAbort, { once: true });
   const decoder = new TextDecoder();
   let buf = "";
   try {
@@ -364,6 +440,11 @@ async function* readSseJson(
       }
     }
   } finally {
-    reader.releaseLock();
+    signal.removeEventListener("abort", onAbort);
+    try {
+      reader.releaseLock();
+    } catch {
+      // cancel() may already have released the lock
+    }
   }
 }

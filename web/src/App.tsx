@@ -14,7 +14,8 @@ import { RuntimeChip } from "./components/RuntimeChip";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { api, streamMessage, streamTeamRun, subscribeSessionEvents } from "./lib/api";
+import { api, streamMessage, streamRetry, streamTeamRun, subscribeSessionEvents } from "./lib/api";
+import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
   browserThemeRoot,
@@ -390,7 +391,9 @@ export function App() {
             ? {
                 ...prev,
                 status: "error",
-                lastError: err instanceof Error ? err.message : String(err),
+                lastError: redactSecretsForDisplay(
+                  err instanceof Error ? err.message : String(err),
+                ),
               }
             : prev,
         );
@@ -411,8 +414,48 @@ export function App() {
       await api.abort(session.id);
     }
     setStreaming(false);
-    setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
+    setSession((prev) =>
+      prev
+        ? { ...prev, status: "idle", lastError: undefined, remoteRetry: undefined }
+        : prev,
+    );
   }, [session]);
+
+  const retry = useCallback(async () => {
+    if (!session || streaming) return;
+    setStreaming(true);
+    setLiveTools([]);
+    setSession((prev) =>
+      prev
+        ? { ...prev, status: "running", lastError: undefined, remoteRetry: undefined }
+        : prev,
+    );
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await streamRetry(session.id, applyEvent, controller.signal);
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
+      } else {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "error",
+                lastError: redactSecretsForDisplay(
+                  err instanceof Error ? err.message : String(err),
+                ),
+              }
+            : prev,
+        );
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setStreaming(false);
+      void refreshSessions();
+    }
+  }, [applyEvent, refreshSessions, session, streaming]);
 
   const startTeamRun = useCallback(async () => {
     if (!session || streaming) return;
@@ -469,7 +512,9 @@ export function App() {
             ? {
                 ...prev,
                 status: "error",
-                lastError: err instanceof Error ? err.message : String(err),
+                lastError: redactSecretsForDisplay(
+                  err instanceof Error ? err.message : String(err),
+                ),
               }
             : prev,
         );
@@ -633,8 +678,16 @@ export function App() {
         </div>
       )}
       {session?.lastError && (
-        <div className="border-b border-warning-soft bg-warning-soft px-4 py-2 text-xs text-warning">
-          {session.lastError}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-warning-soft bg-warning-soft px-4 py-2 text-xs text-warning">
+          <span>{redactSecretsForDisplay(session.lastError)}</span>
+          <button
+            type="button"
+            className="btn-ghost shrink-0 text-xs"
+            disabled={streaming}
+            onClick={() => void retry()}
+          >
+            {retryActionLabel(session.remoteRetry)}
+          </button>
         </div>
       )}
 
