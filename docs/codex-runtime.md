@@ -44,7 +44,7 @@ Install the CLI yourself (`npm i -g @openai/codex@0.154` or the current 0.154.x)
 
 ## Multi-turn
 
-Each run builds one prompt from the last N **user/assistant text** messages. Codex is not given a native thread resume, so there is **no Codex-native cross-turn memory**.
+Each run builds one prompt from the last N **user/assistant text** messages, plus **short truncated summaries** of recent pig `role: "tool"` results (capped count; format `Tool(name): ok/err — …`). Empty assistant messages that only carry `toolCalls` are still omitted. Codex is not given a native thread resume, so there is **no Codex-native cross-turn memory**.
 
 ## Persistence
 
