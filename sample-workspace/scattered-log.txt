@@ -1,0 +1,3 @@
+2026-03-12  leftover note: move this file into notes/ when cleaning up
+2026-03-13  draft README still lives in drafts/idea.md
+2026-03-14  meeting notes are already under notes/
