@@ -88,6 +88,47 @@ async function listen(
   });
 }
 
+async function drainSseTypes(
+  body: ReadableStream<Uint8Array> | null,
+  ms = 3_000,
+): Promise<string[]> {
+  if (!body) throw new Error("missing body");
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const types: string[] = [];
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    const remaining = deadline - Date.now();
+    const read = await Promise.race([
+      reader.read(),
+      new Promise<{ done: true; value: undefined }>((resolve) =>
+        setTimeout(() => resolve({ done: true, value: undefined }), remaining),
+      ),
+    ]);
+    if (read.done && !read.value) break;
+    buffer += decoder.decode(read.value, { stream: true });
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const dataLine = part
+        .split(/\r?\n/)
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trim())
+        .join("\n");
+      if (!dataLine) continue;
+      try {
+        const event = JSON.parse(dataLine) as { type?: string };
+        if (event.type) types.push(event.type);
+      } catch {
+        // ignore keepalives
+      }
+    }
+  }
+  await reader.cancel().catch(() => undefined);
+  return types;
+}
+
 function startScriptedLlm(
   script: Array<(reqBody: string, res: ServerResponse) => boolean | void>,
 ): Promise<{ url: string; close: () => Promise<void> }> {
@@ -235,6 +276,8 @@ describe("session retry does not duplicate the user message", () => {
     try {
       const res = await app.request(`/api/sessions/${created.id}/retry`, { method: "POST" });
       expect(res.status).toBe(200);
+      const types = await drainSseTypes(res.body);
+      expect(types).toContain("done");
       const latest = await getSession(created.id);
       expect(latest?.status).toBe("idle");
       expect(latest?.lastError).toBeUndefined();
