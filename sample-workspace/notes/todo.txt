@@ -1,0 +1,5 @@
+[ ] organize loose files
+[ ] write a workspace summary README
+[ ] archive old drafts
+[x] create demo workspace
+[ ] review meeting notes from March
