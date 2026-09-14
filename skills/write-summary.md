@@ -1,6 +1,7 @@
 ---
 name: write-summary
 description: Read the workspace and write a concise summary README or report. Use when the user asks for a summary, overview, or documentation of what is on disk.
+keywords: summary, overview, README, 摘要, 总结, 概述
 ---
 
 # Write a workspace summary

@@ -1,6 +1,7 @@
 ---
 name: organize-workspace
 description: Tidy a messy workspace by grouping files into folders, renaming clearly, and leaving a short change summary. Use when the user asks to organize, clean up, or file away notes.
+keywords: organize, tidy, 整理, 归类, 归档, move, rename
 ---
 
 # Organize workspace

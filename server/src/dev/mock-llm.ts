@@ -73,6 +73,14 @@ const server = createServer(async (req, res) => {
               },
               {
                 index: 1,
+                id: "call_search",
+                function: {
+                  name: "search_files",
+                  arguments: JSON.stringify({ query: "todo", path: "." }),
+                },
+              },
+              {
+                index: 2,
                 id: "call_write",
                 function: {
                   name: "write_file",
@@ -81,14 +89,14 @@ const server = createServer(async (req, res) => {
                     content: [
                       "# Demo workspace",
                       "",
-                      "This README was written by the local mock LLM so you can review an artifact without Ollama.",
+                      "This README was written by the local mock LLM so you can review an artifact without a live API key.",
                       "",
                       "## Layout",
                       "- `notes/` meeting notes and todos",
                       "- `drafts/` unfinished ideas",
                       "- `scattered-log.txt` leftover log",
                       "",
-                      "Ask a real model (Ollama / OpenAI-compatible) for a richer rewrite.",
+                      "Ask DeepSeek (or another OpenAI-compatible model) for a richer rewrite.",
                       "",
                     ].join("\n"),
                   }),

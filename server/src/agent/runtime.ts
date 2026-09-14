@@ -9,37 +9,62 @@ import type {
 import { newId, nowIso, safeJsonParse } from "../util.ts";
 import { LlmError, complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
-import { listSkills } from "./skills.ts";
-import { executeTool, type ToolContext } from "./tools.ts";
+import { loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
+import { executeTool, summarizeToolArgs, type ToolContext } from "./tools.ts";
 
-const MAX_TURNS = 16;
-const MAX_HISTORY_CHARS = 80_000;
+export const MAX_TURNS = 20;
+export const MAX_CONSECUTIVE_ERRORS = 3;
+export const MAX_HISTORY_CHARS = 80_000;
 
-export async function buildSystemPrompt(settings: Settings): Promise<string> {
-  const skills = await listSkills();
+export async function buildSystemPrompt(
+  settings: Settings,
+  options: {
+    suggested?: ScoredSkill[];
+    loadedBodies?: Array<{ name: string; body: string }>;
+  } = {},
+): Promise<string> {
+  const { suggested = [], loadedBodies = [] } = options;
   const skillLines =
-    skills.length === 0
-      ? "- (none installed)"
-      : skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+    suggested.length === 0
+      ? "- (keyword match will be added per user turn; list_skills to see all)"
+      : suggested
+          .map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)
+          .join("\n");
+
+  const loaded =
+    loadedBodies.length === 0
+      ? ""
+      : [
+          "",
+          "Auto-loaded skill playbooks for this task (follow them):",
+          ...loadedBodies.map((s) => `### ${s.name}\n${s.body}`),
+        ].join("\n");
 
   return [
-    "You are Pig Agent, a local workstation assistant that runs entirely on the user's machine.",
-    "The user describes a work goal. You plan concrete steps, use tools on the sandboxed workspace, and leave reviewable files.",
+    "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
+    "You run entirely on the user's machine. The workspace is a sandbox: never leave it.",
+    "",
+    "How you work (every non-trivial task):",
+    "1. Plan — call update_plan with concrete, ordered steps before changing files.",
+    "2. Tool — explore with list_dir / search_files / read_file. Then change files with write_file, edit_file, apply_patch, move_file, or delete_file. Use run_shell only when a real command is needed. Use http_fetch only for public research.",
+    "3. Verify — re-read or search to confirm the change landed. If a tool fails, do not repeat the same call; recover with a different path, a smaller edit, or report the blocker.",
+    "4. Deliver — leave reviewable artifacts on disk. After tools, you MUST write a clear user-facing summary: what changed, created vs modified vs moved vs deleted (paths), and what to review. Never finish with only tool calls.",
     "",
     "Hard rules:",
-    "- Only read/write/execute inside the configured workspace. Never try to leave it.",
-    "- Prefer small, reviewable file changes over huge rewrites.",
-    "- Call update_plan before you start work, and keep step statuses current.",
-    "- When a skill matches the task, list_skills / load_skill and follow it.",
-    "- After file changes, briefly tell the user what to review (paths).",
+    "- Stay inside the configured workspace. Treat sandbox errors as final for that path.",
+    "- Prefer small, reviewable edits (edit_file / apply_patch) over huge rewrites.",
+    "- Do not invent file contents you did not read.",
     "- Reply in the user's language (Chinese if they wrote in Chinese).",
-    "- If a tool fails, explain and try a different approach. Do not invent file contents you did not read.",
+    "- If you already auto-loaded a skill below, follow it; otherwise list_skills / load_skill when a playbook matches.",
+    "- run_shell: prefer simple commands (ls, rg, mkdir, python). Exit codes are in the JSON result — a non-zero exit is data, not always fatal.",
+    "- http_fetch is SSRF-safe: private IPs and redirects are blocked.",
     "",
     `Workspace root: ${settings.workspaceRoot}`,
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
-    "Available skills:",
+    "Suggested skills for this task:",
     skillLines,
+    loaded,
   ].join("\n");
 }
 
@@ -58,10 +83,16 @@ export async function runAgent(options: {
   };
   emit({ type: "status", status: "running" });
 
+  const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
+  const { suggested, loaded } = await loadSuggestedSkills(lastUser?.content ?? "");
+
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
-    content: await buildSystemPrompt(settings),
+    content: await buildSystemPrompt(settings, {
+      suggested,
+      loadedBodies: loaded.map((s) => ({ name: s.name, body: s.body })),
+    }),
     createdAt: nowIso(),
   };
 
@@ -72,8 +103,14 @@ export async function runAgent(options: {
   const ctx: ToolContext = {
     workspaceRoot: settings.workspaceRoot,
     artifacts: session.artifacts,
-    recordArtifact: (path, action) => {
-      const artifact: Artifact = { path, action, updatedAt: nowIso() };
+    signal,
+    recordArtifact: (path, action, extra) => {
+      const artifact: Artifact = {
+        path,
+        action,
+        updatedAt: nowIso(),
+        ...extra,
+      };
       artifacts.set(path, artifact);
       session.artifacts = [...artifacts.values()].sort((a, b) =>
         a.path.localeCompare(b.path),
@@ -82,11 +119,24 @@ export async function runAgent(options: {
     },
   };
 
+  let consecutiveErrors = 0;
+  let forceSummary = false;
+
   try {
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
       if (signal.aborted) throw new Error("Aborted");
 
       const history = trimHistory([system, ...session.messages]);
+      if (forceSummary) {
+        history.push({
+          id: newId("msg"),
+          role: "user",
+          content:
+            "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.",
+          createdAt: nowIso(),
+        });
+      }
+
       const { content, toolCalls } = await complete(settings, history, {
         signal,
         onDelta: (text) => emit({ type: "token", text }),
@@ -102,25 +152,42 @@ export async function runAgent(options: {
       session.messages.push(assistant);
       emit({ type: "message", message: assistant });
 
-      if (toolCalls.length === 0) {
-        session.status = "idle";
-        session.updatedAt = nowIso();
-        emit({ type: "status", status: "idle" });
-        emit({ type: "done", session });
-        return session;
+      if (toolCalls.length === 0 || forceSummary) {
+        if (!content.trim() && session.artifacts.length > 0) {
+          const fallback = deliverableSummary(session, "工作已完成。");
+          const extra: ChatMessage = {
+            id: newId("msg"),
+            role: "assistant",
+            content: fallback,
+            createdAt: nowIso(),
+          };
+          session.messages.push(extra);
+          emit({ type: "message", message: extra });
+        }
+        return finishIdle(session, emit);
       }
 
+      let turnHadError = false;
       for (const call of toolCalls) {
         if (signal.aborted) throw new Error("Aborted");
+        if (forceSummary) break;
         const parsed = safeJsonParse(call.arguments);
-        emit({ type: "tool_start", id: call.id, name: call.name, arguments: parsed });
+        const startedAt = nowIso();
+        const t0 = Date.now();
+        emit({
+          type: "tool_start",
+          id: call.id,
+          name: call.name,
+          arguments: parsed,
+          startedAt,
+        });
 
         if (call.name === "update_plan") {
           const steps = parsePlan(parsed);
           session.steps = steps;
           emit({ type: "steps", steps });
         } else {
-          markToolStep(session, call.name, "running", summarizeArgs(parsed));
+          markToolStep(session, call.name, "running", summarizeToolArgs(parsed));
           emit({ type: "steps", steps: session.steps });
         }
 
@@ -135,6 +202,7 @@ export async function runAgent(options: {
           }
         } catch (err) {
           ok = false;
+          turnHadError = true;
           output = err instanceof Error ? err.message : String(err);
           if (err instanceof SandboxError) {
             output = `Sandbox blocked this call: ${output}`;
@@ -143,33 +211,52 @@ export async function runAgent(options: {
           emit({ type: "steps", steps: session.steps });
         }
 
+        const durationMs = Date.now() - t0;
         const toolMsg: ChatMessage = {
           id: newId("msg"),
           role: "tool",
           content: output,
           toolCallId: call.id,
+          toolOk: ok,
+          toolDurationMs: durationMs,
           createdAt: nowIso(),
         };
         session.messages.push(toolMsg);
-        emit({ type: "tool_end", id: call.id, name: call.name, ok, output });
+        emit({ type: "tool_end", id: call.id, name: call.name, ok, output, durationMs });
         emit({ type: "message", message: toolMsg });
+      }
+
+      if (turnHadError) {
+        consecutiveErrors += 1;
+        session.messages.push({
+          id: newId("msg"),
+          role: "user",
+          content:
+            consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+              ? "[harness] Multiple tools failed in a row. Do not retry the same call. Recover with a different approach or summarize the blocker for the user."
+              : "[harness] A tool failed. Read the error, try a different approach (search, smaller edit, another path). Then continue or explain.",
+          createdAt: nowIso(),
+        });
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          forceSummary = true;
+        }
+      } else {
+        consecutiveErrors = 0;
       }
     }
 
     const overflow: ChatMessage = {
       id: newId("msg"),
       role: "assistant",
-      content:
-        "Stopped after the maximum number of tool turns. Ask me to continue if you want more work.",
+      content: deliverableSummary(
+        session,
+        "已达到本轮最大工具步数。如需继续，请再发一条消息。",
+      ),
       createdAt: nowIso(),
     };
     session.messages.push(overflow);
-    session.status = "idle";
-    session.updatedAt = nowIso();
     emit({ type: "message", message: overflow });
-    emit({ type: "status", status: "idle" });
-    emit({ type: "done", session });
-    return session;
+    return finishIdle(session, emit);
   } catch (err) {
     const message =
       err instanceof LlmError
@@ -177,16 +264,63 @@ export async function runAgent(options: {
         : err instanceof Error
           ? err.message
           : String(err);
-    session.status = message === "Aborted" ? "idle" : "error";
-    session.lastError = message === "Aborted" ? undefined : message;
-    session.updatedAt = nowIso();
-    if (message !== "Aborted") {
+    const aborted = message === "Aborted" || signal.aborted;
+    if (aborted) {
+      const stop: ChatMessage = {
+        id: newId("msg"),
+        role: "assistant",
+        content: deliverableSummary(session, "已停止。已完成的步骤和产物仍可在右侧审阅。"),
+        createdAt: nowIso(),
+      };
+      session.messages.push(stop);
+      emit({ type: "message", message: stop });
+      session.status = "idle";
+      session.lastError = undefined;
+    } else {
+      session.status = "error";
+      session.lastError = message;
       emit({ type: "error", message });
     }
+    session.updatedAt = nowIso();
     emit({ type: "status", status: session.status });
     emit({ type: "done", session });
     return session;
   }
+}
+
+function finishIdle(session: Session, emit: (event: AgentEvent) => void): Session {
+  session.status = "idle";
+  session.updatedAt = nowIso();
+  emit({ type: "status", status: "idle" });
+  emit({ type: "done", session });
+  return session;
+}
+
+export function deliverableSummary(session: Session, lead: string): string {
+  const groups = {
+    created: session.artifacts.filter((a) => a.action === "created").map((a) => a.path),
+    modified: session.artifacts.filter((a) => a.action === "modified").map((a) => a.path),
+    moved: session.artifacts
+      .filter((a) => a.action === "moved")
+      .map((a) => (a.fromPath ? `${a.fromPath} → ${a.path}` : a.path)),
+    deleted: session.artifacts.filter((a) => a.action === "deleted").map((a) => a.path),
+  };
+  const lines = [lead, ""];
+  if (groups.created.length) lines.push(`新建：${groups.created.join(", ")}`);
+  if (groups.modified.length) lines.push(`修改：${groups.modified.join(", ")}`);
+  if (groups.moved.length) lines.push(`移动：${groups.moved.join(", ")}`);
+  if (groups.deleted.length) lines.push(`删除：${groups.deleted.join(", ")}`);
+  if (
+    !groups.created.length &&
+    !groups.modified.length &&
+    !groups.moved.length &&
+    !groups.deleted.length
+  ) {
+    lines.push("本轮没有写入产物。");
+  } else {
+    lines.push("", "请在右侧「产物」中打开文件核对。");
+  }
+  return lines.join("\n").trim();
 }
 
 function trimHistory(messages: ChatMessage[]): ChatMessage[] {
@@ -198,7 +332,6 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
   while (kept.length > 8 && size() > MAX_HISTORY_CHARS) {
     kept = kept.slice(2);
   }
-  // Do not start mid tool-result
   while (kept[0]?.role === "tool") kept = kept.slice(1);
   return [system, ...kept];
 }
@@ -236,30 +369,24 @@ function markToolStep(
     existing.detail = detail;
     return;
   }
-  session.steps = [
-    ...session.steps,
-    { id: newId("step"), title, status, detail },
-  ];
+  session.steps = [...session.steps, { id: newId("step"), title, status, detail }];
 }
 
-function toolLabel(name: string): string {
+export function toolLabel(name: string): string {
   const labels: Record<string, string> = {
+    update_plan: "更新计划",
     list_dir: "查看目录",
     read_file: "读取文件",
     write_file: "写入文件",
     edit_file: "编辑文件",
+    apply_patch: "应用补丁",
+    search_files: "搜索文件",
+    delete_file: "删除文件",
+    move_file: "移动文件",
     run_shell: "运行命令",
+    http_fetch: "抓取网页",
     list_skills: "列出技能",
     load_skill: "加载技能",
   };
   return labels[name] ?? name;
-}
-
-function summarizeArgs(parsed: unknown): string | undefined {
-  if (!parsed || typeof parsed !== "object") return undefined;
-  const obj = parsed as Record<string, unknown>;
-  if (typeof obj.path === "string") return obj.path;
-  if (typeof obj.command === "string") return obj.command;
-  if (typeof obj.name === "string") return obj.name;
-  return undefined;
 }

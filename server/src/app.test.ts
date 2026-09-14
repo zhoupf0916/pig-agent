@@ -42,6 +42,9 @@ describe("HTTP API", () => {
   it("lists shipped skills", async () => {
     const res = await app.request("/api/skills");
     const body = (await res.json()) as { skills: Array<{ name: string }> };
-    expect(body.skills.map((s) => s.name)).toContain("organize-workspace");
+    const names = body.skills.map((s) => s.name);
+    expect(names).toContain("organize-workspace");
+    expect(names).toContain("research-report");
+    expect(names).toContain("coding-helper");
   });
 });

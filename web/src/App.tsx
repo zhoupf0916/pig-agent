@@ -1,5 +1,5 @@
 import { Settings2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SettingsModal } from "./components/SettingsModal";
@@ -34,6 +34,7 @@ export function App() {
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const refreshSessions = useCallback(async () => {
     const { sessions: next } = await api.sessions();
@@ -165,6 +166,7 @@ export function App() {
           name: event.name,
           arguments: event.arguments,
           done: false,
+          startedAt: event.startedAt,
         },
       ]);
       return;
@@ -172,7 +174,9 @@ export function App() {
     if (event.type === "tool_end") {
       setLiveTools((prev) =>
         prev.map((t) =>
-          t.id === event.id ? { ...t, done: true, ok: event.ok, output: event.output } : t,
+          t.id === event.id
+            ? { ...t, done: true, ok: event.ok, output: event.output, durationMs: event.durationMs }
+            : t,
         ),
       );
       return;
@@ -197,7 +201,6 @@ export function App() {
     }
     if (event.type === "done") {
       setSession(event.session);
-      setLiveTools([]);
       void refreshSessions();
       void refreshTree();
     }
@@ -226,19 +229,26 @@ export function App() {
           }
         : prev,
     );
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      await streamMessage(session.id, content, applyEvent);
+      await streamMessage(session.id, content, applyEvent, controller.signal);
     } catch (err) {
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: "error",
-              lastError: err instanceof Error ? err.message : String(err),
-            }
-          : prev,
-      );
+      if (controller.signal.aborted) {
+        setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
+      } else {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "error",
+                lastError: err instanceof Error ? err.message : String(err),
+              }
+            : prev,
+        );
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setStreaming(false);
       void refreshSessions();
     }
@@ -246,8 +256,10 @@ export function App() {
 
   const stop = useCallback(async () => {
     if (!session) return;
+    abortRef.current?.abort();
     await api.abort(session.id);
     setStreaming(false);
+    setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
   }, [session]);
 
   const headerHint = useMemo(() => {

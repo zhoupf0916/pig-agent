@@ -17,6 +17,7 @@ export class LlmError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    readonly retryable = false,
   ) {
     super(message);
     this.name = "LlmError";
@@ -55,6 +56,11 @@ export function toOpenAiMessages(
     });
 }
 
+type Attempt = {
+  stream: boolean;
+  parallelTools: boolean;
+};
+
 export async function complete(
   settings: LlmSettings,
   messages: ChatMessage[],
@@ -62,6 +68,35 @@ export async function complete(
     signal?: AbortSignal;
     onDelta?: (text: string) => void;
   } = {},
+): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  const attempts: Attempt[] = [
+    { stream: true, parallelTools: true },
+    { stream: true, parallelTools: false },
+    { stream: false, parallelTools: false },
+  ];
+
+  let lastError: LlmError | undefined;
+  for (const [i, attempt] of attempts.entries()) {
+    try {
+      return await completeOnce(settings, messages, options, attempt);
+    } catch (err) {
+      if (options.signal?.aborted) {
+        throw err instanceof Error ? err : new Error(String(err));
+      }
+      if (!(err instanceof LlmError) || !err.retryable || i === attempts.length - 1) {
+        throw err;
+      }
+      lastError = err;
+    }
+  }
+  throw lastError ?? new LlmError("LLM request failed");
+}
+
+async function completeOnce(
+  settings: LlmSettings,
+  messages: ChatMessage[],
+  options: { signal?: AbortSignal; onDelta?: (text: string) => void },
+  attempt: Attempt,
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
   const url = `${normalizeBaseUrl(settings.llmBaseUrl)}/chat/completions`;
   const headers: Record<string, string> = {
@@ -71,14 +106,17 @@ export async function complete(
     headers.Authorization = `Bearer ${settings.llmApiKey.trim()}`;
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     model: settings.llmModel,
     messages: toOpenAiMessages(messages),
     tools: TOOL_DEFINITIONS,
     tool_choice: "auto",
-    stream: true,
-    temperature: 0.3,
+    stream: attempt.stream,
+    temperature: 0.2,
   };
+  if (attempt.parallelTools) {
+    body.parallel_tool_calls = true;
+  }
 
   let response: Response;
   try {
@@ -90,24 +128,80 @@ export async function complete(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    if (options.signal?.aborted) throw new Error("Aborted");
     throw new LlmError(
-      `Cannot reach LLM at ${url}. Start Ollama or check Settings. (${msg})`,
+      `Cannot reach LLM at ${url}. Check Settings or .env.local (DeepSeek / OpenAI-compatible). (${msg})`,
     );
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    const retryable = shouldRetryLlm(response.status, text, attempt);
     throw new LlmError(
       `LLM HTTP ${response.status}: ${text.slice(0, 800) || response.statusText}`,
       response.status,
+      retryable,
     );
   }
 
-  if (!response.body) {
-    throw new LlmError("LLM returned an empty body");
+  if (attempt.stream) {
+    if (!response.body) {
+      throw new LlmError("LLM returned an empty body", response.status, true);
+    }
+    return consumeStream(response.body, options.onDelta);
   }
 
-  return consumeStream(response.body, options.onDelta);
+  const json = (await response.json()) as {
+    choices?: Array<{
+      message?: {
+        content?: string | null;
+        tool_calls?: Array<{
+          id?: string;
+          function?: { name?: string; arguments?: string };
+        }>;
+      };
+    }>;
+  };
+  return fromMessage(json.choices?.[0]?.message, options.onDelta);
+}
+
+function shouldRetryLlm(status: number, body: string, attempt: Attempt): boolean {
+  if (status === 400 || status === 422) {
+    const lower = body.toLowerCase();
+    if (attempt.parallelTools && /parallel|tool_choice|tools|unknown/.test(lower)) {
+      return true;
+    }
+    if (attempt.stream && /stream/.test(lower)) return true;
+    return true;
+  }
+  return status >= 500;
+}
+
+function fromMessage(
+  message:
+    | {
+        content?: string | null;
+        tool_calls?: Array<{
+          id?: string;
+          function?: { name?: string; arguments?: string };
+        }>;
+      }
+    | undefined,
+  onDelta?: (text: string) => void,
+): { content: string; toolCalls: ToolCall[] } {
+  const content = typeof message?.content === "string" ? message.content : "";
+  if (content) onDelta?.(content);
+  const toolCalls: ToolCall[] = (message?.tool_calls ?? [])
+    .map((tc, i) => ({
+      id: tc.id || `call_${i}`,
+      name: tc.function?.name ?? "",
+      arguments:
+        typeof tc.function?.arguments === "string"
+          ? tc.function.arguments
+          : JSON.stringify(tc.function?.arguments ?? {}),
+    }))
+    .filter((tc) => tc.name);
+  return { content, toolCalls };
 }
 
 async function consumeStream(
@@ -152,7 +246,12 @@ async function consumeStream(
         const current = toolAcc.get(index) ?? { id: "", name: "", arguments: "" };
         if (part.id) current.id = part.id;
         if (part.function?.name) current.name += part.function.name;
-        if (part.function?.arguments) current.arguments += part.function.arguments;
+        if (part.function?.arguments) {
+          current.arguments +=
+            typeof part.function.arguments === "string"
+              ? part.function.arguments
+              : JSON.stringify(part.function.arguments);
+        }
         toolAcc.set(index, current);
       }
     }

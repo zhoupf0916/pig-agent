@@ -1,6 +1,6 @@
-import { Loader2, Square, Terminal } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { toolLabel } from "../lib/format";
+import { Check, Loader2, Square, Terminal, X } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
+import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
 import type { ChatMessage, LiveTool, PlanStep, Session } from "../types";
 import { MarkdownView } from "./MarkdownView";
 
@@ -26,7 +26,13 @@ export function ChatPanel({
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages, liveTools, streaming]);
 
-  const visible = (session?.messages ?? []).filter((m) => m.role !== "system");
+  const visible = (session?.messages ?? []).filter(
+    (m) => m.role !== "system" && !m.content.startsWith("[harness]"),
+  );
+  const tools = useMemo(
+    () => (liveTools.length > 0 ? liveTools : toolsFromMessages(session?.messages ?? [])),
+    [liveTools, session?.messages],
+  );
 
   return (
     <section className="flex min-w-0 flex-1 flex-col">
@@ -35,23 +41,24 @@ export function ChatPanel({
         {!session && (
           <EmptyState
             title="选择或新建一个任务"
-            body="在浏览器里用自然语言描述目标。Agent 会规划步骤、调用本地工具，并把产物留在右侧供你审阅。"
+            body="在浏览器里用自然语言描述目标。Agent 会规划 → 调用工具 → 校验 → 留下可审阅产物。"
           />
         )}
         {session && visible.length === 0 && !streaming && (
           <EmptyState
             title="描述一个工作目标"
-            body="例如：整理当前工作区，把散落的笔记归类，并写一份中文 README 摘要。"
+            body="例如：搜索散落的笔记，整理到文件夹，并写一份中文调研报告。"
           />
         )}
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {visible.map((m) => (
-            <MessageBlock key={m.id} message={m} />
-          ))}
-          {liveTools.map((t) => (
-            <ToolCard key={t.id} tool={t} />
-          ))}
-          {streaming && liveTools.every((t) => t.done) && (
+          {interleave(visible, tools).map((item) =>
+            item.kind === "message" ? (
+              <MessageBlock key={item.message.id} message={item.message} />
+            ) : (
+              <ToolCard key={item.tool.id} tool={item.tool} />
+            ),
+          )}
+          {streaming && tools.every((t) => t.done) && (
             <div className="flex items-center gap-2 text-xs text-ink-500">
               <Loader2 size={14} className="animate-spin text-accent" />
               正在思考…
@@ -72,11 +79,91 @@ export function ChatPanel({
   );
 }
 
+function toolsFromMessages(messages: ChatMessage[]): LiveTool[] {
+  const cards: LiveTool[] = [];
+  const byId = new Map<string, LiveTool>();
+  for (const m of messages) {
+    if (m.role === "assistant" && m.toolCalls?.length) {
+      for (const tc of m.toolCalls) {
+        let args: unknown = tc.arguments;
+        try {
+          args = JSON.parse(tc.arguments) as unknown;
+        } catch {
+          args = tc.arguments;
+        }
+        const card: LiveTool = {
+          id: tc.id,
+          name: tc.name,
+          arguments: args,
+          done: false,
+        };
+        cards.push(card);
+        byId.set(tc.id, card);
+      }
+    }
+    if (m.role === "tool" && m.toolCallId) {
+      const card = byId.get(m.toolCallId);
+      if (card) {
+        card.done = true;
+        card.ok = m.toolOk ?? !/^Sandbox blocked|^HTTP fetch blocked|^Error\b/i.test(m.content);
+        card.output = m.content;
+        card.durationMs = m.toolDurationMs;
+      }
+    }
+  }
+  return cards;
+}
+
+function interleave(
+  messages: ChatMessage[],
+  tools: LiveTool[],
+): Array<{ kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }> {
+  const used = new Set<string>();
+  const out: Array<{ kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }> =
+    [];
+  for (const message of messages) {
+    if (message.role === "tool") continue;
+    if (message.role === "assistant" && !message.content && message.toolCalls?.length) {
+      for (const tc of message.toolCalls) {
+        const tool = tools.find((t) => t.id === tc.id);
+        if (tool) {
+          out.push({ kind: "tool", tool });
+          used.add(tool.id);
+        }
+      }
+      continue;
+    }
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      for (const tc of message.toolCalls) {
+        const tool = tools.find((t) => t.id === tc.id);
+        if (tool) {
+          out.push({ kind: "tool", tool });
+          used.add(tool.id);
+        }
+      }
+    }
+    if (message.role === "user" || (message.role === "assistant" && message.content)) {
+      out.push({ kind: "message", message });
+    }
+  }
+  for (const tool of tools) {
+    if (!used.has(tool.id)) out.push({ kind: "tool", tool });
+  }
+  return out;
+}
+
 function StepStrip({ steps }: { steps: PlanStep[] }) {
   if (steps.length === 0) return null;
+  const running = steps.filter((s) => s.status === "running").length;
+  const done = steps.filter((s) => s.status === "done").length;
   return (
     <div className="border-b border-white/5 bg-ink-900/40 px-6 py-3">
-      <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-ink-500">步骤</div>
+      <div className="mb-2 flex items-center justify-between text-[11px] text-ink-500">
+        <span className="uppercase tracking-[0.16em]">步骤</span>
+        <span>
+          {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
+        </span>
+      </div>
       <ol className="flex flex-wrap gap-2">
         {steps.map((step, i) => (
           <li
@@ -102,9 +189,6 @@ function tone(status: PlanStep["status"]): string {
 
 function MessageBlock({ message }: { message: ChatMessage }) {
   if (message.role === "tool") return null;
-  if (message.role === "assistant" && !message.content && message.toolCalls?.length) {
-    return null;
-  }
   const mine = message.role === "user";
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -126,18 +210,35 @@ function MessageBlock({ message }: { message: ChatMessage }) {
 }
 
 function ToolCard({ tool }: { tool: LiveTool }) {
+  const summary = summarizeArgs(tool.arguments);
   return (
-    <details className="rounded-xl border border-white/5 bg-ink-900/70">
+    <details className="rounded-xl border border-white/5 bg-ink-900/70" open={!tool.done || !tool.ok}>
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs text-ink-300">
         <Terminal size={13} className="text-accent" />
         <span className="font-medium">{toolLabel(tool.name)}</span>
-        <span className="truncate text-ink-500">
-          {typeof tool.arguments === "object" && tool.arguments
-            ? summarize(tool.arguments)
-            : ""}
-        </span>
-        <span className="ml-auto text-[10px] uppercase tracking-wider text-ink-500">
-          {tool.done ? (tool.ok ? "完成" : "失败") : "进行中"}
+        <span className="truncate text-ink-500">{summary}</span>
+        <span className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-wider">
+          {tool.durationMs !== undefined && (
+            <span className="normal-case text-ink-500">{formatDuration(tool.durationMs)}</span>
+          )}
+          {!tool.done && (
+            <span className="inline-flex items-center gap-1 text-sky-200">
+              <Loader2 size={11} className="animate-spin" />
+              进行中
+            </span>
+          )}
+          {tool.done && tool.ok && (
+            <span className="inline-flex items-center gap-1 text-emerald-300">
+              <Check size={11} />
+              成功
+            </span>
+          )}
+          {tool.done && !tool.ok && (
+            <span className="inline-flex items-center gap-1 text-red-300">
+              <X size={11} />
+              失败
+            </span>
+          )}
         </span>
       </summary>
       <pre className="max-h-56 overflow-auto border-t border-white/5 px-3 py-2 font-mono text-[11px] text-ink-300">
@@ -145,14 +246,6 @@ function ToolCard({ tool }: { tool: LiveTool }) {
       </pre>
     </details>
   );
-}
-
-function summarize(args: object): string {
-  const rec = args as Record<string, unknown>;
-  if (typeof rec.path === "string") return rec.path;
-  if (typeof rec.command === "string") return rec.command;
-  if (typeof rec.name === "string") return rec.name;
-  return "";
 }
 
 function Composer({
@@ -208,7 +301,7 @@ function Composer({
         )}
       </div>
       <p className="mx-auto mt-2 max-w-3xl text-[11px] text-ink-500">
-        Enter 发送 · Shift+Enter 换行 · 文件与命令仅作用于本地工作区
+        Enter 发送 · Shift+Enter 换行 · 运行中可点停止 · 文件与命令仅作用于本地工作区
       </p>
     </div>
   );
