@@ -12,7 +12,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 - **对话 / 任务**：流式回复、步骤条、带耗时的工具卡片（参数摘要 / 成功失败）、**停止**当前一轮；本机 Pig / Codex 失败可 **重试本轮**
 - **产物面板**：按新建 / 修改 / 移动 / 删除分组；文本文件可看前后对比
-- **工作区浏览器**：浏览沙箱根目录并预览；同一主机另一标签在回合中新建 / 修改的沙箱文件会经只读 `GET /api/workspace/tree`（焦点 / 可见 / 短轮询）跟上，无需整页刷新
+- **工作区浏览器**：浏览沙箱根目录并预览；同一主机另一标签在回合中新建 / 修改的沙箱文件会经只读 `GET /api/workspace/tree`（焦点 / 可见 / 短轮询）跟上，已打开的预览再经只读 `GET /api/workspace/file` 跟上，无需整页刷新
 - **Agent 运行时**：OpenAI 兼容 Chat Completions 的 tool-calling 循环（`tool_choice=auto`，并行工具失败则回退）；有最大轮次、连续失败恢复、结束后的用户可见摘要
 - **工具**（均限制在工作区内）：`list_dir` `read_file` `write_file` `edit_file` `apply_patch` `search_files` `delete_file` `move_file` `run_shell` `http_fetch`（SSRF 防护）`list_skills` `load_skill` `update_plan`
 - **技能**：`skills/*.md`；会按任务关键词自动建议 / 预加载
@@ -20,7 +20,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 - **项目协作（MVP）**：`#/projects` 可建项目、待办看板、上传资产、绑定会话；项目指令注入已绑定会话的系统提示。本机轻量多用户：按显示名邀请、待接受列表、收件箱接受/拒绝、项目页兑换令牌（[docs/project-invites.md](./docs/project-invites.md)）。已绑定会话可把产物 **保存到项目**（[docs/artifacts-to-project.md](./docs/artifacts-to-project.md)）。资产可预览（文本 / Markdown / JSON / 图片）与下载，并显示来源会话；工作台或项目页可将绑定会话 **转交到收件箱**（可选附带最近产物）。见 [docs/project-assets.md](./docs/project-assets.md)
 - **本机专家 / playbook（MVP）**：`#/experts` 目录 + 工作台钉选。内置侦察 / 规划 / 实现 / 评审；可引用 `skills/`。**专家指令先于项目指令**注入 pig / Codex / cloud-stub。`mode=chain` 小队在同一会话里顺序各跑一轮（`session.teamRun` + **顺序执行小队**）。见 [docs/experts.md](./docs/experts.md)
 - **本机自动化（MVP）**：`#/automations` 可手动或简单 cron 开一轮 pig 会话并钉选专家 / 项目。可选 `saveArtifactsToProject`（默认关）。无公网 webhook、无远程 worker。见 [docs/automations.md](./docs/automations.md)
-- **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。断线重连只补缺口（不回放全部历史），追平中显示「正在追平未送达事件…」。侧栏对 `GET /api/sessions` 做只读刷新，同一工作站另一标签的 running→idle / 标题会跟上，无需整页刷新。顶栏执行面 chip 对 `GET /api/settings` 做只读刷新，另一标签保存的运行时（本机 Pig / Codex / 云端）会跟上。未发送草稿走本机 `localStorage`，同一会话另一标签经 `storage` / 焦点跟上。工作区树对 `GET /api/workspace/tree` 做只读刷新，另一标签回合中新建 / 修改的沙箱文件会跟上。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
+- **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。断线重连只补缺口（不回放全部历史），追平中显示「正在追平未送达事件…」。侧栏对 `GET /api/sessions` 做只读刷新，同一工作站另一标签的 running→idle / 标题会跟上，无需整页刷新。顶栏执行面 chip 对 `GET /api/settings` 做只读刷新，另一标签保存的运行时（本机 Pig / Codex / 云端）会跟上。未发送草稿走本机 `localStorage`，同一会话另一标签经 `storage` / 焦点跟上。工作区树对 `GET /api/workspace/tree` 做只读刷新，已打开预览对 `GET /api/workspace/file` 做只读刷新，另一标签回合中新建 / 修改的沙箱文件会跟上。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
 - **未发送草稿（本机）**：工作台输入框按 `sessionId` 写入 `localStorage`（`pig-agent.composer-drafts`）。刷新 / 重开或切换会话不会丢草稿；同一主机另一标签打开同一会话时，输入 / 清空 / 发送会经 `storage` 或焦点跟上，无需整页刷新。发送或清空只清当前会话。不写入设置或 API Key
 - **本机搜索 / 记忆（MVP）**：顶栏或 `#/search` 对会话标题 / 近讯、项目名称 / 指令 / 待办 / 动态、资产文件名与文本正文、**钉住笔记 / 回合摘要**做子串检索（无向量库）。见 [docs/search.md](./docs/search.md)
 - **可写本机记忆（MVP）**：`#/memory` 钉住事实或写启发式回合摘要，JSON 在 `data/memory/`。工作台可钉住 / 写摘要。最近若干条钉住会小剂量注入 pig 系统提示。见 [docs/memory.md](./docs/memory.md)
@@ -174,7 +174,7 @@ pnpm typecheck
 
 ### What you get
 
-A localhost workstation: chat + plan/steps, live tool cards (args, ok/fail, duration), stoppable runs, grouped artifacts with text diffs, workspace tree (same-host tabs refresh via read-only `GET /api/workspace/tree` on focus / visibility / a short poll), OpenAI-compatible agent loop (DeepSeek-friendly tool calling), disk-persisted sessions/settings, per-session unsent composer drafts in `localStorage` (never Settings/API keys; same-host tabs stay in sync via `storage` / focus), and local Markdown skills with keyword auto-load. File, shell, and HTTP tools stay sandboxed / SSRF-safe.
+A localhost workstation: chat + plan/steps, live tool cards (args, ok/fail, duration), stoppable runs, grouped artifacts with text diffs, workspace tree (same-host tabs refresh via read-only `GET /api/workspace/tree` on focus / visibility / a short poll; an already-open file preview refreshes via `GET /api/workspace/file`), OpenAI-compatible agent loop (DeepSeek-friendly tool calling), disk-persisted sessions/settings, per-session unsent composer drafts in `localStorage` (never Settings/API keys; same-host tabs stay in sync via `storage` / focus), and local Markdown skills with keyword auto-load. File, shell, and HTTP tools stay sandboxed / SSRF-safe.
 
 ### Start
 
