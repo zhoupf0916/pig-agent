@@ -52,6 +52,17 @@ describe("HTTP API", () => {
     expect(body.cloudMode ?? "local-stub").toBe("local-stub");
   });
 
+  it("rejects remote cloud settings without a control-plane URL", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runtime: "cloud", cloudMode: "remote", cloudBaseUrl: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/Cloud base URL is required/);
+  });
+
   it("lists shipped skills", async () => {
     const res = await app.request("/api/skills");
     const body = (await res.json()) as { skills: Array<{ name: string }> };

@@ -58,8 +58,13 @@ export function createApp(): Hono {
     if (!parsed.success) {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
-    const settings = await saveSettings(parsed.data);
-    return c.json(publicSettings(settings));
+    try {
+      const settings = await saveSettings(parsed.data);
+      return c.json(publicSettings(settings));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json({ error: message }, 400);
+    }
   });
 
   app.get("/api/skills", async (c) => c.json({ skills: await listSkills() }));
