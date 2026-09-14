@@ -109,3 +109,18 @@ No public webhooks. The in-process scheduler starts with `pnpm dev` / `pnpm star
 - [ ] Click **立即运行** twice quickly — second request is skipped / 409 while the first is in flight
 - [ ] `GET /api/automations` lists the record; `POST /api/automations/:id/run` returns 202 + session
 - [ ] This is **not** Slack/Telegram ingress, remote workers, Desk Remote, or Firecracker
+
+## Artifacts → project assets (Milestone E)
+
+No LLM required if you seed an artifact (or finish a mock/real turn that writes a file). See [docs/artifacts-to-project.md](./docs/artifacts-to-project.md).
+
+- [ ] Bind a session to a project (chat header project select or **在此项目开任务**)
+- [ ] After the session has a created/modified artifact, the right **产物** panel shows **保存到项目** (unbound sessions do not)
+- [ ] Click **保存到项目** — toast + **查看资产** opens `#/projects/<id>`; the file is listed (filename + 来自 `<path>`)
+- [ ] Click again — same asset id is overwritten (not a second copy)
+- [ ] `POST /api/sessions/<id>/artifacts/<urlencoded-path>/save-to-project` returns `{ asset, overwritten }`
+- [ ] `POST /api/sessions/<id>/artifacts/save-all-to-project` copies savable files and skips deleted
+- [ ] Unbound session → 400 `Session is not bound to a project`
+- [ ] Automations: pin a project, leave **运行成功后把新产物保存到项目资产** unchecked (default) — a run does not add assets
+- [ ] Check the box, run a turn that writes a file — project assets include that path
+- [ ] Default runtime is still **本机 Pig**. This is **not** Desk Remote / Firecracker / marketplace

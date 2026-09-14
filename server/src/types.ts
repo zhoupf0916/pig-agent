@@ -131,6 +131,12 @@ export type ProjectAsset = {
   size: number;
   mimeType: string;
   createdAt: string;
+  /** Set when the file was last overwritten (e.g. re-save from a session artifact). */
+  updatedAt?: string;
+  /** Session that last copied this file into the project. */
+  sourceSessionId?: string;
+  /** Workspace-relative artifact path; identity key for idempotent overwrite. */
+  sourceArtifactPath?: string;
 };
 
 export type ProjectMessageKind = "activity" | "comment" | "handoff";
@@ -204,6 +210,11 @@ export type Automation = {
   projectId?: string;
   /** Default pig. Stored per automation; does not change global settings. */
   runtime: AgentRuntime;
+  /**
+   * After a successful run, copy new session artifacts into the bound project.
+   * Default false — opt-in so scheduled jobs do not silently fill assets.
+   */
+  saveArtifactsToProject?: boolean;
   lastRunAt?: string;
   lastSessionId?: string;
   lastError?: string;

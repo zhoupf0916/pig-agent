@@ -25,6 +25,7 @@ const createSchema = z.object({
   expertTeamId: optionalId,
   projectId: optionalId,
   runtime: runtimeSchema.optional(),
+  saveArtifactsToProject: z.boolean().optional(),
 });
 
 const patchSchema = z.object({
@@ -36,6 +37,7 @@ const patchSchema = z.object({
   expertTeamId: optionalId,
   projectId: optionalId,
   runtime: runtimeSchema.optional(),
+  saveArtifactsToProject: z.boolean().optional(),
 });
 
 function fail(err: unknown): { error: string; status: 400 } {

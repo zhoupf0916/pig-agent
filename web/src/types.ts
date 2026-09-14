@@ -111,6 +111,9 @@ export type ProjectAsset = {
   size: number;
   mimeType: string;
   createdAt: string;
+  updatedAt?: string;
+  sourceSessionId?: string;
+  sourceArtifactPath?: string;
 };
 
 export type ProjectMessage = {
@@ -172,6 +175,7 @@ export type Automation = {
   expertTeamId?: string;
   projectId?: string;
   runtime: AgentRuntime;
+  saveArtifactsToProject?: boolean;
   lastRunAt?: string;
   lastSessionId?: string;
   lastError?: string;

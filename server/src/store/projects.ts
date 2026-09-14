@@ -239,23 +239,87 @@ export async function addAsset(
   id: string,
   input: { filename: string; content: Buffer; mimeType?: string },
 ): Promise<{ project: Project; asset: ProjectAsset } | null> {
+  const result = await upsertAsset(id, input);
+  return result ? { project: result.project, asset: result.asset } : null;
+}
+
+export type UpsertAssetInput = {
+  filename: string;
+  content: Buffer;
+  mimeType?: string;
+  sourceSessionId?: string;
+  sourceArtifactPath?: string;
+};
+
+/**
+ * Copy bytes into the project assets store.
+ * When `sourceArtifactPath` is set, the same workspace path overwrites the
+ * existing asset (same id) — idempotent re-save / daily automation.
+ * Distinct paths that share a basename get a versioned filename (`a-2.md`).
+ */
+export async function upsertAsset(
+  id: string,
+  input: UpsertAssetInput,
+): Promise<{ project: Project; asset: ProjectAsset; overwritten: boolean } | null> {
   const project = await readProjectFile(id);
   if (!project) return null;
-  const filename = sanitizeAssetFilename(input.filename);
-  const asset: ProjectAsset = {
-    id: newId("ast"),
-    filename,
-    size: input.content.length,
-    mimeType: input.mimeType || "application/octet-stream",
-    createdAt: nowIso(),
-  };
+  const desired = sanitizeAssetFilename(input.filename);
+  const ts = nowIso();
+  const sourcePath = input.sourceArtifactPath?.trim().replace(/\\/g, "/") || undefined;
+  const sourceSessionId = input.sourceSessionId?.trim() || undefined;
+
+  let asset = sourcePath
+    ? project.assets.find((a) => a.sourceArtifactPath === sourcePath)
+    : undefined;
+  const overwritten = Boolean(asset);
+
+  if (asset) {
+    asset.size = input.content.length;
+    asset.mimeType = input.mimeType || asset.mimeType || "application/octet-stream";
+    asset.updatedAt = ts;
+    if (sourceSessionId) asset.sourceSessionId = sourceSessionId;
+    asset.sourceArtifactPath = sourcePath;
+  } else {
+    const filename = uniqueAssetFilename(
+      project.assets.map((a) => a.filename),
+      desired,
+    );
+    asset = {
+      id: newId("ast"),
+      filename,
+      size: input.content.length,
+      mimeType: input.mimeType || "application/octet-stream",
+      createdAt: ts,
+      sourceSessionId,
+      sourceArtifactPath: sourcePath,
+    };
+    project.assets.push(asset);
+  }
+
   const dir = assetsDir(id);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${asset.id}_${filename}`), input.content);
-  project.assets.push(asset);
-  await activity(project, `上传了资产 ${filename}`);
+  await writeFile(join(dir, `${asset.id}_${asset.filename}`), input.content);
+  await activity(
+    project,
+    overwritten
+      ? `更新了资产 ${asset.filename}（来自产物 ${sourcePath ?? asset.filename}）`
+      : sourcePath
+        ? `从会话产物保存了资产 ${asset.filename}（${sourcePath}）`
+        : `上传了资产 ${asset.filename}`,
+    { sessionId: sourceSessionId },
+  );
   await writeProject(project);
-  return { project, asset };
+  return { project, asset, overwritten };
+}
+
+export function uniqueAssetFilename(existing: string[], desired: string): string {
+  if (!existing.includes(desired)) return desired;
+  const dot = desired.lastIndexOf(".");
+  const stem = dot > 0 ? desired.slice(0, dot) : desired;
+  const ext = dot > 0 ? desired.slice(dot) : "";
+  let n = 2;
+  while (existing.includes(`${stem}-${n}${ext}`)) n += 1;
+  return `${stem}-${n}${ext}`;
 }
 
 export function assetDiskPath(projectId: string, asset: ProjectAsset): string {
