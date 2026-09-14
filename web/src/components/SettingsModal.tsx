@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { describeExecutionSurface } from "../lib/runtime-surface";
 import type { AgentRuntime, CloudMode, Settings, SkillMeta } from "../types";
 
@@ -40,24 +40,17 @@ export function SettingsModal({
     setError(null);
   }, [open, settings]);
 
-  if (!open) return null;
-
-  const setRuntime = (runtime: AgentRuntime) => setForm({ ...form, runtime });
-  const previewSurface = useMemo(
-    () =>
-      describeExecutionSurface({
-        runtime: form.runtime,
-        llmModel: form.llmModel,
-        llmBaseUrl: form.llmBaseUrl,
-        codexModel: form.codexModel,
-        codexNetworkAccess: form.codexNetworkAccess,
-        cloudMode: form.cloudMode,
-        cloudBaseUrl: form.cloudBaseUrl,
-        effectiveBaseUrl:
-          form.cloudBaseUrl.trim() || settings?.cloudStatus?.effectiveBaseUrl || settings?.cloudBaseUrl,
-      }),
-    [form, settings],
-  );
+  const previewSurface = describeExecutionSurface({
+    runtime: form.runtime,
+    llmModel: form.llmModel,
+    llmBaseUrl: form.llmBaseUrl,
+    codexModel: form.codexModel,
+    codexNetworkAccess: form.codexNetworkAccess,
+    cloudMode: form.cloudMode,
+    cloudBaseUrl: form.cloudBaseUrl,
+    effectiveBaseUrl:
+      form.cloudBaseUrl.trim() || settings?.cloudStatus?.effectiveBaseUrl || settings?.cloudBaseUrl,
+  });
   const savedSurface = settings
     ? describeExecutionSurface({
         runtime: settings.runtime,
@@ -70,6 +63,10 @@ export function SettingsModal({
         effectiveBaseUrl: settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl,
       })
     : previewSurface;
+
+  if (!open) return null;
+
+  const setRuntime = (runtime: AgentRuntime) => setForm({ ...form, runtime });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px]">
