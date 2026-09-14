@@ -110,6 +110,10 @@ When Tab B already has a sandbox path open in the preview pane, that preview is 
 
 Light / dark stays in the existing client-only `localStorage` key `pig-agent.theme` (Milestone J2). Another same-host tab applies Tab A's header toggle through the `storage` event, or by re-reading the key on focus / visibility — no full page reload. This does **not** invent a second key, persist theme on the server, or dual-write settings / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Session pins (Milestone Y)
+
+When Tab B is already showing a session, the chat-header pin row (项目 / 专家 / 小队) is a **read-only** refresh of those fields from `GET /api/sessions`. Another same-host tab that binds or unbinds (「未绑定」) updates Tab B's dropdowns / hints on focus, visibility, or a short poll — no full page reload. Apply patches only the pin fields on the open session (transcript / steps stay put). This does **not** add a write path, a second pin store, or dual-write `events.jsonl`. Default runtime stays **pig**.
+
 ## What this is not
 
 - No Redis / MySQL bus
