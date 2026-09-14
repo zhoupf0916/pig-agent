@@ -1,8 +1,8 @@
-import { Check, Loader2, Pin, Square, StickyNote, Terminal, X } from "lucide-react";
+import { Check, Loader2, Pin, Play, Square, StickyNote, Terminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
-import type { ChatMessage, LiveTool, PlanStep, Session } from "../types";
+import type { ChatMessage, Expert, ExpertTeam, LiveTool, PlanStep, Session, TeamRunMember } from "../types";
 import { HandoffDialog } from "./HandoffDialog";
 import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
@@ -20,6 +20,7 @@ export function ChatPanel({
   onDraft,
   onSend,
   onStop,
+  onTeamRun,
   onBindProject,
   onBindExpert,
   onBindTeam,
@@ -32,12 +33,13 @@ export function ChatPanel({
   liveTools: LiveTool[];
   projectName?: string;
   projects: Array<{ id: string; name: string }>;
-  experts: Array<{ id: string; name: string }>;
-  teams: Array<{ id: string; name: string }>;
+  experts: Expert[];
+  teams: ExpertTeam[];
   expertName?: string;
   onDraft: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
+  onTeamRun: () => void;
   onBindProject: (projectId: string | null) => void;
   onBindExpert: (expertId: string | null) => void;
   onBindTeam: (teamId: string | null) => void;
@@ -52,6 +54,34 @@ export function ChatPanel({
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [session?.messages, liveTools, streaming]);
+
+  const pinnedTeam = teams.find((t) => t.id === session?.expertTeamId);
+  const teamMembers: TeamRunMember[] = session?.teamRun?.members?.length
+    ? session.teamRun.members
+    : (pinnedTeam?.expertIds ?? []).map((id) => {
+        const expert = experts.find((e) => e.id === id);
+        return {
+          expertId: id,
+          name: expert?.name ?? id,
+          kind: expert?.kind ?? "custom",
+          status: "pending" as const,
+        };
+      });
+  const canChain = Boolean(pinnedTeam && pinnedTeam.mode === "chain" && !session?.expertId);
+  const canContinue = Boolean(
+    canChain &&
+      session?.teamRun &&
+      session.teamRun.members.some(
+        (m) => m.status === "pending" || m.status === "error" || m.status === "cancelled",
+      ) &&
+      session.teamRun.status !== "running",
+  );
+  const canStartTeam =
+    canChain &&
+    !streaming &&
+    (Boolean(draft.trim()) ||
+      canContinue ||
+      Boolean(session?.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))));
 
   const visible = (session?.messages ?? []).filter(
     (m) => m.role !== "system" && !m.content.startsWith("[harness]"),
@@ -110,14 +140,31 @@ export function ChatPanel({
               ))}
             </select>
           </label>
-          {(expertName || projectName) && (
+          {(expertName || projectName || pinnedTeam) && (
             <span className="text-xs text-ink-500">
-              {expertName && projectName
-                ? "专家指令先于项目指令注入"
-                : expertName
-                  ? "专家指令将注入本会话系统提示"
-                  : "项目指令将注入本会话系统提示"}
+              {expertName && pinnedTeam
+                ? "已钉选单个专家，小队仅作元数据"
+                : pinnedTeam && pinnedTeam.mode === "chain"
+                  ? "小队按顺序各跑一轮（同会话）"
+                  : expertName && projectName
+                    ? "专家指令先于项目指令注入"
+                    : expertName
+                      ? "专家指令将注入本会话系统提示"
+                      : projectName
+                        ? "项目指令将注入本会话系统提示"
+                        : "小队指令将注入本会话系统提示"}
             </span>
+          )}
+          {canChain && (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={!canStartTeam}
+              onClick={onTeamRun}
+            >
+              <Play size={13} />
+              {canContinue && !draft.trim() ? "继续小队" : "顺序执行小队"}
+            </button>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {memoryStatus && <span className="text-xs text-ink-500">{memoryStatus}</span>}
@@ -155,6 +202,13 @@ export function ChatPanel({
             )}
           </div>
         </div>
+      )}
+      {pinnedTeam && teamMembers.length > 0 && (
+        <TeamPipeline
+          teamName={session?.teamRun?.teamName ?? pinnedTeam.name}
+          members={teamMembers}
+          status={session?.teamRun?.status}
+        />
       )}
       <StepStrip steps={session?.steps ?? []} />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
@@ -294,6 +348,43 @@ function interleave(
   return out;
 }
 
+function TeamPipeline({
+  teamName,
+  members,
+  status,
+}: {
+  teamName: string;
+  members: TeamRunMember[];
+  status?: string;
+}) {
+  const done = members.filter((m) => m.status === "done").length;
+  const running = members.filter((m) => m.status === "running").length;
+  return (
+    <div className="border-b border-ink-300 bg-white/80 px-6 py-3">
+      <div className="mb-2 flex items-center justify-between text-meta text-ink-500">
+        <span className="uppercase tracking-[0.16em]">小队流水线 · {teamName}</span>
+        <span>
+          {done}/{members.length} 完成
+          {running ? ` · ${running} 进行中` : ""}
+          {status && status !== "idle" && status !== "running" ? ` · ${status}` : ""}
+        </span>
+      </div>
+      <ol className="flex flex-wrap gap-2">
+        {members.map((member, i) => (
+          <li
+            key={`${member.expertId}-${i}`}
+            title={member.detail}
+            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(member.status === "cancelled" ? "error" : member.status)}`}
+          >
+            <span className="font-mono text-[12px] opacity-70">{i + 1}</span>
+            {member.name}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function StepStrip({ steps }: { steps: PlanStep[] }) {
   if (steps.length === 0) return null;
   const running = steps.filter((s) => s.status === "running").length;
@@ -331,6 +422,15 @@ function tone(status: PlanStep["status"]): string {
 
 function MessageBlock({ message }: { message: ChatMessage }) {
   if (message.role === "tool") return null;
+  if (message.content.startsWith("[team]")) {
+    return (
+      <div className="flex justify-center">
+        <div className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1 text-meta text-accent">
+          {message.content.replace(/^\[team\]\s*/, "")}
+        </div>
+      </div>
+    );
+  }
   const mine = message.role === "user";
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>

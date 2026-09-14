@@ -96,6 +96,13 @@ export const api = {
       json<{ ok: boolean }>(r),
     ),
 
+  stopTeamRun: (id: string) =>
+    fetch(`/api/sessions/${id}/team-run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "stop" }),
+    }).then((r) => json<{ ok: boolean; running: boolean; session: Session }>(r)),
+
   projects: () =>
     fetch("/api/projects").then((r) => json<{ projects: ProjectSummary[] }>(r)),
 
@@ -430,6 +437,24 @@ export async function streamMessage(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(await parseError(res));
+  }
+  await readSseStream(res.body, onEvent);
+}
+
+export async function streamTeamRun(
+  sessionId: string,
+  input: { action: "start" | "continue"; content?: string },
+  onEvent: (event: AgentEvent, seq?: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}/team-run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
     signal,
   });
   if (!res.ok || !res.body) {

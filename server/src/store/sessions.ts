@@ -3,6 +3,7 @@ import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DATA_DIR, ensureDir } from "../config.ts";
 import type { Session, SessionSummary } from "../types.ts";
+import { normalizeTeamRun } from "./team-run-state.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
 import { deleteSessionEvents, getLastEventSeq } from "./events.ts";
 
@@ -110,5 +111,6 @@ async function readSessionFile(file: string): Promise<Session> {
       typeof raw.remoteRunId === "string" && raw.remoteRunId.trim()
         ? raw.remoteRunId.trim()
         : undefined,
+    teamRun: normalizeTeamRun(raw.teamRun),
   };
 }

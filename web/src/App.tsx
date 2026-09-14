@@ -11,7 +11,7 @@ import { SearchBox } from "./components/SearchBox";
 import { SearchPanel } from "./components/SearchPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
-import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
+import { api, streamMessage, streamTeamRun, subscribeSessionEvents } from "./lib/api";
 import {
   automationsHash,
   expertsHash,
@@ -314,6 +314,10 @@ export function App() {
       setSession((prev) => (prev ? { ...prev, lastError: event.message, status: "error" } : prev));
       return;
     }
+    if (event.type === "team_run") {
+      setSession((prev) => (prev ? { ...prev, teamRun: event.teamRun } : prev));
+      return;
+    }
     if (event.type === "done") {
       setSession(event.session);
       void refreshSessions();
@@ -389,10 +393,81 @@ export function App() {
   const stop = useCallback(async () => {
     if (!session) return;
     abortRef.current?.abort();
-    await api.abort(session.id);
+    try {
+      await api.stopTeamRun(session.id);
+    } catch {
+      await api.abort(session.id);
+    }
     setStreaming(false);
     setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
   }, [session]);
+
+  const startTeamRun = useCallback(async () => {
+    if (!session || streaming) return;
+    const content = draft.trim();
+    const canContinue = Boolean(
+      session.teamRun &&
+        session.teamRun.members.some(
+          (m) => m.status === "pending" || m.status === "error" || m.status === "cancelled",
+        ) &&
+        session.teamRun.status !== "running" &&
+        session.teamRun.status !== "done",
+    );
+    const action: "start" | "continue" = !content && canContinue ? "continue" : "start";
+    if (action === "start" && !content && !session.messages.some((m) => m.role === "user")) return;
+    if (content) setDraft("");
+    setStreaming(true);
+    setLiveTools([]);
+    if (content) {
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "running",
+              messages: [
+                ...prev.messages,
+                {
+                  id: `local_${Date.now()}`,
+                  role: "user",
+                  content,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }
+          : prev,
+      );
+    } else {
+      setSession((prev) => (prev ? { ...prev, status: "running" } : prev));
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await streamTeamRun(
+        session.id,
+        action === "start" && content ? { action, content } : { action },
+        applyEvent,
+        controller.signal,
+      );
+    } catch (err) {
+      if (controller.signal.aborted) {
+        setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
+      } else {
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "error",
+                lastError: err instanceof Error ? err.message : String(err),
+              }
+            : prev,
+        );
+      }
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      setStreaming(false);
+      void refreshSessions();
+    }
+  }, [applyEvent, draft, refreshSessions, session, streaming]);
 
   const bindProject = useCallback(
     async (projectId: string | null) => {
@@ -651,6 +726,7 @@ export function App() {
               onDraft={setDraft}
               onSend={() => void send()}
               onStop={() => void stop()}
+              onTeamRun={() => void startTeamRun()}
               onBindProject={(id) => void bindProject(id)}
               onBindExpert={(id) => void bindExpert(id)}
               onBindTeam={(id) => void bindTeam(id)}

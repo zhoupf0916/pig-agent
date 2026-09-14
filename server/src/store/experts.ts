@@ -278,7 +278,7 @@ export async function deleteExpertTeam(id: string): Promise<"ok" | "missing" | "
   return "ok";
 }
 
-function formatExpertBlock(expert: Expert): string {
+export function formatExpertBlock(expert: Expert): string {
   const skills =
     expert.skillIds.length > 0
       ? `\nPreferred local skills (already installed; load_skill if needed): ${expert.skillIds.join(", ")}`
@@ -286,10 +286,48 @@ function formatExpertBlock(expert: Expert): string {
   return `### ${expert.name} (${expert.kind})\n${expert.instruction.trim()}${skills}`;
 }
 
+/** One member of a chain team — used by the sequential same-session runner. */
+export function formatSequentialMemberInstruction(
+  team: ExpertTeam,
+  expert: Expert,
+  index: number,
+  total: number,
+): string {
+  const header = `Expert team 「${team.name}」 — sequential same-session step ${index + 1}/${total}. You are only 「${expert.name}」 (${expert.kind}). Do not perform later members' jobs. Previous members' notes are in this transcript.`;
+  return `${header}\n\n${formatExpertBlock(expert)}`;
+}
+
+export async function resolveTeamMemberPlaybook(
+  teamId: string,
+  memberIndex: number,
+): Promise<{
+  instruction?: string;
+  skillIds: string[];
+  expert?: Expert;
+  team?: ExpertTeam;
+  memberIndex: number;
+}> {
+  await ensureBundledExperts();
+  const team = (await getExpertTeam(teamId)) ?? undefined;
+  if (!team) return { skillIds: [], memberIndex };
+  const expertId = team.expertIds[memberIndex];
+  if (!expertId) return { skillIds: [], team, memberIndex };
+  const expert = (await getExpert(expertId)) ?? undefined;
+  if (!expert) return { skillIds: [], team, memberIndex };
+  return {
+    instruction: formatSequentialMemberInstruction(team, expert, memberIndex, team.expertIds.length),
+    skillIds: [...expert.skillIds],
+    expert,
+    team,
+    memberIndex,
+  };
+}
+
 /**
  * Resolve the playbook text for a session.
  * If `expertId` is set, that expert wins (active role).
- * Else if `expertTeamId` is set, concatenate member instructions in team order.
+ * Else if `expertTeamId` is set, concatenate member instructions in team order
+ * (parallel mode, and the fallback when a chain is not being run sequentially).
  */
 export async function resolveExpertPlaybook(input: {
   expertId?: string;
@@ -334,7 +372,7 @@ export async function resolveExpertPlaybook(input: {
     const header =
       team.mode === "parallel"
         ? `Expert team 「${team.name}」 (parallel metadata — apply all roles as joint guidance; this runtime still runs one agent):`
-        : `Expert team 「${team.name}」 (chain metadata — apply roles in order as joint guidance; this runtime still runs one agent):`;
+        : `Expert team 「${team.name}」 (chain metadata — joint guidance fallback; sequential same-session runs inject one member per turn):`;
     return {
       instruction: `${header}\n\n${blocks.join("\n\n")}`,
       skillIds: [...new Set(skillIds)],
