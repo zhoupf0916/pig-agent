@@ -120,6 +120,16 @@ export async function listExperts(): Promise<Expert[]> {
   }
   out.sort((a, b) => {
     if (a.bundled !== b.bundled) return a.bundled ? -1 : 1;
+    if (a.bundled && b.bundled) {
+      const order: Record<ExpertKind, number> = {
+        scout: 0,
+        plan: 1,
+        implement: 2,
+        review: 3,
+        custom: 4,
+      };
+      return order[a.kind] - order[b.kind] || a.name.localeCompare(b.name, "zh");
+    }
     return a.name.localeCompare(b.name, "zh");
   });
   return out;

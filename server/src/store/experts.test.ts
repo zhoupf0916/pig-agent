@@ -33,9 +33,13 @@ describe("local experts registry", () => {
     const listed = await json<{ experts: Array<{ id: string; bundled: boolean; name: string }> }>(
       await app.request("/api/experts"),
     );
-    const ids = listed.experts.map((e) => e.id);
-    expect(ids).toContain(BUNDLED_SCOUT_ID);
-    expect(ids).toContain(BUNDLED_IMPLEMENT_ID);
+    const ids = listed.experts.filter((e) => e.bundled).map((e) => e.id);
+    expect(ids.slice(0, 4)).toEqual([
+      BUNDLED_SCOUT_ID,
+      "exp_plan",
+      BUNDLED_IMPLEMENT_ID,
+      "exp_review",
+    ]);
     expect(listed.experts.find((e) => e.id === BUNDLED_IMPLEMENT_ID)?.name).toContain("实现");
 
     const teams = await json<{ teams: Array<{ id: string; mode: string; expertIds: string[] }> }>(
