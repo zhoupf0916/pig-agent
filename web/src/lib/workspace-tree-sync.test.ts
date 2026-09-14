@@ -174,7 +174,7 @@ describe("workspace browser tree sync (Milestone T)", () => {
           content: "llmApiKey=sk-abcdefghijklmnop\ncloudToken=Bearer tok-secret",
         },
       ],
-    } as WorkspaceNode;
+    } as unknown as WorkspaceNode;
     const applied = applyWorkspaceTreeSnapshot(null, dirty);
     const painted = JSON.stringify(applied);
     expect(painted).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
