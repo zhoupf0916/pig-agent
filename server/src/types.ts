@@ -59,12 +59,50 @@ export type Session = {
    * IDLE user turns prefer `POST /v1/runs/:id/follow-ups`.
    */
   remoteRunId?: string;
+  /** Optional local expert / playbook pinned to this session. */
+  expertId?: string;
+  /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */
+  expertTeamId?: string;
 };
 
 export type SessionSummary = Pick<
   Session,
-  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId"
+  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId" | "expertId" | "expertTeamId"
 >;
+
+export type ExpertKind = "scout" | "plan" | "implement" | "review" | "custom";
+
+export type Expert = {
+  id: string;
+  name: string;
+  description: string;
+  instruction: string;
+  kind: ExpertKind;
+  /** Local `skills/` names this playbook prefers. Not a marketplace. */
+  skillIds: string[];
+  bundled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpertTeamMode = "chain" | "parallel";
+
+export type ExpertTeam = {
+  id: string;
+  name: string;
+  description: string;
+  mode: ExpertTeamMode;
+  expertIds: string[];
+  bundled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BoundPlaybook = {
+  expertInstruction?: string;
+  projectInstruction?: string;
+  preferredSkillIds?: string[];
+};
 
 export type ProjectRole = "owner" | "admin" | "member";
 
@@ -243,4 +281,8 @@ export type AgentRunOptions = {
   emit: (event: AgentEvent) => void;
   /** Project instruction, injected into the system prompt when bound. */
   projectInstruction?: string;
+  /** Expert / playbook instruction. Precedes project when both are set. */
+  expertInstruction?: string;
+  /** Extra local skill names to preload (from the pinned expert). */
+  preferredSkillIds?: string[];
 };

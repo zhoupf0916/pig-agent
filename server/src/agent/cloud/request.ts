@@ -1,4 +1,5 @@
 import type { Session, Settings } from "../../types.ts";
+import { prependBoundInstructions, type BoundInstructions } from "../bound-instructions.ts";
 import type { CloudCreateRunRequest, CloudWorkspaceHandoff } from "./contract.ts";
 import { collectWorkspaceHandoff, resolveCloudRepoHint } from "./snapshot.ts";
 
@@ -10,10 +11,11 @@ export function buildCreateRunRequest(
   session: Session,
   settings: Settings,
   workspace?: CloudWorkspaceHandoff,
+  bound?: BoundInstructions,
 ): CloudCreateRunRequest {
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
   const body: CloudCreateRunRequest = {
-    prompt: lastUser?.content ?? "",
+    prompt: prependBoundInstructions(lastUser?.content ?? "", bound ?? {}),
     sessionId: session.id,
     messages: session.messages
       .filter((m) => m.role === "user" || m.role === "assistant")

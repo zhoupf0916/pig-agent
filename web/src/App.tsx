@@ -1,15 +1,18 @@
 import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
+import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
-import { parseHash, projectsHash, workstationHash, type AppRoute } from "./lib/hash";
+import { expertsHash, parseHash, projectsHash, workstationHash, type AppRoute } from "./lib/hash";
 import type {
   AgentEvent,
+  Expert,
+  ExpertTeam,
   LiveTool,
   ProjectSummary,
   Session,
@@ -40,6 +43,8 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [route, setRoute] = useState<AppRoute>(() => parseHash());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [experts, setExperts] = useState<Expert[]>([]);
+  const [expertTeams, setExpertTeams] = useState<ExpertTeam[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const seenSeqRef = useRef<Set<number>>(new Set());
   const lastSeqRef = useRef(0);
@@ -85,6 +90,21 @@ export function App() {
     window.location.hash = projectsHash(projectId);
   }, []);
 
+  const goExperts = useCallback((expertId?: string) => {
+    window.location.hash = expertsHash(expertId);
+  }, []);
+
+  const refreshExperts = useCallback(async () => {
+    try {
+      const [{ experts: next }, { teams }] = await Promise.all([api.experts(), api.expertTeams()]);
+      setExperts(next);
+      setExpertTeams(teams);
+    } catch {
+      setExperts([]);
+      setExpertTeams([]);
+    }
+  }, []);
+
   useEffect(() => {
     void (async () => {
       try {
@@ -98,6 +118,7 @@ export function App() {
         setSessions(list.sessions);
         await refreshTree();
         await refreshProjects();
+        await refreshExperts();
         if (list.sessions[0]) {
           await loadSession(list.sessions[0].id);
         }
@@ -105,7 +126,7 @@ export function App() {
         setBootError(err instanceof Error ? err.message : String(err));
       }
     })();
-  }, [loadSession, refreshProjects, refreshTree]);
+  }, [loadSession, refreshExperts, refreshProjects, refreshTree]);
 
   useEffect(() => {
     const onHash = () => setRoute(parseHash());
@@ -128,7 +149,7 @@ export function App() {
   }, []);
 
   const createSession = useCallback(async (projectId?: string) => {
-    const created = await api.createSession(projectId);
+    const created = await api.createSession(projectId ? { projectId } : undefined);
     await refreshSessions();
     await refreshProjects();
     await loadSession(created.id);
@@ -331,6 +352,56 @@ export function App() {
     [refreshProjects, refreshSessions, session],
   );
 
+  const bindExpert = useCallback(
+    async (expertId: string | null) => {
+      if (!session) return;
+      const next = await api.patchSession(session.id, { expertId });
+      setSession(next);
+      await refreshSessions();
+    },
+    [refreshSessions, session],
+  );
+
+  const bindTeam = useCallback(
+    async (expertTeamId: string | null) => {
+      if (!session) return;
+      const next = await api.patchSession(session.id, { expertTeamId });
+      setSession(next);
+      await refreshSessions();
+    },
+    [refreshSessions, session],
+  );
+
+  const pinExpertToSession = useCallback(
+    async (expertId: string) => {
+      if (session) {
+        await bindExpert(expertId);
+      } else {
+        const created = await api.createSession({ expertId });
+        await refreshSessions();
+        await loadSession(created.id);
+        setDraft("");
+      }
+      goWorkstation();
+    },
+    [bindExpert, goWorkstation, loadSession, refreshSessions, session],
+  );
+
+  const pinTeamToSession = useCallback(
+    async (teamId: string) => {
+      if (session) {
+        await bindTeam(teamId);
+      } else {
+        const created = await api.createSession({ expertTeamId: teamId });
+        await refreshSessions();
+        await loadSession(created.id);
+        setDraft("");
+      }
+      goWorkstation();
+    },
+    [bindTeam, goWorkstation, loadSession, refreshSessions, session],
+  );
+
   const headerHint = useMemo(() => {
     if (!settings) return "正在连接本地后端…";
     if (settings.runtime === "codex") {
@@ -376,6 +447,13 @@ export function App() {
           >
             项目
           </button>
+          <button
+            type="button"
+            className={route.name === "experts" ? "btn-primary" : "btn-ghost"}
+            onClick={() => goExperts(route.name === "experts" ? route.expertId : undefined)}
+          >
+            专家
+          </button>
           <InboxMenu onOpenProject={(id) => goProjects(id)} />
           <div className="hidden text-right text-meta text-ink-500 sm:block">
             <div>{headerHint}</div>
@@ -417,6 +495,14 @@ export function App() {
             }}
             onCreateSession={(projectId) => void createSession(projectId)}
           />
+        ) : route.name === "experts" ? (
+          <ExpertsPanel
+            selectedId={route.expertId}
+            skills={skills}
+            onSelectExpert={(id) => goExperts(id)}
+            onPinExpert={(id) => void pinExpertToSession(id)}
+            onPinTeam={(id) => void pinTeamToSession(id)}
+          />
         ) : (
           <>
             <Sidebar
@@ -433,10 +519,15 @@ export function App() {
               liveTools={liveTools}
               projectName={projects.find((p) => p.id === session?.projectId)?.name}
               projects={projects}
+              experts={experts}
+              teams={expertTeams}
+              expertName={experts.find((e) => e.id === session?.expertId)?.name}
               onDraft={setDraft}
               onSend={() => void send()}
               onStop={() => void stop()}
               onBindProject={(id) => void bindProject(id)}
+              onBindExpert={(id) => void bindExpert(id)}
+              onBindTeam={(id) => void bindTeam(id)}
             />
             <RightPanel
               artifacts={session?.artifacts ?? []}

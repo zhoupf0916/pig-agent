@@ -19,8 +19,9 @@ export async function runCodexAgent(options: {
   emit: (event: AgentEvent) => void;
   hooks?: CodexProcessHooks;
   projectInstruction?: string;
+  expertInstruction?: string;
 }): Promise<Session> {
-  const { settings, signal, emit, hooks, projectInstruction } = options;
+  const { settings, signal, emit, hooks, projectInstruction, expertInstruction } = options;
   const session: Session = {
     ...options.session,
     status: "running",
@@ -35,7 +36,12 @@ export async function runCodexAgent(options: {
     const workspaceReal = synced.workspaceRealPath ?? resolveTrustedWorkspace(settings.workspaceRoot);
     assertCwdMatchesWorkspace(workspaceReal, workspaceReal);
 
-    const prompt = assembleCodexPrompt(session.messages, CODEX_HISTORY_MESSAGES, projectInstruction);
+    const prompt = assembleCodexPrompt(
+      session.messages,
+      CODEX_HISTORY_MESSAGES,
+      projectInstruction,
+      expertInstruction,
+    );
     if (!prompt) {
       throw new Error("No user/assistant text to send to Codex");
     }

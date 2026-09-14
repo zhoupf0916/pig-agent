@@ -50,12 +50,41 @@ export type Session = {
   projectId?: string;
   eventCheckpointSeq?: number;
   remoteRunId?: string;
+  expertId?: string;
+  expertTeamId?: string;
 };
 
 export type SessionSummary = Pick<
   Session,
-  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId"
+  "id" | "title" | "createdAt" | "updatedAt" | "status" | "projectId" | "expertId" | "expertTeamId"
 >;
+
+export type ExpertKind = "scout" | "plan" | "implement" | "review" | "custom";
+
+export type Expert = {
+  id: string;
+  name: string;
+  description: string;
+  instruction: string;
+  kind: ExpertKind;
+  skillIds: string[];
+  bundled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpertTeamMode = "chain" | "parallel";
+
+export type ExpertTeam = {
+  id: string;
+  name: string;
+  description: string;
+  mode: ExpertTeamMode;
+  expertIds: string[];
+  bundled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type TodoStatus = "todo" | "doing" | "done";
 

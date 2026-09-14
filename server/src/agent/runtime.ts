@@ -7,9 +7,10 @@ import type {
   Settings,
 } from "../types.ts";
 import { newId, nowIso, safeJsonParse } from "../util.ts";
+import { formatBoundInstructionBlock } from "./bound-instructions.ts";
 import { LlmError, complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
-import { loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
+import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
 import { executeTool, summarizeToolArgs, type ToolContext } from "./tools.ts";
 
 export const MAX_TURNS = 20;
@@ -22,9 +23,10 @@ export async function buildSystemPrompt(
     suggested?: ScoredSkill[];
     loadedBodies?: Array<{ name: string; body: string }>;
     projectInstruction?: string;
+    expertInstruction?: string;
   } = {},
 ): Promise<string> {
-  const { suggested = [], loadedBodies = [], projectInstruction } = options;
+  const { suggested = [], loadedBodies = [], projectInstruction, expertInstruction } = options;
   const skillLines =
     suggested.length === 0
       ? "- (keyword match will be added per user turn; list_skills to see all)"
@@ -40,6 +42,8 @@ export async function buildSystemPrompt(
           "Auto-loaded skill playbooks for this task (follow them):",
           ...loadedBodies.map((s) => `### ${s.name}\n${s.body}`),
         ].join("\n");
+
+  const boundBlock = formatBoundInstructionBlock({ expertInstruction, projectInstruction });
 
   return [
     "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
@@ -63,13 +67,7 @@ export async function buildSystemPrompt(
     `Workspace root: ${settings.workspaceRoot}`,
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
-    ...(projectInstruction?.trim()
-      ? [
-          "Project instructions (shared team context — follow these for this bound session):",
-          projectInstruction.trim(),
-          "",
-        ]
-      : []),
+    ...(boundBlock ? [boundBlock, ""] : []),
     "Suggested skills for this task:",
     skillLines,
     loaded,
@@ -82,8 +80,10 @@ export async function runAgent(options: {
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   projectInstruction?: string;
+  expertInstruction?: string;
+  preferredSkillIds?: string[];
 }): Promise<Session> {
-  const { settings, signal, emit, projectInstruction } = options;
+  const { settings, signal, emit, projectInstruction, expertInstruction, preferredSkillIds } = options;
   const session: Session = {
     ...options.session,
     status: "running",
@@ -94,14 +94,27 @@ export async function runAgent(options: {
 
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
   const { suggested, loaded } = await loadSuggestedSkills(lastUser?.content ?? "");
+  const loadedBodies = loaded.map((s) => ({ name: s.name, body: s.body }));
+  const seenSkills = new Set(loadedBodies.map((s) => s.name));
+  for (const skillId of preferredSkillIds ?? []) {
+    if (seenSkills.has(skillId)) continue;
+    try {
+      const skill = await loadSkill(skillId);
+      loadedBodies.push({ name: skill.name, body: skill.body });
+      seenSkills.add(skill.name);
+    } catch {
+      // unknown local skill id — skip
+    }
+  }
 
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
     content: await buildSystemPrompt(settings, {
       suggested,
-      loadedBodies: loaded.map((s) => ({ name: s.name, body: s.body })),
+      loadedBodies,
       projectInstruction,
+      expertInstruction,
     }),
     createdAt: nowIso(),
   };

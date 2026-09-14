@@ -8,8 +8,10 @@ import { runCodexAgent } from "./agent/codex/runtime.ts";
 import { runAgent } from "./agent/runtime.ts";
 import { listSkills } from "./agent/skills.ts";
 import { WEB_ORIGIN } from "./config.ts";
+import { registerExpertRoutes } from "./routes/experts.ts";
 import { registerProjectRoutes } from "./routes/projects.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
+import { resolveExpertPlaybook } from "./store/experts.ts";
 import { recordSessionBound, resolveProjectInstruction } from "./store/projects.ts";
 import { publishPersistedEvent } from "./store/events.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
@@ -75,14 +77,22 @@ export function createApp(): Hono {
   app.get("/api/skills", async (c) => c.json({ skills: await listSkills() }));
 
   registerProjectRoutes(app);
+  registerExpertRoutes(app);
   registerSyncRoutes(app);
 
   app.get("/api/sessions", async (c) => c.json({ sessions: await listSessions() }));
 
   app.post("/api/sessions", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      projectId?: string;
+      expertId?: string;
+      expertTeamId?: string;
+    };
     const projectId = typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : undefined;
-    const session = await createSession({ projectId });
+    const expertId = typeof body.expertId === "string" && body.expertId.trim() ? body.expertId.trim() : undefined;
+    const expertTeamId =
+      typeof body.expertTeamId === "string" && body.expertTeamId.trim() ? body.expertTeamId.trim() : undefined;
+    const session = await createSession({ projectId, expertId, expertTeamId });
     if (projectId) await recordSessionBound(projectId, session.id);
     return c.json(session, 201);
   });
@@ -96,7 +106,12 @@ export function createApp(): Hono {
   app.patch("/api/sessions/:id", async (c) => {
     const session = await getSession(c.req.param("id"));
     if (!session) return c.json({ error: "Session not found" }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { projectId?: string | null; title?: string };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      projectId?: string | null;
+      expertId?: string | null;
+      expertTeamId?: string | null;
+      title?: string;
+    };
     if (typeof body.title === "string" && body.title.trim()) {
       session.title = body.title.trim();
     }
@@ -110,6 +125,20 @@ export function createApp(): Hono {
       } else {
         delete session.projectId;
       }
+    }
+    if (body.expertId === null) {
+      delete session.expertId;
+    } else if (typeof body.expertId === "string") {
+      const id = body.expertId.trim();
+      if (id) session.expertId = id;
+      else delete session.expertId;
+    }
+    if (body.expertTeamId === null) {
+      delete session.expertTeamId;
+    } else if (typeof body.expertTeamId === "string") {
+      const id = body.expertTeamId.trim();
+      if (id) session.expertTeamId = id;
+      else delete session.expertTeamId;
     }
     await saveSession(session);
     return c.json(session);
@@ -181,12 +210,18 @@ export function createApp(): Hono {
         emit({ type: "message", message: userMsg });
         const runner = pickRunner(settings.runtime);
         const projectInstruction = await resolveProjectInstruction(session.projectId);
+        const playbook = await resolveExpertPlaybook({
+          expertId: session.expertId,
+          expertTeamId: session.expertTeamId,
+        });
         const next = await runner({
           session,
           settings,
           signal: controller.signal,
           emit,
           projectInstruction,
+          expertInstruction: playbook.instruction,
+          preferredSkillIds: playbook.skillIds,
         });
         await writes;
         await saveSession(next);

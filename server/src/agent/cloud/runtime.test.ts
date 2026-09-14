@@ -213,6 +213,19 @@ describe("create-run payload", () => {
     expect(body.workspace).toBeUndefined();
   });
 
+  it("prepends expert then project onto the remote prompt", () => {
+    const settings = cloudSettings("/tmp/ws");
+    const body = buildCreateRunRequest(emptySession(), settings, undefined, {
+      expertInstruction: "Scout: do not edit.",
+      projectInstruction: "Project: reply in Chinese.",
+    });
+    expect(body.prompt.indexOf("Expert instructions")).toBeLessThan(
+      body.prompt.indexOf("Project instructions"),
+    );
+    expect(body.prompt).toContain("Scout: do not edit.");
+    expect(body.prompt).toContain("整理工作区");
+  });
+
   it("attaches a sandbox-safe snapshot without secrets", () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-hand-"));
     writeFileSync(join(workspaceRoot, "ok.md"), "visible");
