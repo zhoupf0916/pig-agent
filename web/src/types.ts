@@ -318,6 +318,17 @@ export type CloudStatus = {
   installHintsFile?: string;
 };
 
+export type ExecutionSurfaceKind = "pig" | "codex" | "cloud-stub" | "cloud-remote";
+
+export type ExecutionSurface = {
+  runtime: AgentRuntime;
+  kind: ExecutionSurfaceKind;
+  mode?: CloudMode;
+  label: string;
+  detail: string;
+  summary: string;
+};
+
 export type Settings = {
   llmBaseUrl: string;
   llmApiKey: string;
@@ -335,6 +346,7 @@ export type Settings = {
   cloudRepoUrl?: string;
   cloudRepoRef?: string;
   cloudStatus?: CloudStatus;
+  executionSurface?: ExecutionSurface;
 };
 
 export type SkillMeta = {

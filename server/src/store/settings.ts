@@ -5,7 +5,9 @@ import {
   type CloudHintResolveOptions,
   resolveEffectiveCloudBaseUrl,
 } from "../agent/cloud/env-json.ts";
+import { cloudRemoteError } from "../agent/cloud/errors.ts";
 import { inspectCloudStatus } from "../agent/cloud/validate.ts";
+import { inspectExecutionSurface } from "../agent/runtime-surface.ts";
 import { syncCodexHome } from "../agent/codex/home.ts";
 import { inspectCodexStatus } from "../agent/codex/validate.ts";
 import { DATA_DIR, DEFAULT_SETTINGS, ensureDir, resolveFromProject } from "../config.ts";
@@ -37,16 +39,16 @@ export function assertCloudSettings(
   if (settings.cloudMode !== "remote") return;
   const baseUrl = resolveEffectiveCloudBaseUrl(settings, options);
   if (!baseUrl) {
-    throw new Error("Cloud base URL is required in remote mode");
+    throw cloudRemoteError("missing_url");
   }
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
   } catch {
-    throw new Error("Cloud base URL must be a valid http(s) origin");
+    throw cloudRemoteError("invalid_url");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Cloud base URL must be http(s)");
+    throw cloudRemoteError("invalid_url");
   }
 }
 
@@ -130,11 +132,13 @@ export function publicSettings(
   workspaceExists: boolean;
   codexStatus: ReturnType<typeof inspectCodexStatus>;
   cloudStatus: ReturnType<typeof inspectCloudStatus>;
+  executionSurface: ReturnType<typeof inspectExecutionSurface>;
 } {
   return {
     ...settings,
     workspaceExists: existsSync(settings.workspaceRoot),
     codexStatus: inspectCodexStatus(settings),
     cloudStatus: inspectCloudStatus(settings),
+    executionSurface: inspectExecutionSurface(settings),
   };
 }

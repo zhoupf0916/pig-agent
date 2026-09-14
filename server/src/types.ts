@@ -375,6 +375,18 @@ export type CloudStatus = {
   installHintsFile?: string;
 };
 
+export type ExecutionSurfaceKind = "pig" | "codex" | "cloud-stub" | "cloud-remote";
+
+/** At-a-glance execution surface for topbar / Settings. Default is pig. */
+export type ExecutionSurface = {
+  runtime: AgentRuntime;
+  kind: ExecutionSurfaceKind;
+  mode?: CloudMode;
+  label: string;
+  detail: string;
+  summary: string;
+};
+
 export type Settings = {
   llmBaseUrl: string;
   llmApiKey: string;

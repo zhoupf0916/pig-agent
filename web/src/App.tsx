@@ -10,10 +10,12 @@ import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SearchBox } from "./components/SearchBox";
 import { SearchPanel } from "./components/SearchPanel";
+import { RuntimeChip } from "./components/RuntimeChip";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { api, streamMessage, streamTeamRun, subscribeSessionEvents } from "./lib/api";
+import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
   browserThemeRoot,
   browserThemeStorage,
@@ -548,23 +550,11 @@ export function App() {
     setTheme(persistTheme(next, { storage: browserThemeStorage(), root: browserThemeRoot() }));
   }, []);
 
-  const headerHint = useMemo(() => {
-    if (!settings) return "正在连接本地后端…";
-    if (settings.runtime === "codex") {
-      const net = settings.codexNetworkAccess ? " · 外网已开" : "";
-      return `本机 Codex · ${settings.codexModel}${net}`;
+  const executionSurface = useMemo(() => {
+    if (!settings) {
+      return describeExecutionSurface({ runtime: "pig" });
     }
-    if (settings.runtime === "cloud") {
-      const remoteUrl = settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl;
-      if (settings.cloudMode === "remote" && remoteUrl) {
-        const host = remoteUrl.replace(/^https?:\/\//, "");
-        return `云端 · ${host}`;
-      }
-      return "云端 · local-stub";
-    }
-    const model = settings.llmModel;
-    const host = settings.llmBaseUrl.replace(/^https?:\/\//, "");
-    return `本机 Pig · ${model} · ${host}`;
+    return surfaceFromSettings(settings);
   }, [settings]);
 
   return (
@@ -622,11 +612,9 @@ export function App() {
             }}
           />
           <ThemeToggle theme={theme} onChange={setPersistedTheme} />
-          <div className="hidden text-right text-meta text-ink-500 lg:block">
-            <div>{headerHint}</div>
-            <div className="max-w-[280px] truncate font-mono">
-              {settings?.workspaceRoot ?? ""}
-            </div>
+          <RuntimeChip surface={executionSurface} onClick={() => setSettingsOpen(true)} />
+          <div className="hidden max-w-[220px] truncate font-mono text-meta text-ink-500 xl:block" title={settings?.workspaceRoot}>
+            {settings?.workspaceRoot ?? ""}
           </div>
           <button
             type="button"

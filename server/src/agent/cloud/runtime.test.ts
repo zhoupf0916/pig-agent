@@ -508,4 +508,65 @@ describe("remote cloud runtime", () => {
       await stub.close();
     }
   });
+
+  it("surfaces a Chinese reason when remote URL is missing", async () => {
+    const next = await runCloudAgent({
+      session: emptySession(),
+      settings: cloudSettings(mkdtempSync(join(tmpdir(), "pig-cloud-nourl-")), {
+        cloudMode: "remote",
+        cloudBaseUrl: "",
+      }),
+      signal: new AbortController().signal,
+      emit: () => undefined,
+    });
+    expect(next.status).toBe("error");
+    expect(next.lastError).toMatch(/未配置控制面 URL/);
+  });
+
+  it("surfaces a Chinese reason when the workspace snapshot fails", async () => {
+    const notADir = join(mkdtempSync(join(tmpdir(), "pig-cloud-snap-")), "not-a-dir");
+    writeFileSync(notADir, "this is a file");
+    const next = await runCloudAgent({
+      session: emptySession(),
+      settings: cloudSettings(notADir, {
+        cloudMode: "remote",
+        cloudBaseUrl: "http://127.0.0.1:9",
+      }),
+      signal: new AbortController().signal,
+      emit: () => undefined,
+    });
+    expect(next.status).toBe("error");
+    expect(next.lastError).toMatch(/工作区快照失败/);
+  });
+
+  it("surfaces a Chinese reason when the control plane times out", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-to-"));
+    writeFileSync(join(workspaceRoot, "ok.md"), "ok");
+    const server = createServer((_req: IncomingMessage, _res: ServerResponse) => {
+      // Deliberately never respond — connect headers hang until timeout.
+    });
+    const url = await new Promise<string>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address();
+        if (!addr || typeof addr === "string") throw new Error("no addr");
+        resolve(`http://127.0.0.1:${addr.port}`);
+      });
+    });
+    try {
+      const next = await runCloudAgent({
+        session: emptySession(),
+        settings: cloudSettings(workspaceRoot, {
+          cloudMode: "remote",
+          cloudBaseUrl: url,
+        }),
+        signal: new AbortController().signal,
+        emit: () => undefined,
+        timeoutMs: 80,
+      });
+      expect(next.status).toBe("error");
+      expect(next.lastError).toMatch(/控制面请求超时/);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
 });

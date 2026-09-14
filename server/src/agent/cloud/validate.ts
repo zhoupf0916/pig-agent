@@ -1,4 +1,5 @@
 import type { CloudStatus, Settings } from "../../types.ts";
+import { cloudRemoteError } from "./errors.ts";
 import { hasInstallHints, loadInstallHints } from "./environment-json.ts";
 import {
   ENV_JSON_FILENAME,
@@ -50,7 +51,7 @@ export function resolveEffectiveCloudMode(
 ): "local-stub" | "remote" {
   if (settings.cloudMode === "remote") {
     if (!resolveEffectiveCloudBaseUrl(settings, options)) {
-      throw new Error("Cloud remote mode requires a control-plane URL");
+      throw cloudRemoteError("missing_url");
     }
     return "remote";
   }

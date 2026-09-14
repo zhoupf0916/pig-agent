@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { describeExecutionSurface } from "../lib/runtime-surface";
 import type { AgentRuntime, CloudMode, Settings, SkillMeta } from "../types";
 
 const emptyForm: Settings = {
@@ -39,6 +40,30 @@ export function SettingsModal({
     setError(null);
   }, [open, settings]);
 
+  const previewSurface = describeExecutionSurface({
+    runtime: form.runtime,
+    llmModel: form.llmModel,
+    llmBaseUrl: form.llmBaseUrl,
+    codexModel: form.codexModel,
+    codexNetworkAccess: form.codexNetworkAccess,
+    cloudMode: form.cloudMode,
+    cloudBaseUrl: form.cloudBaseUrl,
+    effectiveBaseUrl:
+      form.cloudBaseUrl.trim() || settings?.cloudStatus?.effectiveBaseUrl || settings?.cloudBaseUrl,
+  });
+  const savedSurface = settings
+    ? describeExecutionSurface({
+        runtime: settings.runtime,
+        llmModel: settings.llmModel,
+        llmBaseUrl: settings.llmBaseUrl,
+        codexModel: settings.codexModel,
+        codexNetworkAccess: settings.codexNetworkAccess,
+        cloudMode: settings.cloudMode,
+        cloudBaseUrl: settings.cloudBaseUrl,
+        effectiveBaseUrl: settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl,
+      })
+    : previewSurface;
+
   if (!open) return null;
 
   const setRuntime = (runtime: AgentRuntime) => setForm({ ...form, runtime });
@@ -53,6 +78,14 @@ export function SettingsModal({
               保存在本机 data/settings.json，覆盖 .env / .env.local。默认本机 Pig + DeepSeek
               Chat Completions。Codex 与云端为可选执行面。切勿把密钥提交到仓库。
             </p>
+            <div className="mt-2 rounded-card border border-ink-300 bg-ink-100 px-3 py-2 text-xs text-ink-700">
+              <div>
+                当前执行面：<span className="font-medium text-ink-800">{savedSurface.summary}</span>
+              </div>
+              {previewSurface.summary !== savedSurface.summary && (
+                <div className="mt-1 text-ink-500">将切换为：{previewSurface.summary}</div>
+              )}
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-ink-800">
             关闭
@@ -92,6 +125,9 @@ export function SettingsModal({
                 隔离工作区副本上跑本机 Pig 循环，密钥留在本机控制路径，不会写入 run 目录或提交
                 git。远程模式指向控制面（create-run 带工作区 snapshot → SSE → IDLE follow-up / abort），见{" "}
                 <code className="font-mono text-ink-800">docs/cloud-runtime.md</code>。
+              </p>
+              <p className="text-xs text-ink-700">
+                生效：<span className="font-medium">{previewSurface.summary}</span>
               </p>
               <Field label="云端模式">
                 <div className="grid grid-cols-2 gap-2">

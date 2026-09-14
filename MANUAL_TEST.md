@@ -62,12 +62,12 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 
 - [ ] Settings shows three surfaces: **本机 Pig（默认）** / **本机 Codex（可选）** / **云端（可选）**
 - [ ] Switch to **云端**：mode defaults to `local-stub`; Base URL / token optional
-- [ ] Header hint reads `云端 · local-stub` (or the remote host when mode is remote)
+- [ ] Topbar chip + Settings「当前执行面」read `云端 · local-stub` (or `云端 · remote · <生效 URL>` when remote)
 - [ ] `pnpm mock:llm`, Settings Pig Base URL `http://127.0.0.1:8788/v1`, runtime **云端** / local-stub
 - [ ] New session: `请写一个 hello-cloud.md，内容为 ok` — step chips + tool cards + **产物** list the file (stub copies into `data/cloud-runs/<id>/workspace/` then syncs back)
 - [ ] `data/cloud-runs/<id>/run.json` has no API keys; isolated copy has no `.env`
 - [ ] **停止** while the stub is running returns idle (same control as Pig)
-- [ ] Remote mode without a URL refuses to save (`Cloud base URL is required`)
+- [ ] Remote mode without a URL refuses to save（中文：未配置控制面 URL）
 - [ ] Do **not** put `DEEPSEEK_API_KEY` into a worker env file or commit it
 - [ ] `pnpm mock:cloud` listens on `http://127.0.0.1:8080` (no provider key, no cluster)
 - [ ] Settings → 云端 → remote → Base URL `http://127.0.0.1:8080`. New session: `请整理工作区` — assistant text mentions `accepted workspace` and lists uploaded files (not `.env`)
@@ -246,3 +246,15 @@ No LLM required. Same host, named members — not SSO. See [docs/project-invites
 - [ ] Paste a bogus / already-declined token on **兑换** — readable error, members unchanged
 - [ ] `DELETE /api/projects/<id>/members/<ownerId>` → 400
 - [ ] This is **not** SSO, email, Desk Remote, Firecracker, marketplace, or a cloud ACL rewrite
+
+## Execution-surface observability (Milestone K)
+
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / invites.
+
+- [ ] Header chip is always visible: default **本机 Pig** (+ model / host). Settings「当前执行面」matches
+- [ ] Settings → **本机 Codex** — chip / 当前执行面 become **本机 Codex · &lt;model&gt;** (外网已开 when toggled). Cancel without save — chip stays Pig
+- [ ] Settings → **云端** / local-stub — chip reads **云端 · local-stub**. Switch mode to **remote** + URL `http://127.0.0.1:8080` — chip / 当前执行面 read **云端 · remote · http://127.0.0.1:8080**
+- [ ] Remote without a URL refuses to save with a Chinese reason（未配置控制面 URL）, not a silent/black-box English string
+- [ ] Deliberate remote send failures show Chinese `session.lastError` in the yellow banner: missing URL / 工作区快照失败 / 控制面请求超时
+- [ ] Leave runtime on **本机 Pig** — local golden path unchanged
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
