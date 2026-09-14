@@ -102,7 +102,7 @@ No LLM required for the project surface. Sync live tokens still need a model or 
 - [ ] Header: brand → workstation, L1 **项目**, **收件箱** in the right cluster. Default runtime is still **本机 Pig**
 - [ ] Open `#/projects`, create a project, write an instruction, add a todo, upload a small text asset
 - [ ] **在此项目开任务** creates a session bound to the project; chat header shows the project name
-- [ ] Invite generates a placeholder token and an unread inbox item; mark read from the inbox menu
+- [ ] Invite generates a redeemable token and an unread inbox item; mark read from the inbox menu (full accept/decline loop: J3)
 - [ ] `GET /api/projects` lists the project; `GET /api/inbox` shows the invite
 - [ ] Two tabs on the same session: tab B does not need a full reload to stay consistent. Or with curl:
   1. `POST /api/sessions` → `id`
@@ -227,3 +227,21 @@ Client-only (`localStorage` key `pig-agent.theme`). Does **not** change Settings
 - [ ] Light mode: step strip chips, tool cards, and artifacts / workspace rows have readable contrast (not washed-out gray-on-gray)
 - [ ] Settings still defaults to runtime **Pig**; saving settings does not reset the theme
 - [ ] This is **not** a runtime change, Desk Remote, marketplace, or environment builds
+
+## Project invites / local multi-user (Milestone J3)
+
+No LLM required. Same host, named members — not SSO. See [docs/project-invites.md](./docs/project-invites.md). Handoff (Milestone F) must keep working.
+
+- [ ] Header **项目** / **收件箱** unchanged. Default runtime is still **本机 Pig**. No Settings redesign
+- [ ] Open `#/projects`, create a project. Members list shows **本机用户 · 所有者** (不可移除)
+- [ ] Invite with display name + optional note → pending row appears; token is shown and copyable; unread inbox item has project name + inviter / note
+- [ ] Inbox **接受** adds the member, clears pending, and can open the project. Accept the same invite again — still one member
+- [ ] Invite another name → inbox **拒绝** (or 忽略) marks it terminal; that name is not in members
+- [ ] Invite again, paste the token on the project page **兑换** — member is added
+- [ ] Pending row **撤销** removes the invite without adding a member
+- [ ] Click an invite row (or **标为已读**) marks read; Esc / click outside closes the inbox
+- [ ] Bound session **转交** still creates a `kind=handoff` inbox item; **打开会话** returns to the workstation
+- [ ] `POST /api/projects/<id>/members` `{ displayName, note }` → 201 + pending invite + inbox `kind=invite`
+- [ ] `POST /api/inbox/<id>/accept` then again → member once. `POST /api/projects/<id>/invites/redeem` with the token also works
+- [ ] `DELETE /api/projects/<id>/members/<ownerId>` → 400
+- [ ] This is **not** SSO, email, Desk Remote, Firecracker, marketplace, or a cloud ACL rewrite

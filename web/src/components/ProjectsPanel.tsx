@@ -36,7 +36,11 @@ export function ProjectsPanel({
   const [todoTitle, setTodoTitle] = useState("");
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [inviteName, setInviteName] = useState("");
+  const [inviteNote, setInviteNote] = useState("");
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [redeemToken, setRedeemToken] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<ProjectAsset | null>(null);
   const [handoffSession, setHandoffSession] = useState<Session | null>(null);
   const [handoffBusy, setHandoffBusy] = useState<string | null>(null);
@@ -51,10 +55,11 @@ export function ProjectsPanel({
     const project = await api.project(id);
     setDetail(project);
     setInstruction(project.instruction);
-    setInviteToken(null);
   };
 
   useEffect(() => {
+    setInviteToken(null);
+    setRedeemToken("");
     void (async () => {
       try {
         const list = await refreshList();
@@ -151,7 +156,7 @@ export function ProjectsPanel({
               <div>
                 <h2 className="text-base font-medium text-ink-800">{detail.name}</h2>
                 <p className="mt-1 text-xs text-ink-500">
-                  本机单用户骨架 · 指令会注入已绑定会话的系统提示
+                  本机轻量多用户 · 指令会注入已绑定会话的系统提示
                 </p>
               </div>
               <button
@@ -379,33 +384,135 @@ export function ProjectsPanel({
             </section>
 
             <section>
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-meta uppercase tracking-[0.16em] text-ink-500">成员 / 邀请</div>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() =>
-                    void api.inviteMember(detail.id, "同事").then((r) => {
+              <div className="mb-2 text-meta uppercase tracking-[0.16em] text-ink-500">成员 / 邀请</div>
+              <p className="mb-2 text-xs text-ink-500">
+                同一台 Pig 上用显示名邀请协作成员。令牌可在本页兑换；收件箱可接受或拒绝。所有者不可移除。
+              </p>
+              <form
+                className="mb-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!inviteName.trim() || inviteBusy) return;
+                  setInviteBusy(true);
+                  setError(null);
+                  void api
+                    .inviteMember(detail.id, {
+                      displayName: inviteName.trim(),
+                      note: inviteNote.trim() || undefined,
+                    })
+                    .then((r) => {
                       setInviteToken(r.inviteToken);
+                      setInviteName("");
+                      setInviteNote("");
                       return loadDetail(detail.id);
                     })
-                  }
-                >
-                  生成邀请令牌
+                    .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                    .finally(() => setInviteBusy(false));
+                }}
+              >
+                <input
+                  className="field"
+                  placeholder="显示名称"
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                />
+                <input
+                  className="field"
+                  placeholder="备注（可选）"
+                  value={inviteNote}
+                  onChange={(e) => setInviteNote(e.target.value)}
+                />
+                <button type="submit" className="btn-ghost" disabled={inviteBusy}>
+                  {inviteBusy ? "…" : "邀请"}
                 </button>
-              </div>
-              <p className="text-xs text-ink-500">
-                本机单用户：成员只有「本机用户」。邀请令牌会写入收件箱，供后续多端占位。
-              </p>
+              </form>
               {inviteToken && (
-                <p className="mt-2 rounded-[10px] bg-ink-100 px-2 py-1 font-mono text-xs">{inviteToken}</p>
+                <div className="mb-3 flex items-center gap-2 rounded-[10px] bg-ink-100 px-2 py-1.5">
+                  <p className="min-w-0 flex-1 truncate font-mono text-xs">{inviteToken}</p>
+                  <button
+                    type="button"
+                    className="text-meta text-accent hover:underline"
+                    onClick={() => void navigator.clipboard.writeText(inviteToken)}
+                  >
+                    复制
+                  </button>
+                </div>
               )}
-              <ul className="mt-2 text-[13px] text-ink-700">
+              <form
+                className="mb-3 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!redeemToken.trim()) return;
+                  setError(null);
+                  void api
+                    .redeemInvite(detail.id, redeemToken.trim())
+                    .then(() => {
+                      setRedeemToken("");
+                      setInviteToken(null);
+                      return loadDetail(detail.id);
+                    })
+                    .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+                }}
+              >
+                <input
+                  className="field"
+                  placeholder="粘贴邀请令牌以加入"
+                  value={redeemToken}
+                  onChange={(e) => setRedeemToken(e.target.value)}
+                />
+                <button type="submit" className="btn-ghost">
+                  兑换
+                </button>
+              </form>
+              <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-2 text-[13px] text-ink-700">
                 {detail.members.map((m) => (
-                  <li key={m.id}>
-                    {m.displayName} · {m.role}
+                  <li key={m.id} className="flex items-center justify-between gap-2 rounded-[10px] px-2 py-1.5">
+                    <span>
+                      {m.displayName} · {m.role === "owner" ? "所有者" : m.role === "admin" ? "管理员" : "成员"}
+                    </span>
+                    {m.role === "owner" ? (
+                      <span className="text-meta text-ink-400">不可移除</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-meta text-danger hover:underline"
+                        onClick={() =>
+                          void api
+                            .removeMember(detail.id, m.id)
+                            .then(() => loadDetail(detail.id))
+                            .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                        }
+                      >
+                        移除
+                      </button>
+                    )}
                   </li>
                 ))}
+                {(detail.invites ?? [])
+                  .filter((inv) => inv.status === "pending")
+                  .map((inv) => (
+                    <li
+                      key={inv.id}
+                      className="flex items-center justify-between gap-2 rounded-[10px] bg-ink-50 px-2 py-1.5"
+                    >
+                      <span>
+                        {inv.displayName} · 待接受
+                        {inv.note ? ` · ${inv.note}` : ""}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-meta text-danger hover:underline"
+                        onClick={() =>
+                          void api
+                            .revokeInvite(detail.id, inv.id)
+                            .then(() => loadDetail(detail.id))
+                            .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                        }
+                      >
+                        撤销
+                      </button>
+                    </li>
+                  ))}
               </ul>
             </section>
 

@@ -6,6 +6,8 @@ import type {
   InboxItem,
   Project,
   ProjectAsset,
+  ProjectInvite,
+  ProjectInviteStatus,
   ProjectMember,
   ProjectMessage,
   ProjectSummary,
@@ -14,8 +16,21 @@ import type {
 } from "../types.ts";
 import { LOCAL_USER_ID, LOCAL_USER_NAME } from "../types.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
-import { addInboxItem } from "./inbox.ts";
+import {
+  addInboxItem,
+  getInboxItem,
+  syncInboxInviteStatus,
+} from "./inbox.ts";
 import { listSessions } from "./sessions.ts";
+
+export class ProjectInviteError extends Error {
+  status: 400 | 404 | 409;
+  constructor(message: string, status: 400 | 404 | 409 = 400) {
+    super(message);
+    this.name = "ProjectInviteError";
+    this.status = status;
+  }
+}
 
 const DIR = join(DATA_DIR, "projects");
 
@@ -55,10 +70,22 @@ function emptyProject(name: string, instruction = ""): Project {
     createdAt: ts,
     updatedAt: ts,
     members: [owner],
+    invites: [],
     todos: [],
     assets: [],
     messages: [],
     inviteToken: newId("inv"),
+  };
+}
+
+function normalizeInvite(raw: ProjectInvite): ProjectInvite {
+  return {
+    ...raw,
+    displayName: raw.displayName?.trim() || "协作成员",
+    note: raw.note?.trim() || undefined,
+    invitedByUserId: raw.invitedByUserId || LOCAL_USER_ID,
+    invitedByName: raw.invitedByName || LOCAL_USER_NAME,
+    status: raw.status ?? "pending",
   };
 }
 
@@ -67,6 +94,7 @@ function normalizeProject(raw: Project): Project {
     ...raw,
     instruction: raw.instruction ?? "",
     members: raw.members ?? [],
+    invites: (raw.invites ?? []).map(normalizeInvite),
     todos: raw.todos ?? [],
     assets: raw.assets ?? [],
     messages: raw.messages ?? [],
@@ -329,25 +357,274 @@ export function assetDiskPath(projectId: string, asset: ProjectAsset): string {
   return join(assetsDir(projectId), `${asset.id}_${asset.filename}`);
 }
 
-export async function inviteMember(id: string, displayName?: string): Promise<{
+export function formatInviteInboxBody(input: {
+  inviterName: string;
+  inviteeName: string;
+  projectName: string;
+  note?: string;
+  token: string;
+}): string {
+  const lines = [`${input.inviterName} 邀请 ${input.inviteeName} 加入「${input.projectName}」`];
+  if (input.note) lines.push(input.note);
+  lines.push(`令牌：${input.token}`);
+  return lines.join("\n");
+}
+
+function sameDisplayName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function findMemberByName(project: Project, displayName: string): ProjectMember | undefined {
+  return project.members.find((m) => sameDisplayName(m.displayName, displayName));
+}
+
+function findInvite(
+  project: Project,
+  input: { inviteId?: string; token?: string },
+): ProjectInvite | undefined {
+  const inviteId = input.inviteId?.trim();
+  const token = input.token?.trim();
+  if (inviteId) {
+    const byId = project.invites.find((i) => i.id === inviteId);
+    if (byId) return byId;
+  }
+  if (token) {
+    return project.invites.find((i) => i.token === token);
+  }
+  return undefined;
+}
+
+function ensureInvite(
+  project: Project,
+  input: { inviteId?: string; token?: string },
+): ProjectInvite {
+  const existing = findInvite(project, input);
+  if (existing) return existing;
+  const token = input.token?.trim();
+  if (token && project.inviteToken === token) {
+    const synthesized: ProjectInvite = {
+      id: newId("pinv"),
+      token,
+      displayName: "协作成员",
+      invitedByUserId: LOCAL_USER_ID,
+      invitedByName: LOCAL_USER_NAME,
+      status: "pending",
+      createdAt: nowIso(),
+    };
+    project.invites.push(synthesized);
+    return synthesized;
+  }
+  throw new ProjectInviteError("Invite not found", 404);
+}
+
+function addMemberFromInvite(project: Project, invite: ProjectInvite): ProjectMember {
+  const existing = findMemberByName(project, invite.displayName);
+  if (existing) return existing;
+  const member: ProjectMember = {
+    id: newId("mem"),
+    userId: `user_${invite.id}`,
+    displayName: invite.displayName,
+    role: "member",
+    joinedAt: nowIso(),
+  };
+  project.members.push(member);
+  return member;
+}
+
+async function markInvite(
+  project: Project,
+  invite: ProjectInvite,
+  status: Exclude<ProjectInviteStatus, "pending">,
+  extra: { memberId?: string } = {},
+): Promise<void> {
+  invite.status = status;
+  invite.resolvedAt = nowIso();
+  if (extra.memberId) invite.memberId = extra.memberId;
+  await syncInboxInviteStatus({
+    inviteId: invite.id,
+    inviteToken: invite.token,
+    status,
+    markRead: true,
+  });
+}
+
+export async function inviteMember(
+  id: string,
+  input: { displayName?: string; note?: string } | string = {},
+): Promise<{
   project: Project;
+  invite: ProjectInvite;
   inviteToken: string;
   inboxItem: InboxItem;
 } | null> {
   const project = await readProjectFile(id);
   if (!project) return null;
-  project.inviteToken = newId("inv");
-  const label = displayName?.trim() || "协作成员";
-  await activity(project, `生成了邀请令牌（给 ${label}）`);
+  const displayName =
+    (typeof input === "string" ? input : input.displayName)?.trim() || "协作成员";
+  const note = (typeof input === "string" ? undefined : input.note)?.trim() || undefined;
+  const token = newId("inv");
+  const invite: ProjectInvite = {
+    id: newId("pinv"),
+    token,
+    displayName,
+    note,
+    invitedByUserId: LOCAL_USER_ID,
+    invitedByName: LOCAL_USER_NAME,
+    status: "pending",
+    createdAt: nowIso(),
+  };
+  project.invites.push(invite);
+  project.inviteToken = token;
+  await activity(project, `邀请 ${displayName} 加入项目`);
   await writeProject(project);
   const inboxItem = await addInboxItem({
     kind: "invite",
     projectId: project.id,
     title: `邀请加入「${project.name}」`,
-    body: `本机单用户占位邀请。令牌：${project.inviteToken}`,
-    inviteToken: project.inviteToken,
+    body: formatInviteInboxBody({
+      inviterName: LOCAL_USER_NAME,
+      inviteeName: displayName,
+      projectName: project.name,
+      note,
+      token,
+    }),
+    inviteToken: token,
+    inviteId: invite.id,
+    inviteStatus: "pending",
+    projectName: project.name,
+    inviterName: LOCAL_USER_NAME,
+    inviteeName: displayName,
+    inviteNote: note,
   });
-  return { project, inviteToken: project.inviteToken, inboxItem };
+  return { project, invite, inviteToken: token, inboxItem };
+}
+
+export async function acceptProjectInvite(
+  id: string,
+  input: { inviteId?: string; token?: string },
+): Promise<{ project: Project; invite: ProjectInvite; member: ProjectMember } | null> {
+  const project = await readProjectFile(id);
+  if (!project) return null;
+  const invite = ensureInvite(project, input);
+  if (invite.status === "accepted") {
+    const member =
+      (invite.memberId ? project.members.find((m) => m.id === invite.memberId) : undefined) ??
+      findMemberByName(project, invite.displayName) ??
+      addMemberFromInvite(project, invite);
+    invite.memberId = member.id;
+    await syncInboxInviteStatus({
+      inviteId: invite.id,
+      inviteToken: invite.token,
+      status: "accepted",
+      markRead: true,
+    });
+    await writeProject(project);
+    return { project, invite, member };
+  }
+  if (invite.status !== "pending") {
+    throw new ProjectInviteError("Invite is no longer pending");
+  }
+  const member = addMemberFromInvite(project, invite);
+  await markInvite(project, invite, "accepted", { memberId: member.id });
+  await activity(project, `${member.displayName} 已加入项目`);
+  await writeProject(project);
+  return { project, invite, member };
+}
+
+export async function declineProjectInvite(
+  id: string,
+  input: { inviteId?: string; token?: string },
+): Promise<{ project: Project; invite: ProjectInvite } | null> {
+  const project = await readProjectFile(id);
+  if (!project) return null;
+  const invite = ensureInvite(project, input);
+  if (invite.status === "accepted") {
+    throw new ProjectInviteError("Invite already accepted");
+  }
+  if (invite.status === "pending") {
+    await markInvite(project, invite, "declined");
+    await activity(project, `已拒绝 ${invite.displayName} 的邀请`);
+    await writeProject(project);
+  } else {
+    await syncInboxInviteStatus({
+      inviteId: invite.id,
+      inviteToken: invite.token,
+      status: invite.status,
+      markRead: true,
+    });
+  }
+  return { project, invite };
+}
+
+export async function revokeProjectInvite(
+  id: string,
+  inviteId: string,
+): Promise<{ project: Project; invite: ProjectInvite } | null> {
+  const project = await readProjectFile(id);
+  if (!project) return null;
+  const invite = project.invites.find((i) => i.id === inviteId);
+  if (!invite) throw new ProjectInviteError("Invite not found", 404);
+  if (invite.status === "accepted") {
+    throw new ProjectInviteError("Cannot revoke an accepted invite");
+  }
+  if (invite.status === "pending") {
+    await markInvite(project, invite, "revoked");
+    await activity(project, `已撤销对 ${invite.displayName} 的邀请`);
+    await writeProject(project);
+  }
+  return { project, invite };
+}
+
+export async function removeProjectMember(id: string, memberId: string): Promise<Project | null> {
+  const project = await readProjectFile(id);
+  if (!project) return null;
+  const member = project.members.find((m) => m.id === memberId);
+  if (!member) throw new ProjectInviteError("Member not found", 404);
+  if (member.role === "owner") {
+    throw new ProjectInviteError("Cannot remove the project owner");
+  }
+  project.members = project.members.filter((m) => m.id !== memberId);
+  await activity(project, `已移除成员 ${member.displayName}`);
+  return writeProject(project);
+}
+
+export async function acceptInboxInvite(inboxId: string): Promise<{
+  item: InboxItem;
+  project: Project;
+  invite: ProjectInvite;
+  member: ProjectMember;
+} | null> {
+  const item = await getInboxItem(inboxId);
+  if (!item) return null;
+  if (item.kind !== "invite") {
+    throw new ProjectInviteError("Inbox item is not an invite");
+  }
+  const result = await acceptProjectInvite(item.projectId, {
+    inviteId: item.inviteId,
+    token: item.inviteToken,
+  });
+  if (!result) throw new ProjectInviteError("Project not found", 404);
+  const updated = (await getInboxItem(inboxId)) ?? { ...item, inviteStatus: "accepted" as const, read: true };
+  return { item: updated, ...result };
+}
+
+export async function declineInboxInvite(inboxId: string): Promise<{
+  item: InboxItem;
+  project: Project;
+  invite: ProjectInvite;
+} | null> {
+  const item = await getInboxItem(inboxId);
+  if (!item) return null;
+  if (item.kind !== "invite") {
+    throw new ProjectInviteError("Inbox item is not an invite");
+  }
+  const result = await declineProjectInvite(item.projectId, {
+    inviteId: item.inviteId,
+    token: item.inviteToken,
+  });
+  if (!result) throw new ProjectInviteError("Project not found", 404);
+  const updated = (await getInboxItem(inboxId)) ?? { ...item, inviteStatus: "declined" as const, read: true };
+  return { item: updated, ...result };
 }
 
 export async function createHandoff(
@@ -371,6 +648,7 @@ export async function createHandoff(
     projectId: project.id,
     title: `转交：${project.name}`,
     body,
+    projectName: project.name,
     sessionId: input.sessionId,
     assetIds: input.assetIds,
   });
