@@ -9,6 +9,7 @@ import { newId, nowIso, truncate } from "../util.ts";
 import { decideRemoteRetry, formatCloudRemoteError } from "./cloud/errors.ts";
 import { runCloudAgent } from "./cloud/runtime.ts";
 import { runCodexAgent } from "./codex/runtime.ts";
+import { formatCodexTurnError } from "./codex/errors.ts";
 import { decideLocalRetry, formatLocalTurnError } from "./local-errors.ts";
 import { runAgent } from "./runtime.ts";
 import { runSequentialTeamTurn } from "./team-run.ts";
@@ -134,6 +135,11 @@ export async function runSessionTurn(
       session.remoteRetry = decideRemoteRetry(err, session.remoteRunId);
       if (session.remoteRetry === "create-run") delete session.remoteRunId;
       session.localRetry = undefined;
+    } else if (runtime === "codex") {
+      session.status = "idle";
+      session.lastError = formatCodexTurnError(err);
+      session.localRetry = decideLocalRetry(session);
+      session.remoteRetry = undefined;
     } else {
       session.status = "idle";
       session.lastError = formatLocalTurnError(err);

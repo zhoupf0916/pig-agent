@@ -40,7 +40,7 @@ export type SessionStatus = "idle" | "running" | "error";
 /** How the workstation retries a failed remote turn. Default runtime stays pig. */
 export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 
-/** How the workstation retries a failed local pig turn (Milestone M). */
+/** How the workstation retries a failed local pig/codex turn (Milestones M / N). */
 export type LocalRetryKind = "turn" | "unavailable";
 
 export type Session = {

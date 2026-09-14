@@ -4,11 +4,12 @@ import type { AgentEvent, Artifact, ChatMessage, Session, Settings } from "../..
 import { capText, newId, nowIso } from "../../util.ts";
 import { deliverableSummary } from "../runtime.ts";
 import { isInsideWorkspace, toRel } from "../sandbox.ts";
+import { CodexSessionError, decideCodexRetry, formatCodexTurnError } from "./errors.ts";
 import { mapCodexEvent, parseCodexJsonlLine, type CodexMapped } from "./events.ts";
 import { assertCwdMatchesWorkspace, resolveTrustedWorkspace, syncCodexHome } from "./home.ts";
 import { assembleCodexPrompt, CODEX_HISTORY_MESSAGES } from "./prompt.ts";
 import { runCodexExec, type CodexProcessHooks } from "./process.ts";
-import { assertCodexReady, CodexValidationError } from "./validate.ts";
+import { assertCodexReady } from "./validate.ts";
 
 const TOOL_OUTPUT_CHARS = 12_000;
 
@@ -26,6 +27,8 @@ export async function runCodexAgent(options: {
     ...options.session,
     status: "running",
     lastError: undefined,
+    localRetry: undefined,
+    remoteRetry: undefined,
     updatedAt: nowIso(),
   };
   emit({ type: "status", status: "running" });
@@ -152,7 +155,6 @@ export async function runCodexAgent(options: {
       }
       if (mapped.kind === "error") {
         fatal = mapped.message;
-        emit({ type: "error", message: mapped.message });
         return;
       }
     };
@@ -180,23 +182,12 @@ export async function runCodexAgent(options: {
     }
 
     if (fatal) {
-      session.status = "error";
-      session.lastError = fatal;
-      session.updatedAt = nowIso();
-      emit({ type: "status", status: "error" });
-      emit({ type: "done", session });
-      return session;
+      return failCodexTurn(session, new CodexSessionError(fatal), emit);
     }
 
     if (result.code !== 0 && result.code !== null) {
       const detail = result.stderr.trim() || `codex exec exited ${result.code}`;
-      session.status = "error";
-      session.lastError = detail;
-      session.updatedAt = nowIso();
-      emit({ type: "error", message: detail });
-      emit({ type: "status", status: "error" });
-      emit({ type: "done", session });
-      return session;
+      return failCodexTurn(session, new CodexSessionError(detail), emit);
     }
 
     if (!session.messages.some((m) => m.role === "assistant" && m.content.trim())) {
@@ -216,13 +207,8 @@ export async function runCodexAgent(options: {
     emit({ type: "done", session });
     return session;
   } catch (err) {
-    const message =
-      err instanceof CodexValidationError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : String(err);
-    const aborted = message === "Aborted" || signal.aborted;
+    const raw = err instanceof Error ? err.message : String(err);
+    const aborted = raw === "Aborted" || signal.aborted;
     if (aborted) {
       const stop: ChatMessage = {
         id: newId("msg"),
@@ -234,16 +220,30 @@ export async function runCodexAgent(options: {
       emit({ type: "message", message: stop });
       session.status = "idle";
       session.lastError = undefined;
-    } else {
-      session.status = "error";
-      session.lastError = message;
-      emit({ type: "error", message });
+      session.localRetry = undefined;
+      session.updatedAt = nowIso();
+      emit({ type: "status", status: "idle" });
+      emit({ type: "done", session });
+      return session;
     }
-    session.updatedAt = nowIso();
-    emit({ type: "status", status: session.status });
-    emit({ type: "done", session });
-    return session;
+    return failCodexTurn(session, err, emit);
   }
+}
+
+function failCodexTurn(
+  session: Session,
+  err: unknown,
+  emit: (event: AgentEvent) => void,
+): Session {
+  session.status = "idle";
+  session.lastError = formatCodexTurnError(err);
+  session.localRetry = decideCodexRetry(session);
+  session.remoteRetry = undefined;
+  session.updatedAt = nowIso();
+  emit({ type: "error", message: session.lastError });
+  emit({ type: "status", status: "idle" });
+  emit({ type: "done", session });
+  return session;
 }
 
 function stringifyArgs(args: unknown): string {

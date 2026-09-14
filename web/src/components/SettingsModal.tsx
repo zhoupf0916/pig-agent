@@ -271,7 +271,8 @@ export function SettingsModal({
                 （…/v1）映射进 Codex。密钥只用环境变量{" "}
                 <code className="font-mono text-ink-800">DEEPSEEK_API_KEY</code> /{" "}
                 <code className="font-mono text-ink-800">CODEX_API_KEY</code>。多轮只拼最近若干条文本，没有
-                Codex 原生跨轮记忆。
+                Codex 原生跨轮记忆。缺少二进制、启动失败或本轮会话出错时会显示中文原因，并可「重试本轮」（不重复插入用户消息）。会话回到
+                idle，不会卡在运行中。
               </p>
               <Field label="Codex 二进制路径（可选，留空则用 PATH 中的 codex）">
                 <input
