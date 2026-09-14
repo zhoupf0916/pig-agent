@@ -46,10 +46,16 @@ describe("HTTP API", () => {
       runtime: string;
       codexNetworkAccess: boolean;
       cloudMode?: string;
+      cloudRepoUrl?: string;
+      cloudRepoRef?: string;
+      cloudStatus?: { envJson?: { file?: string } };
     };
     expect(body.runtime).toBe("pig");
     expect(body.codexNetworkAccess).toBe(false);
     expect(body.cloudMode ?? "local-stub").toBe("local-stub");
+    expect(body.cloudRepoUrl ?? "").toBe("");
+    expect(body.cloudRepoRef ?? "").toBe("");
+    expect(body.cloudStatus?.envJson?.file).toBe("env.json");
   });
 
   it("rejects remote cloud settings without a control-plane URL", async () => {

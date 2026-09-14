@@ -316,10 +316,30 @@ export type CodexStatus = {
   apiKeyPresent: boolean;
 };
 
+export type CloudHintSource = "settings" | "env.json" | "env";
+
+export type CloudEnvJsonStatus = {
+  found: boolean;
+  file: "env.json";
+  baseUrl?: string;
+  repoUrl?: string;
+  repoRef?: string;
+};
+
+export type CloudRepoHintStatus = {
+  repoUrl?: string;
+  ref?: string;
+  repoUrlSource?: CloudHintSource;
+  refSource?: CloudHintSource;
+};
+
 export type CloudStatus = {
   mode: CloudMode;
   remoteUrlConfigured: boolean;
   tokenPresent: boolean;
+  envJson?: CloudEnvJsonStatus;
+  repoHint?: CloudRepoHintStatus;
+  effectiveBaseUrl?: string;
 };
 
 export type Settings = {
@@ -347,6 +367,13 @@ export type Settings = {
   cloudToken: string;
   /** Default `local-stub` so CI and `pnpm test` need no cluster. */
   cloudMode: CloudMode;
+  /**
+   * Optional remote clone hint. Empty falls through to env.json then PIG_CLOUD_REPO_URL.
+   * Non-secret; never put tokens here.
+   */
+  cloudRepoUrl?: string;
+  /** Optional git ref for the clone hint. Empty falls through to env.json then PIG_CLOUD_REPO_REF. */
+  cloudRepoRef?: string;
 };
 
 export type SkillMeta = {

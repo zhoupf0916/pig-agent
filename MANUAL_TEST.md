@@ -74,6 +74,19 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] Same session, second message `再写一个文件` — reply is `[stub] follow-up: …`. `data/sessions/<id>.json` keeps the same `remoteRunId`
 - [ ] Isolated snapshot never includes `.env*`, `id_rsa` / `*.pem`, `node_modules`, or `.git` (see [docs/cloud-runtime.md](./docs/cloud-runtime.md))
 
+## Remote-cloud env.json hints (Milestone J1)
+
+Non-secret hints only. Default runtime stays **本机 Pig**. See [docs/cloud-runtime.md](./docs/cloud-runtime.md) and `env.json.example`.
+
+- [ ] Copy `env.json.example` → `env.json` (repo root). File is gitignored. Do **not** add `PIG_CLOUD_TOKEN` / API keys
+- [ ] Restart is not required for Settings to notice `env.json`. Open Settings → 云端 → remote — status shows `env.json 已发现` with baseUrl / repoUrl / ref
+- [ ] Click **填入 env.json 提示** — Base URL / 仓库 URL / Ref populate when those fields were empty
+- [ ] Leave Settings repo fields blank, send a remote create-run (`pnpm mock:cloud`) — payload `workspace.repoUrl` / `ref` match `env.json`
+- [ ] Fill a different repo URL in Settings, save — create-run uses the Settings value (Settings wins over env.json)
+- [ ] Remove `env.json` and set `PIG_CLOUD_REPO_URL` / `PIG_CLOUD_REPO_REF` in `.env.local` — those apply only when Settings + env.json are empty
+- [ ] `env.json` does not change default runtime; it stays **本机 Pig** until you opt into 云端
+- [ ] Snapshot / local-stub isolate still skip `.env*` and key files. Tokens stay in Settings / `.env.local`, never committed
+
 ## Projects + multi-tab sync (Milestone A)
 
 No LLM required for the project surface. Sync live tokens still need a model or `pnpm mock:llm`.

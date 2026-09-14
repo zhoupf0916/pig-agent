@@ -2,6 +2,7 @@ import { config as loadEnv } from "dotenv";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveEffectiveCloudBaseUrl } from "./agent/cloud/env-json.ts";
 import type { CloudMode } from "./types.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -110,9 +111,11 @@ export const DEFAULT_SETTINGS = {
   codexBinaryPath: process.env.CODEX_BIN?.trim() || "",
   codexModel: process.env.CODEX_MODEL?.trim() || CODEX_DEFAULT_MODEL,
   codexNetworkAccess: false,
-  cloudBaseUrl: resolveCloudBaseUrl(),
+  cloudBaseUrl: resolveEffectiveCloudBaseUrl({ cloudBaseUrl: "" }),
   cloudToken: resolveCloudToken(),
   cloudMode: resolveCloudMode(),
+  cloudRepoUrl: "",
+  cloudRepoRef: "",
 } as const;
 
 export function ensureDir(path: string): void {

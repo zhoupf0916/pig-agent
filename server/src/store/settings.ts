@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  type CloudHintResolveOptions,
+  resolveEffectiveCloudBaseUrl,
+} from "../agent/cloud/env-json.ts";
 import { inspectCloudStatus } from "../agent/cloud/validate.ts";
 import { syncCodexHome } from "../agent/codex/home.ts";
 import { inspectCodexStatus } from "../agent/codex/validate.ts";
@@ -25,15 +29,19 @@ export function normalizeCloudBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
 }
 
-export function assertCloudSettings(settings: Settings): void {
+export function assertCloudSettings(
+  settings: Settings,
+  options: Omit<CloudHintResolveOptions, "settings"> = {},
+): void {
   if (settings.runtime !== "cloud") return;
   if (settings.cloudMode !== "remote") return;
-  if (!settings.cloudBaseUrl) {
+  const baseUrl = resolveEffectiveCloudBaseUrl(settings, options);
+  if (!baseUrl) {
     throw new Error("Cloud base URL is required in remote mode");
   }
   let parsed: URL;
   try {
-    parsed = new URL(settings.cloudBaseUrl);
+    parsed = new URL(baseUrl);
   } catch {
     throw new Error("Cloud base URL must be a valid http(s) origin");
   }
@@ -58,6 +66,8 @@ export function normalizeSettings(raw: Partial<Settings> = {}): Settings {
     cloudBaseUrl: normalizeCloudBaseUrl(raw.cloudBaseUrl ?? DEFAULT_SETTINGS.cloudBaseUrl),
     cloudToken: raw.cloudToken ?? DEFAULT_SETTINGS.cloudToken,
     cloudMode: parseCloudMode(raw.cloudMode ?? DEFAULT_SETTINGS.cloudMode),
+    cloudRepoUrl: (raw.cloudRepoUrl ?? DEFAULT_SETTINGS.cloudRepoUrl).trim(),
+    cloudRepoRef: (raw.cloudRepoRef ?? DEFAULT_SETTINGS.cloudRepoRef).trim(),
   };
 }
 
@@ -91,6 +101,8 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
     cloudBaseUrl: patch.cloudBaseUrl ?? current.cloudBaseUrl,
     cloudToken: patch.cloudToken ?? current.cloudToken,
     cloudMode: patch.cloudMode ?? current.cloudMode,
+    cloudRepoUrl: patch.cloudRepoUrl ?? current.cloudRepoUrl,
+    cloudRepoRef: patch.cloudRepoRef ?? current.cloudRepoRef,
   });
   assertCloudSettings(next);
   if (!next.llmBaseUrl) {

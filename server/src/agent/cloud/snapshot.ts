@@ -59,16 +59,7 @@ export function shouldSkipCloudHandoffName(name: string): boolean {
   return false;
 }
 
-export function resolveCloudRepoHint(
-  env: NodeJS.ProcessEnv = process.env,
-): { repoUrl?: string; ref?: string } {
-  const repoUrl = env.PIG_CLOUD_REPO_URL?.trim() || "";
-  const ref = env.PIG_CLOUD_REPO_REF?.trim() || "";
-  const hint: { repoUrl?: string; ref?: string } = {};
-  if (repoUrl) hint.repoUrl = repoUrl;
-  if (ref) hint.ref = ref;
-  return hint;
-}
+export { resolveCloudRepoHint } from "./env-json.ts";
 
 export function collectWorkspaceHandoff(options: {
   workspaceRoot: string;

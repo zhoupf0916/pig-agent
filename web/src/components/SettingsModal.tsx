@@ -13,6 +13,8 @@ const emptyForm: Settings = {
   cloudBaseUrl: "",
   cloudToken: "",
   cloudMode: "local-stub",
+  cloudRepoUrl: "",
+  cloudRepoRef: "",
 };
 
 export function SettingsModal({
@@ -124,6 +126,56 @@ export function SettingsModal({
                   placeholder="Bearer token 或从 PIG_CLOUD_TOKEN 读取"
                 />
               </Field>
+              {form.cloudMode === "remote" && (
+                <div className="space-y-3 rounded-card border border-ink-300 bg-panel p-3">
+                  <p className="text-meta leading-relaxed text-ink-600">
+                    非密钥仓库提示（create-run 的 <code className="font-mono text-ink-800">repoUrl</code> /{" "}
+                    <code className="font-mono text-ink-800">ref</code>
+                    ）。优先级：本页填写 &gt; 仓库根目录{" "}
+                    <code className="font-mono text-ink-800">env.json</code> &gt; 环境变量{" "}
+                    <code className="font-mono text-ink-800">PIG_CLOUD_REPO_*</code>
+                    。Token / API Key 不要写入 env.json，见{" "}
+                    <code className="font-mono text-ink-800">env.json.example</code>。
+                  </p>
+                  <Field label="仓库 URL（可选；remote clone hint）">
+                    <input
+                      value={form.cloudRepoUrl ?? ""}
+                      onChange={(e) => setForm({ ...form, cloudRepoUrl: e.target.value })}
+                      className="field"
+                      placeholder="https://github.com/acme/app.git"
+                    />
+                  </Field>
+                  <Field label="仓库 Ref（可选）">
+                    <input
+                      value={form.cloudRepoRef ?? ""}
+                      onChange={(e) => setForm({ ...form, cloudRepoRef: e.target.value })}
+                      className="field"
+                      placeholder="main"
+                    />
+                  </Field>
+                  {settings?.cloudStatus?.envJson?.found &&
+                    (settings.cloudStatus.envJson.baseUrl ||
+                      settings.cloudStatus.envJson.repoUrl ||
+                      settings.cloudStatus.envJson.repoRef) && (
+                      <button
+                        type="button"
+                        className="btn-quiet"
+                        onClick={() => {
+                          const hints = settings.cloudStatus?.envJson;
+                          if (!hints) return;
+                          setForm({
+                            ...form,
+                            cloudBaseUrl: form.cloudBaseUrl.trim() || hints.baseUrl || form.cloudBaseUrl,
+                            cloudRepoUrl: (form.cloudRepoUrl ?? "").trim() || hints.repoUrl || form.cloudRepoUrl,
+                            cloudRepoRef: (form.cloudRepoRef ?? "").trim() || hints.repoRef || form.cloudRepoRef,
+                          });
+                        }}
+                      >
+                        填入 env.json 提示
+                      </button>
+                    )}
+                </div>
+              )}
               {settings?.cloudStatus && (
                 <ul className="space-y-1 text-meta text-ink-600">
                   <StatusLine
@@ -138,6 +190,22 @@ export function SettingsModal({
                     ok={settings.cloudStatus.tokenPresent || settings.cloudStatus.mode === "local-stub"}
                     label="控制面 Token（remote 可选）"
                   />
+                  <StatusLine
+                    ok={Boolean(settings.cloudStatus.envJson?.found)}
+                    label={
+                      settings.cloudStatus.envJson?.found
+                        ? `env.json 已发现${formatEnvJsonHints(settings.cloudStatus.envJson)}`
+                        : "env.json 未找到（可复制 env.json.example）"
+                    }
+                  />
+                  {settings.cloudStatus.repoHint?.repoUrl && (
+                    <StatusLine
+                      ok
+                      label={`生效仓库 ${settings.cloudStatus.repoHint.repoUrl}${
+                        settings.cloudStatus.repoHint.ref ? `@${settings.cloudStatus.repoHint.ref}` : ""
+                      }（${hintSourceLabel(settings.cloudStatus.repoHint.repoUrlSource)}）`}
+                    />
+                  )}
                 </ul>
               )}
             </div>
@@ -261,7 +329,7 @@ export function SettingsModal({
           )}
           {form.runtime === "cloud" && form.cloudMode === "remote" && (
             <p className="mt-2 text-meta text-ink-500">
-              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。同一会话后续消息优先 follow-up；run 过期则新建。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。
+              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。仓库提示来自本页、env.json 或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；run 过期则新建。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。
             </p>
           )}
         </div>
@@ -329,6 +397,26 @@ function StatusLine({ ok, label }: { ok: boolean; label: string }) {
       <span className="text-ink-500"> · {label}</span>
     </li>
   );
+}
+
+function hintSourceLabel(source: string | undefined): string {
+  if (source === "settings") return "Settings";
+  if (source === "env.json") return "env.json";
+  if (source === "env") return "环境变量";
+  return "未设置";
+}
+
+function formatEnvJsonHints(hints: {
+  baseUrl?: string;
+  repoUrl?: string;
+  repoRef?: string;
+}): string {
+  const bits = [
+    hints.baseUrl ? `baseUrl=${hints.baseUrl}` : "",
+    hints.repoUrl ? `repoUrl=${hints.repoUrl}` : "",
+    hints.repoRef ? `ref=${hints.repoRef}` : "",
+  ].filter(Boolean);
+  return bits.length ? `：${bits.join(" · ")}` : "";
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

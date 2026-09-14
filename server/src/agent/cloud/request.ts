@@ -38,11 +38,11 @@ export function buildFollowUpRequest(session: Session): { prompt: string } {
   return { prompt: lastUser?.content ?? "" };
 }
 
-/** Snapshot of sandbox-safe files plus optional env repo hint. */
+/** Snapshot of sandbox-safe files plus optional repo hint (Settings > env.json > process env). */
 export function buildRemoteWorkspaceHandoff(settings: Settings): CloudWorkspaceHandoff {
   return collectWorkspaceHandoff({
     workspaceRoot: settings.workspaceRoot,
-    ...resolveCloudRepoHint(),
+    ...resolveCloudRepoHint({ settings }),
   });
 }
 

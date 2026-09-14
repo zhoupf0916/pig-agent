@@ -13,6 +13,8 @@ describe("normalizeSettings", () => {
     expect(settings.codexModel).toBe("deepseek-flash");
     expect(settings.cloudMode).toBe("local-stub");
     expect(settings.cloudBaseUrl).toBe("");
+    expect(settings.cloudRepoUrl).toBe("");
+    expect(settings.cloudRepoRef).toBe("");
   });
 
   it("accepts cloud runtime and strips /v1 from the control-plane URL", () => {
@@ -21,11 +23,15 @@ describe("normalizeSettings", () => {
       cloudMode: "remote",
       cloudBaseUrl: "https://cp.example.com/v1/",
       cloudToken: "tok",
+      cloudRepoUrl: "https://github.com/acme/app.git",
+      cloudRepoRef: "main",
     });
     expect(settings.runtime).toBe("cloud");
     expect(settings.cloudMode).toBe("remote");
     expect(settings.cloudBaseUrl).toBe("https://cp.example.com");
     expect(settings.cloudToken).toBe("tok");
+    expect(settings.cloudRepoUrl).toBe("https://github.com/acme/app.git");
+    expect(settings.cloudRepoRef).toBe("main");
   });
 
   it("keeps unknown runtimes on pig", () => {
@@ -34,14 +40,17 @@ describe("normalizeSettings", () => {
   });
 
   it("requires a control-plane URL only in remote mode", () => {
+    const isolated = { envJson: {}, env: {} as NodeJS.ProcessEnv };
     expect(() =>
       assertCloudSettings(
         normalizeSettings({ runtime: "cloud", cloudMode: "local-stub", cloudBaseUrl: "" }),
+        isolated,
       ),
     ).not.toThrow();
     expect(() =>
       assertCloudSettings(
         normalizeSettings({ runtime: "cloud", cloudMode: "remote", cloudBaseUrl: "" }),
+        isolated,
       ),
     ).toThrow(/Cloud base URL is required/);
     expect(() =>
@@ -51,8 +60,15 @@ describe("normalizeSettings", () => {
           cloudMode: "remote",
           cloudBaseUrl: "ftp://not-http.example",
         }),
+        isolated,
       ),
     ).toThrow(/http\(s\)/);
+    expect(() =>
+      assertCloudSettings(
+        normalizeSettings({ runtime: "cloud", cloudMode: "remote", cloudBaseUrl: "" }),
+        { envJson: { baseUrl: "http://127.0.0.1:8080" }, env: {} },
+      ),
+    ).not.toThrow();
   });
 
   it("only enables Codex network when explicitly true", () => {

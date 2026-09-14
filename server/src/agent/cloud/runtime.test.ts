@@ -239,6 +239,19 @@ describe("create-run payload", () => {
     expect(dumped).not.toContain(settings.llmApiKey);
     expect(dumped).not.toContain("sk-host-control-path-secret");
   });
+
+  it("attaches Settings repo hints on create-run (not tokens)", () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-repo-"));
+    writeFileSync(join(workspaceRoot, "ok.md"), "visible");
+    const settings = cloudSettings(workspaceRoot, {
+      cloudRepoUrl: "https://github.com/acme/app.git",
+      cloudRepoRef: "main",
+    });
+    const body = buildCreateRunRequest(emptySession(), settings, buildRemoteWorkspaceHandoff(settings));
+    expect(body.workspace?.repoUrl).toBe("https://github.com/acme/app.git");
+    expect(body.workspace?.ref).toBe("main");
+    expect(JSON.stringify(body)).not.toContain(settings.cloudToken);
+  });
 });
 
 describe("workspace materialize", () => {
