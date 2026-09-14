@@ -24,7 +24,7 @@ export function RightPanel({
   const [tab, setTab] = useState<Tab>("artifacts");
 
   return (
-    <aside className="flex h-full w-[360px] shrink-0 flex-col border-l border-white/5 bg-ink-900/70">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-white/5 bg-ink-900/70 xl:w-[340px]">
       <div className="flex border-b border-white/5">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物

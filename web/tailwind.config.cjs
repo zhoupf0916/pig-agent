@@ -1,6 +1,12 @@
+const path = require("node:path");
+const typography = require("@tailwindcss/typography");
+
 /** @type {import('tailwindcss').Config} */
-export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+module.exports = {
+  content: [
+    path.join(__dirname, "index.html"),
+    path.join(__dirname, "src/**/*.{ts,tsx}"),
+  ],
   theme: {
     extend: {
       colors: {
@@ -33,5 +39,5 @@ export default {
       },
     },
   },
-  plugins: [require("@tailwindcss/typography")],
+  plugins: [typography],
 };
