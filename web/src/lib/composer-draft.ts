@@ -104,3 +104,90 @@ export function clearComposerDraft(sessionId: string, storage?: DraftStorage | n
   const { [sessionId]: _removed, ...rest } = current;
   writeStore(rest, storage);
 }
+
+/** Same string keeps the previous reference (avoids extra composer renders). */
+export function applyComposerDraft(prev: string, next: string): string {
+  return prev === next ? prev : next;
+}
+
+export type StorageEventLike = {
+  key: string | null;
+  newValue?: string | null;
+};
+
+export type ComposerDraftSyncBus = {
+  addStorageListener: (handler: (event: StorageEventLike) => void) => void;
+  removeStorageListener: (handler: (event: StorageEventLike) => void) => void;
+  addListener: (type: "visibilitychange" | "focus", handler: () => void) => void;
+  removeListener: (type: "visibilitychange" | "focus", handler: () => void) => void;
+};
+
+const storageListeners = new WeakMap<(event: StorageEventLike) => void, EventListener>();
+
+export function browserComposerDraftSyncBus(): ComposerDraftSyncBus {
+  return {
+    addStorageListener: (handler) => {
+      const listener: EventListener = (event) => {
+        handler(event as StorageEvent);
+      };
+      storageListeners.set(handler, listener);
+      window.addEventListener("storage", listener);
+    },
+    removeStorageListener: (handler) => {
+      const listener = storageListeners.get(handler);
+      if (!listener) return;
+      window.removeEventListener("storage", listener);
+      storageListeners.delete(handler);
+    },
+    addListener: (type, handler) => {
+      if (type === "visibilitychange") document.addEventListener(type, handler);
+      else window.addEventListener(type, handler);
+    },
+    removeListener: (type, handler) => {
+      if (type === "visibilitychange") document.removeEventListener(type, handler);
+      else window.removeEventListener(type, handler);
+    },
+  };
+}
+
+/**
+ * Same-host Tab B follows Tab A's unsent draft from localStorage.
+ * Live path: `storage` event. Catch-up: focus / visibility.
+ * Client-only — no server write, no BroadcastChannel.
+ */
+export function startComposerDraftSync(opts: {
+  sessionId: string | (() => string | null);
+  storage?: DraftStorage | null;
+  onDraft: (next: string) => void;
+  bus?: ComposerDraftSyncBus;
+}): () => void {
+  const storage = opts.storage === undefined ? browserDraftStorage() : opts.storage;
+  const bus = opts.bus ?? browserComposerDraftSyncBus();
+  let stopped = false;
+
+  const currentSessionId = () =>
+    typeof opts.sessionId === "function" ? opts.sessionId() : opts.sessionId;
+
+  const refresh = () => {
+    if (stopped) return;
+    const sessionId = currentSessionId();
+    if (!sessionId) return;
+    opts.onDraft(loadComposerDraft(sessionId, storage));
+  };
+
+  const onStorage = (event: StorageEventLike) => {
+    if (event.key !== null && event.key !== COMPOSER_DRAFT_STORAGE_KEY) return;
+    refresh();
+  };
+
+  bus.addStorageListener(onStorage);
+  bus.addListener("visibilitychange", refresh);
+  bus.addListener("focus", refresh);
+
+  return () => {
+    stopped = true;
+    bus.removeStorageListener(onStorage);
+    bus.removeListener("visibilitychange", refresh);
+    bus.removeListener("focus", refresh);
+  };
+}

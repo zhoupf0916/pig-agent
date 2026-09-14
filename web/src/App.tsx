@@ -16,10 +16,12 @@ import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { api, streamMessage, streamRetry, streamTeamRun, subscribeSessionEvents } from "./lib/api";
 import {
+  applyComposerDraft,
   browserDraftStorage,
   clearComposerDraft,
   loadComposerDraft,
   persistComposerDraft,
+  startComposerDraftSync,
 } from "./lib/composer-draft";
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
@@ -238,6 +240,15 @@ export function App() {
       onSettings: (next) => setSettings((prev) => applySettingsSnapshot(prev, next)),
     });
   }, []);
+
+  useEffect(() => {
+    if (!activeId) return;
+    return startComposerDraftSync({
+      sessionId: activeId,
+      storage: browserDraftStorage(),
+      onDraft: (next) => setDraft((prev) => applyComposerDraft(prev, next)),
+    });
+  }, [activeId]);
 
   useEffect(() => {
     if (route.name !== "workstation" || !route.sessionId) return;
