@@ -464,6 +464,9 @@ export function ProjectsPanel({
                   兑换
                 </button>
               </form>
+              <p className="mb-3 text-xs text-ink-400">
+                无效或已失效的令牌会显示错误，不会加入项目。
+              </p>
               <ul className="space-y-1 rounded-card border border-ink-300 bg-white p-2 text-[13px] text-ink-700">
                 {detail.members.map((m) => (
                   <li key={m.id} className="flex items-center justify-between gap-2 rounded-[10px] px-2 py-1.5">

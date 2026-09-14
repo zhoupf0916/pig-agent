@@ -236,12 +236,13 @@ No LLM required. Same host, named members — not SSO. See [docs/project-invites
 - [ ] Open `#/projects`, create a project. Members list shows **本机用户 · 所有者** (不可移除)
 - [ ] Invite with display name + optional note → pending row appears; token is shown and copyable; unread inbox item has project name + inviter / note
 - [ ] Inbox **接受** adds the member, clears pending, and can open the project. Accept the same invite again — still one member
-- [ ] Invite another name → inbox **拒绝** (or 忽略) marks it terminal; that name is not in members
+- [ ] Invite another name → inbox **忽略** marks it terminal and does **not** open that project; that name is not in members
 - [ ] Invite again, paste the token on the project page **兑换** — member is added
 - [ ] Pending row **撤销** removes the invite without adding a member
 - [ ] Click an invite row (or **标为已读**) marks read; Esc / click outside closes the inbox
 - [ ] Bound session **转交** still creates a `kind=handoff` inbox item; **打开会话** returns to the workstation
 - [ ] `POST /api/projects/<id>/members` `{ displayName, note }` → 201 + pending invite + inbox `kind=invite`
 - [ ] `POST /api/inbox/<id>/accept` then again → member once. `POST /api/projects/<id>/invites/redeem` with the token also works
+- [ ] Paste a bogus / already-declined token on **兑换** — readable error, members unchanged
 - [ ] `DELETE /api/projects/<id>/members/<ownerId>` → 400
 - [ ] This is **not** SSO, email, Desk Remote, Firecracker, marketplace, or a cloud ACL rewrite

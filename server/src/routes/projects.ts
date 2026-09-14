@@ -170,7 +170,7 @@ export function registerProjectRoutes(app: Hono): void {
 
   app.post("/api/projects/:id/invites/redeem", async (c) => {
     const parsed = redeemSchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!parsed.success) return c.json({ error: "token is required" }, 400);
+    if (!parsed.success) return c.json({ error: "请粘贴邀请令牌" }, 400);
     try {
       const result = await acceptProjectInvite(c.req.param("id"), { token: parsed.data.token });
       if (!result) return c.json({ error: "Project not found" }, 404);

@@ -176,6 +176,15 @@ describe("project invites (Milestone J3)", () => {
       body: JSON.stringify({ token: "inv_nope" }),
     });
     expect(missing.status).toBe(404);
+    expect((await json<{ error: string }>(missing)).error).toContain("无效或已失效");
+
+    const expired = await app.request(`/api/projects/${created.id}/invites/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: second.inviteToken }),
+    });
+    expect(expired.status).toBe(400);
+    expect((await json<{ error: string }>(expired)).error).toContain("已失效");
   });
 
   it("keeps handoff inbox items working and rejects accept on them", async () => {

@@ -414,7 +414,7 @@ function ensureInvite(
     project.invites.push(synthesized);
     return synthesized;
   }
-  throw new ProjectInviteError("Invite not found", 404);
+  throw new ProjectInviteError("邀请令牌无效或已失效", 404);
 }
 
 function addMemberFromInvite(project: Project, invite: ProjectInvite): ProjectMember {
@@ -521,7 +521,7 @@ export async function acceptProjectInvite(
     return { project, invite, member };
   }
   if (invite.status !== "pending") {
-    throw new ProjectInviteError("Invite is no longer pending");
+    throw new ProjectInviteError("邀请已失效（已拒绝或已撤销）");
   }
   const member = addMemberFromInvite(project, invite);
   await markInvite(invite, "accepted", { memberId: member.id });
@@ -538,7 +538,7 @@ export async function declineProjectInvite(
   if (!project) return null;
   const invite = ensureInvite(project, input);
   if (invite.status === "accepted") {
-    throw new ProjectInviteError("Invite already accepted");
+    throw new ProjectInviteError("邀请已接受，不能再拒绝");
   }
   if (invite.status === "pending") {
     await markInvite(invite, "declined");
@@ -562,9 +562,9 @@ export async function revokeProjectInvite(
   const project = await readProjectFile(id);
   if (!project) return null;
   const invite = project.invites.find((i) => i.id === inviteId);
-  if (!invite) throw new ProjectInviteError("Invite not found", 404);
+  if (!invite) throw new ProjectInviteError("邀请不存在或已失效", 404);
   if (invite.status === "accepted") {
-    throw new ProjectInviteError("Cannot revoke an accepted invite");
+    throw new ProjectInviteError("已接受的邀请不能撤销");
   }
   if (invite.status === "pending") {
     await markInvite(invite, "revoked");
@@ -578,9 +578,9 @@ export async function removeProjectMember(id: string, memberId: string): Promise
   const project = await readProjectFile(id);
   if (!project) return null;
   const member = project.members.find((m) => m.id === memberId);
-  if (!member) throw new ProjectInviteError("Member not found", 404);
+  if (!member) throw new ProjectInviteError("成员不存在", 404);
   if (member.role === "owner") {
-    throw new ProjectInviteError("Cannot remove the project owner");
+    throw new ProjectInviteError("不能移除项目所有者");
   }
   project.members = project.members.filter((m) => m.id !== memberId);
   await activity(project, `已移除成员 ${member.displayName}`);
@@ -596,13 +596,13 @@ export async function acceptInboxInvite(inboxId: string): Promise<{
   const item = await getInboxItem(inboxId);
   if (!item) return null;
   if (item.kind !== "invite") {
-    throw new ProjectInviteError("Inbox item is not an invite");
+    throw new ProjectInviteError("这条消息不是邀请");
   }
   const result = await acceptProjectInvite(item.projectId, {
     inviteId: item.inviteId,
     token: item.inviteToken,
   });
-  if (!result) throw new ProjectInviteError("Project not found", 404);
+  if (!result) throw new ProjectInviteError("项目不存在", 404);
   const updated = (await getInboxItem(inboxId)) ?? { ...item, inviteStatus: "accepted" as const, read: true };
   return { item: updated, ...result };
 }
@@ -615,13 +615,13 @@ export async function declineInboxInvite(inboxId: string): Promise<{
   const item = await getInboxItem(inboxId);
   if (!item) return null;
   if (item.kind !== "invite") {
-    throw new ProjectInviteError("Inbox item is not an invite");
+    throw new ProjectInviteError("这条消息不是邀请");
   }
   const result = await declineProjectInvite(item.projectId, {
     inviteId: item.inviteId,
     token: item.inviteToken,
   });
-  if (!result) throw new ProjectInviteError("Project not found", 404);
+  if (!result) throw new ProjectInviteError("项目不存在", 404);
   const updated = (await getInboxItem(inboxId)) ?? { ...item, inviteStatus: "declined" as const, read: true };
   return { item: updated, ...result };
 }

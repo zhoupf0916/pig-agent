@@ -38,12 +38,12 @@ Invites live on `data/projects/<id>/project.json` as `invites[]`. Each row has i
 
 201 create body includes `{ inviteToken, invite, members, invites, inboxItem }`. Inbox `kind=invite` fields: `projectId`, `projectName`, `inviterName`, `inviteeName`, `inviteNote`, `inviteId`, `inviteToken`, `inviteStatus`.
 
-Redeem / accept of an unknown token is 404. Decline or redeem of a revoked invite is 400 (`Invite is no longer pending`). Accepting a `kind=handoff` inbox item is 400.
+Redeem / accept of an unknown token is 404 (`邀请令牌无效或已失效`). Decline or redeem of a revoked/declined invite is 400 (`邀请已失效（已拒绝或已撤销）`). Accepting a `kind=handoff` inbox item is 400.
 
 ## Web
 
 - Project page: invite form (display name + optional note), copyable token, paste-to-redeem, owner + members + pending list, **撤销** on pending, no owner remove.
-- Inbox: invite rows show project name + inviter / note; **接受** opens the project after joining; row click still opens the project and marks read; Esc / outside click closes the menu.
+- Inbox: invite rows show project name + inviter / note; **接受** joins and opens the project; **忽略** marks the invite terminal without navigating away; row click still opens the project and marks read; Esc / outside click closes the menu. Invalid or expired redeem tokens show a readable error and do not add a member.
 - Handoff rows keep **打开会话**.
 
 ## Out of scope

@@ -152,7 +152,7 @@ export function InboxMenu({
                           disabled={busyId === item.id}
                           onClick={() => void runInviteAction(item, "decline")}
                         >
-                          拒绝
+                          忽略
                         </button>
                       </>
                     )}
