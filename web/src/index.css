@@ -116,6 +116,22 @@ body {
   .btn-quiet:hover {
     @apply bg-ink-100 text-ink-800;
   }
+
+  .btn-nav {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn px-2.5 py-1.5 text-xs text-ink-600;
+  }
+
+  .btn-nav:hover {
+    @apply bg-ink-100 text-ink-800;
+  }
+
+  .btn-nav-active {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn bg-ink-100 px-2.5 py-1.5 text-xs font-medium text-ink-800;
+  }
+
+  .btn-nav-active:hover {
+    @apply bg-ink-200;
+  }
 }
 
 textarea:focus,
