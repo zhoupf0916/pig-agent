@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab automations list last-run (Milestone Z)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/automations` refresh of 上次运行 / `lastSessionId` / `lastError` on `#/automations`. Selected item may also `GET /api/automations/:id`. No new write path, no dual-write of automations / sessions / events, no public webhook. 「立即运行」 / 409 in-flight unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already on `#/automations`. Tab A (or local cron) finishes a run — Tab B that row’s **上次运行** / session entry / error update without a full page refresh (focus the tab or wait one short poll)
+- [ ] List-visible last-run fields update even when Tab B does **not** have that item’s detail open
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, V theme, Y pins, and L/M/N / W·X cloud progress unchanged. 「立即运行」 still 409 while in flight
+- [ ] List / detail / banner / automation JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab session pins (Milestone Y)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh of the open session's 项目 / 专家 / 小队 pins. No new write path, no dual-write of sessions / `events.jsonl`. Not a credentials vault / connector / multi-agent / public webhook / sandbox change.
