@@ -188,6 +188,29 @@ export const LOCAL_USER_NAME = "本机用户";
 
 export type AgentRuntime = "pig" | "codex" | "cloud";
 
+/**
+ * Local automation (Milestone D). JSON under `data/automations/`.
+ * No public webhooks / remote workers — in-process cron or manual Run now.
+ */
+export type Automation = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  prompt: string;
+  /** 5-field cron, `@hourly`, `@daily`, or null for manual-only. */
+  schedule: string | null;
+  expertId?: string;
+  expertTeamId?: string;
+  projectId?: string;
+  /** Default pig. Stored per automation; does not change global settings. */
+  runtime: AgentRuntime;
+  lastRunAt?: string;
+  lastSessionId?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CloudMode = "local-stub" | "remote";
 
 export type CodexStatus = {

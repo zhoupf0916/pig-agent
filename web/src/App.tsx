@@ -1,5 +1,6 @@
 import { Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
@@ -8,7 +9,14 @@ import { RightPanel } from "./components/RightPanel";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
-import { expertsHash, parseHash, projectsHash, workstationHash, type AppRoute } from "./lib/hash";
+import {
+  automationsHash,
+  expertsHash,
+  parseHash,
+  projectsHash,
+  workstationHash,
+  type AppRoute,
+} from "./lib/hash";
 import type {
   AgentEvent,
   Expert,
@@ -92,6 +100,10 @@ export function App() {
 
   const goExperts = useCallback((expertId?: string) => {
     window.location.hash = expertsHash(expertId);
+  }, []);
+
+  const goAutomations = useCallback((automationId?: string) => {
+    window.location.hash = automationsHash(automationId);
   }, []);
 
   const refreshExperts = useCallback(async () => {
@@ -454,6 +466,13 @@ export function App() {
           >
             专家
           </button>
+          <button
+            type="button"
+            className={route.name === "automations" ? "btn-primary" : "btn-ghost"}
+            onClick={() => goAutomations(route.name === "automations" ? route.automationId : undefined)}
+          >
+            自动化
+          </button>
           <InboxMenu onOpenProject={(id) => goProjects(id)} />
           <div className="hidden text-right text-meta text-ink-500 sm:block">
             <div>{headerHint}</div>
@@ -502,6 +521,18 @@ export function App() {
             onSelectExpert={(id) => goExperts(id)}
             onPinExpert={(id) => void pinExpertToSession(id)}
             onPinTeam={(id) => void pinTeamToSession(id)}
+          />
+        ) : route.name === "automations" ? (
+          <AutomationsPanel
+            selectedId={route.automationId}
+            experts={experts}
+            teams={expertTeams}
+            projects={projects}
+            onSelect={(id) => goAutomations(id)}
+            onOpenSession={(id) => {
+              void loadSession(id);
+              goWorkstation();
+            }}
           />
         ) : (
           <>

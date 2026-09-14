@@ -3,12 +3,14 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startAutomationScheduler } from "./automations/scheduler.ts";
 import { createApp } from "./app.ts";
 import { PORT, PROJECT_ROOT } from "./config.ts";
 
 process.chdir(PROJECT_ROOT);
 
 const app = createApp();
+startAutomationScheduler();
 const webDist = resolve(PROJECT_ROOT, "web/dist");
 
 if (existsSync(webDist)) {

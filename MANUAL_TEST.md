@@ -95,3 +95,17 @@ No LLM required for the directory. Prompt injection is covered by `pnpm test`.
 - [ ] Implement expert lists skill `coding-helper` (local `skills/`, not a marketplace)
 - [ ] Workstation cards (bubbles, tool cards, artifacts) are unchanged aside from the pin row
 - [ ] This is **not** an expert marketplace, Cordis, Desk Remote, or Firecracker
+
+## Local automations (Milestone D)
+
+No public webhooks. The in-process scheduler starts with `pnpm dev` / `pnpm start` (not with `createApp()` in unit tests). See [docs/automations.md](./docs/automations.md).
+
+- [ ] Header shows **工作台** / **项目** / **专家** / **自动化**. Default runtime is still **本机 Pig**
+- [ ] Open `#/automations`, create an automation with a prompt, leave schedule empty (manual-only)
+- [ ] Optionally pin an expert and/or project, toggle **启用**
+- [ ] **立即运行** creates a new session, opens the workstation, and shows the prompt as the first user message
+- [ ] `data/automations/<id>.json` has `runtime: "pig"`, `lastSessionId`, `lastRunAt`; no API keys
+- [ ] Set schedule `@hourly` or `@daily` (or `0 9 * * 1`); invalid cron is rejected
+- [ ] Click **立即运行** twice quickly — second request is skipped / 409 while the first is in flight
+- [ ] `GET /api/automations` lists the record; `POST /api/automations/:id/run` returns 202 + session
+- [ ] This is **not** Slack/Telegram ingress, remote workers, Desk Remote, or Firecracker

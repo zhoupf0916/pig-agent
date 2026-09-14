@@ -162,6 +162,23 @@ export type InboxItem = {
 
 export type AgentRuntime = "pig" | "codex" | "cloud";
 
+export type Automation = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  prompt: string;
+  schedule: string | null;
+  expertId?: string;
+  expertTeamId?: string;
+  projectId?: string;
+  runtime: AgentRuntime;
+  lastRunAt?: string;
+  lastSessionId?: string;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CloudMode = "local-stub" | "remote";
 
 export type CodexStatus = {
