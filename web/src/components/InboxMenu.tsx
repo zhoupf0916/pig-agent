@@ -1,5 +1,5 @@
 import { Inbox } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { InboxItem } from "../types";
 
@@ -11,6 +11,7 @@ export function InboxMenu({
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unread, setUnread] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = async () => {
     const next = await api.inbox();
@@ -24,8 +25,26 @@ export function InboxMenu({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onPointer = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointer);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointer);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button type="button" className="btn-ghost" onClick={() => setOpen((v) => !v)}>
         <Inbox size={14} />
         收件箱
