@@ -36,7 +36,9 @@ function parseField(field: string, min: number, max: number): Set<number> {
     return values;
   }
   for (const part of field.split(",")) {
-    const [range, stepRaw] = part.split("/");
+    const pieces = part.split("/");
+    const range = pieces[0] ?? "";
+    const stepRaw = pieces[1];
     const step = stepRaw ? Number(stepRaw) : 1;
     if (!Number.isInteger(step) || step < 1) {
       throw new Error(`Invalid cron step: ${part}`);
@@ -45,9 +47,9 @@ function parseField(field: string, min: number, max: number): Set<number> {
       for (let i = min; i <= max; i += step) values.add(i);
       continue;
     }
-    const [aRaw, bRaw] = range.split("-");
-    const start = Number(aRaw);
-    const end = bRaw == null ? start : Number(bRaw);
+    const bounds = range.split("-");
+    const start = Number(bounds[0]);
+    const end = bounds[1] == null ? start : Number(bounds[1]);
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < min || end > max || start > end) {
       throw new Error(`Invalid cron field: ${part}`);
     }
@@ -62,7 +64,14 @@ export function parseCron(schedule: string): CronFields {
   if (parts.length !== 5) {
     throw new Error("Schedule must be a 5-field cron, @hourly, or @daily");
   }
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  const minute = parts[0];
+  const hour = parts[1];
+  const dayOfMonth = parts[2];
+  const month = parts[3];
+  const dayOfWeek = parts[4];
+  if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
+    throw new Error("Schedule must be a 5-field cron, @hourly, or @daily");
+  }
   return {
     minute: parseField(minute, 0, 59),
     hour: parseField(hour, 0, 23),
