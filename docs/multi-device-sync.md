@@ -94,6 +94,10 @@ Transcript SSE is per-session. The workstation sidebar is a **read-only** refres
 
 The top-bar runtime chip (本机 Pig / 本机 Codex / 云端) is a **read-only** refresh of `GET /api/settings`. Another same-host tab that saves a runtime change in Settings updates the chip on focus, visibility, or a short poll — no full page reload. Chip copy still comes from the existing execution-surface descriptors. Default runtime stays **pig**. This does **not** PUT settings or write sessions / `events.jsonl`.
 
+## Composer drafts (Milestone S)
+
+Unsent workstation composer text stays in the existing client-only `localStorage` key `pig-agent.composer-drafts` (Milestone P). Another same-host tab on the **same `sessionId`** applies Tab A's typing / clear / send through the `storage` event, or by re-reading the store on focus / visibility — no full page reload. Different sessions do not overwrite each other. This does **not** persist drafts on the server or dual-write settings / sessions / `events.jsonl`.
+
 ## What this is not
 
 - No Redis / MySQL bus

@@ -3,10 +3,13 @@ import { redactSecretsForDisplay } from "./remote-retry";
 import {
   COMPOSER_DRAFT_STORAGE_KEY,
   DRAFT_FORBIDDEN_KEYS,
+  applyComposerDraft,
   clearComposerDraft,
   loadComposerDraft,
   persistComposerDraft,
   readComposerDraftStore,
+  startComposerDraftSync,
+  type ComposerDraftSyncBus,
 } from "./composer-draft";
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -93,5 +96,171 @@ describe("composer draft persistence (Milestone P)", () => {
     expect(readComposerDraftStore(dirty)).toEqual({ ses_ok: "keep" });
     expect(loadComposerDraft("bad", dirty)).toBe("");
     expect(redactSecretsForDisplay("失败 sk-abcdefghijklmnop")).toBe("失败 …");
+  });
+});
+
+function fakeDraftBus() {
+  const storageListeners = new Set<(event: { key: string | null; newValue?: string | null }) => void>();
+  const listeners = new Map<string, Set<() => void>>();
+  const bus: ComposerDraftSyncBus = {
+    addStorageListener: (handler) => {
+      storageListeners.add(handler);
+    },
+    removeStorageListener: (handler) => {
+      storageListeners.delete(handler);
+    },
+    addListener: (type, handler) => {
+      let set = listeners.get(type);
+      if (!set) {
+        set = new Set();
+        listeners.set(type, set);
+      }
+      set.add(handler);
+    },
+    removeListener: (type, handler) => {
+      listeners.get(type)?.delete(handler);
+    },
+  };
+  return {
+    bus,
+    emitStorage(key: string | null, newValue?: string | null) {
+      for (const fn of [...storageListeners]) fn({ key, newValue });
+    },
+    focus() {
+      for (const fn of listeners.get("focus") ?? []) fn();
+    },
+    visibility() {
+      for (const fn of listeners.get("visibilitychange") ?? []) fn();
+    },
+  };
+}
+
+describe("composer draft cross-tab sync (Milestone S)", () => {
+  it("returns the previous draft reference when the text is unchanged", () => {
+    const prev = "整理工作区";
+    expect(applyComposerDraft(prev, "整理工作区")).toBe(prev);
+    expect(applyComposerDraft(prev, "写摘要")).toBe("写摘要");
+  });
+
+  it("Tab B same sessionId follows Tab A edits via storage without a full refresh", () => {
+    const storage = memoryStorage();
+    persistComposerDraft("ses_a", "hello from A", storage);
+    persistComposerDraft("ses_b", "keep B", storage);
+
+    let tabB = "hello from A";
+    const { bus, emitStorage } = fakeDraftBus();
+    const stop = startComposerDraftSync({
+      sessionId: "ses_a",
+      storage,
+      onDraft: (next) => {
+        tabB = applyComposerDraft(tabB, next);
+      },
+      bus,
+    });
+
+    persistComposerDraft("ses_a", "hello from A edited", storage);
+    emitStorage(COMPOSER_DRAFT_STORAGE_KEY, storage.data[COMPOSER_DRAFT_STORAGE_KEY] ?? null);
+    expect(tabB).toBe("hello from A edited");
+    expect(loadComposerDraft("ses_b", storage)).toBe("keep B");
+    stop();
+  });
+
+  it("clears Tab B after Tab A send/clear; other sessions stay isolated", () => {
+    const storage = memoryStorage();
+    persistComposerDraft("ses_a", "send me", storage);
+    persistComposerDraft("ses_b", "keep me", storage);
+
+    let tabA = "send me";
+    let tabOther = "keep me";
+    const { bus, emitStorage } = fakeDraftBus();
+    const stopA = startComposerDraftSync({
+      sessionId: "ses_a",
+      storage,
+      onDraft: (next) => {
+        tabA = applyComposerDraft(tabA, next);
+      },
+      bus,
+    });
+    const stopOther = startComposerDraftSync({
+      sessionId: "ses_b",
+      storage,
+      onDraft: (next) => {
+        tabOther = applyComposerDraft(tabOther, next);
+      },
+      bus,
+    });
+
+    clearComposerDraft("ses_a", storage);
+    emitStorage(COMPOSER_DRAFT_STORAGE_KEY, storage.data[COMPOSER_DRAFT_STORAGE_KEY] ?? null);
+    expect(tabA).toBe("");
+    expect(tabOther).toBe("keep me");
+    expect(loadComposerDraft("ses_b", storage)).toBe("keep me");
+
+    persistComposerDraft("ses_b", "keep me edited", storage);
+    emitStorage(COMPOSER_DRAFT_STORAGE_KEY, storage.data[COMPOSER_DRAFT_STORAGE_KEY] ?? null);
+    expect(tabA).toBe("");
+    expect(tabOther).toBe("keep me edited");
+    stopA();
+    stopOther();
+  });
+
+  it("reloads the current session draft on focus / visibility (missed storage event)", () => {
+    const storage = memoryStorage();
+    persistComposerDraft("ses_a", "before", storage);
+    let tabB = "before";
+    const { bus, focus, visibility } = fakeDraftBus();
+    const stop = startComposerDraftSync({
+      sessionId: "ses_a",
+      storage,
+      onDraft: (next) => {
+        tabB = applyComposerDraft(tabB, next);
+      },
+      bus,
+    });
+
+    persistComposerDraft("ses_a", "after focus", storage);
+    expect(tabB).toBe("before");
+    focus();
+    expect(tabB).toBe("after focus");
+
+    persistComposerDraft("ses_a", "", storage);
+    visibility();
+    expect(tabB).toBe("");
+    stop();
+  });
+
+  it("ignores unrelated storage keys and never writes Settings / secrets into drafts", () => {
+    const storage = memoryStorage();
+    persistComposerDraft("ses_a", "just a goal", storage);
+    let tabB = "just a goal";
+    let calls = 0;
+    const { bus, emitStorage } = fakeDraftBus();
+    const stop = startComposerDraftSync({
+      sessionId: "ses_a",
+      storage,
+      onDraft: (next) => {
+        calls += 1;
+        tabB = applyComposerDraft(tabB, next);
+      },
+      bus,
+    });
+
+    emitStorage("pig-agent.theme", "dark");
+    expect(calls).toBe(0);
+    expect(tabB).toBe("just a goal");
+
+    persistComposerDraft("llmApiKey", "sk-should-never-store", storage);
+    persistComposerDraft("runtime", "cloud", storage);
+    emitStorage(COMPOSER_DRAFT_STORAGE_KEY, storage.data[COMPOSER_DRAFT_STORAGE_KEY] ?? null);
+    expect(tabB).toBe("just a goal");
+    const store = readComposerDraftStore(storage);
+    expect(store).toEqual({ ses_a: "just a goal" });
+    for (const key of DRAFT_FORBIDDEN_KEYS) {
+      expect(store).not.toHaveProperty(key);
+    }
+    const raw = storage.data[COMPOSER_DRAFT_STORAGE_KEY] ?? "";
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-/);
+    expect(redactSecretsForDisplay("失败 sk-abcdefghijklmnop")).toBe("失败 …");
+    stop();
   });
 });

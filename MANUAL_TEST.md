@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab composer drafts (Milestone S)
+
+Client-only (`localStorage` key `pig-agent.composer-drafts`). Same-host Tab B follows Tab A's unsent composer via the `storage` event, or on focus / visibility. Does **not** change Settings runtime (still **本机 Pig**). No server persist, no dual-write of settings / sessions / events. Not a credentials vault / connector / multi-agent change.
+
+- [ ] Two workstation tabs on the same host, same `#/sessions/<id>`. Type in Tab A — Tab B composer updates without a full page refresh (switch to Tab B or wait for the `storage` event)
+- [ ] Tab A **发送** or empty the composer — Tab B's draft for that session clears. A different session still keeps its own draft
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, and L/M/N retry / abort paths unchanged
+- [ ] Settings / API key fields never appear in `localStorage` `pig-agent.composer-drafts`. Banner / settings still redact secrets
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Cross-tab execution-surface chip (Milestone R)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/settings` refresh. No second write path, no settings dual-write, no events.jsonl change. Not a credentials vault / connector / multi-agent change.
