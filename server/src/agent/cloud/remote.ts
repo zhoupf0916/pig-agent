@@ -8,6 +8,7 @@ import {
   CLOUD_FOLLOW_UP_PATH,
   CloudRuntimeError,
 } from "./contract.ts";
+import { resolveEffectiveCloudBaseUrl } from "./env-json.ts";
 import { mapCloudEvent } from "./events.ts";
 import {
   assertNoSecretsInPayload,
@@ -37,7 +38,7 @@ export async function runRemoteCloudAgent(options: {
   };
   emit({ type: "status", status: "running" });
 
-  const base = settings.cloudBaseUrl.replace(/\/+$/, "");
+  const base = resolveEffectiveCloudBaseUrl(settings).replace(/\/+$/, "");
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",

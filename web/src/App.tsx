@@ -555,8 +555,9 @@ export function App() {
       return `本机 Codex · ${settings.codexModel}${net}`;
     }
     if (settings.runtime === "cloud") {
-      if (settings.cloudMode === "remote" && settings.cloudBaseUrl) {
-        const host = settings.cloudBaseUrl.replace(/^https?:\/\//, "");
+      const remoteUrl = settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl;
+      if (settings.cloudMode === "remote" && remoteUrl) {
+        const host = remoteUrl.replace(/^https?:\/\//, "");
         return `云端 · ${host}`;
       }
       return "云端 · local-stub";

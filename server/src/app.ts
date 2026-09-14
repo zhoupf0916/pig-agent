@@ -35,6 +35,8 @@ const settingsSchema = z.object({
   cloudBaseUrl: z.string().optional(),
   cloudToken: z.string().optional(),
   cloudMode: z.enum(["local-stub", "remote"]).optional(),
+  cloudRepoUrl: z.string().optional(),
+  cloudRepoRef: z.string().optional(),
 });
 
 const messageSchema = z.object({

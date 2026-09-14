@@ -261,10 +261,39 @@ export type CodexStatus = {
   apiKeyPresent: boolean;
 };
 
+export type CloudHintSource = "settings" | "env.json" | "env";
+
+export type CloudEnvJsonStatus = {
+  found: boolean;
+  file: "env.json";
+  baseUrl?: string;
+  repoUrl?: string;
+  repoRef?: string;
+};
+
+export type CloudRepoHintStatus = {
+  repoUrl?: string;
+  ref?: string;
+  repoUrlSource?: CloudHintSource;
+  refSource?: CloudHintSource;
+};
+
+export type CloudInstallHints = {
+  install?: string;
+  deps?: string[];
+  tools?: string[];
+  setup?: string[];
+};
+
 export type CloudStatus = {
   mode: CloudMode;
   remoteUrlConfigured: boolean;
   tokenPresent: boolean;
+  envJson?: CloudEnvJsonStatus;
+  repoHint?: CloudRepoHintStatus;
+  effectiveBaseUrl?: string;
+  installHints?: CloudInstallHints;
+  installHintsFile?: string;
 };
 
 export type Settings = {
@@ -281,6 +310,8 @@ export type Settings = {
   cloudBaseUrl: string;
   cloudToken: string;
   cloudMode: CloudMode;
+  cloudRepoUrl?: string;
+  cloudRepoRef?: string;
   cloudStatus?: CloudStatus;
 };
 

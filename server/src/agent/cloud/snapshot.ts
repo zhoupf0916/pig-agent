@@ -8,7 +8,8 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import type { CloudWorkspaceHandoff } from "./contract.ts";
+import type { CloudInstallHints, CloudWorkspaceHandoff } from "./contract.ts";
+import { hasInstallHints } from "./environment-json.ts";
 
 export type { CloudWorkspaceHandoff };
 
@@ -59,27 +60,20 @@ export function shouldSkipCloudHandoffName(name: string): boolean {
   return false;
 }
 
-export function resolveCloudRepoHint(
-  env: NodeJS.ProcessEnv = process.env,
-): { repoUrl?: string; ref?: string } {
-  const repoUrl = env.PIG_CLOUD_REPO_URL?.trim() || "";
-  const ref = env.PIG_CLOUD_REPO_REF?.trim() || "";
-  const hint: { repoUrl?: string; ref?: string } = {};
-  if (repoUrl) hint.repoUrl = repoUrl;
-  if (ref) hint.ref = ref;
-  return hint;
-}
+export { resolveCloudRepoHint } from "./env-json.ts";
 
 export function collectWorkspaceHandoff(options: {
   workspaceRoot: string;
   repoUrl?: string;
   ref?: string;
+  installHints?: CloudInstallHints;
 }): CloudWorkspaceHandoff {
   const handoff: CloudWorkspaceHandoff = {};
   const repoUrl = options.repoUrl?.trim();
   const ref = options.ref?.trim();
   if (repoUrl) handoff.repoUrl = repoUrl;
   if (ref) handoff.ref = ref;
+  if (hasInstallHints(options.installHints)) handoff.installHints = options.installHints;
   if (existsSync(options.workspaceRoot)) {
     handoff.snapshot = packWorkspaceSnapshot(options.workspaceRoot);
   }

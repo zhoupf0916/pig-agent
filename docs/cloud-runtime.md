@@ -50,7 +50,39 @@ When mode is `remote` and `cloudBaseUrl` is set, the host is a **client** of a c
 
 ### Workspace handoff
 
-`POST /v1/runs` may include `workspace`. Pig always tries to send a **tar.gz snapshot** of the configured sandbox. You can also set a repo hint via env (`PIG_CLOUD_REPO_URL` / `PIG_CLOUD_REPO_REF`) so a plane can clone instead of (or in addition to) unpacking the archive.
+`POST /v1/runs` may include `workspace`. Pig always tries to send a **tar.gz snapshot** of the configured sandbox. You can also set a **non-secret repo hint** so a plane can clone instead of (or in addition to) unpacking the archive.
+
+Precedence for remote-cloud hints (each field independently; empty Settings fields fall through):
+
+1. **Settings / UI** (`data/settings.json` — `cloudBaseUrl`, `cloudRepoUrl`, `cloudRepoRef`)
+2. **`env.json`** at the repo root (copy [`env.json.example`](../env.json.example); gitignored)
+3. **Process env** (`PIG_CLOUD_BASE_URL` / `CLOUD_BASE_URL`, `PIG_CLOUD_REPO_URL`, `PIG_CLOUD_REPO_REF`)
+
+`env.json` is discoverable in Settings → 云端 → remote (status + **填入 env.json 提示**). It must not contain tokens or API keys — those stay in `.env.local` or the Settings token field. The loader drops keys matching `token` / `apiKey` / `password` / `secret` even if someone adds them.
+
+### environment.json install hints (worker / local prep)
+
+Remote create-run can **ship** sanitized Cursor-style install hints and the control plane can **read** them from the payload or from `environment.json` inside the unpacked snapshot.
+
+Looked up in order (first file that has install/deps/tools/setup wins):
+
+1. `{workspace}/environment.json`
+2. `{workspace}/.cursor/environment.json`
+3. `{workspace}/env.json`
+4. same three names at the pig-agent repo root
+
+Documented shape ([`environment.json.example`](../environment.json.example)):
+
+```json
+{
+  "install": "pnpm install",
+  "deps": ["node>=20", "pnpm"],
+  "tools": ["git"],
+  "setup": ["pnpm install"]
+}
+```
+
+These hints **only guide worker / local prep**. Pig never writes `DEEPSEEK_API_KEY` / `PIG_CLOUD_TOKEN` / other provider keys into `data/cloud-runs/<id>/`, into the snapshot, or into repo sample files. Strings that look like keys (`sk-…`, `BEGIN … PRIVATE KEY`, `DEEPSEEK_API_KEY=…`) are dropped. Settings → 云端 → remote shows whether install hints were found. Default `runtime=pig` is unchanged; when remote is off the local golden path ignores these files except as ordinary workspace text.
 
 | Uploaded | Skipped |
 | --- | --- |
@@ -87,12 +119,18 @@ Follow-ups do **not** re-upload the tree; the worker is expected to keep its wor
       "byteSize": 1234
     },
     "repoUrl": "https://github.com/acme/app.git",
-    "ref": "main"
+    "ref": "main",
+    "installHints": {
+      "install": "pnpm install",
+      "deps": ["node>=20", "pnpm"],
+      "tools": ["git"],
+      "setup": ["pnpm install"]
+    }
   }
 }
 ```
 
-`workspace.snapshot` is omitted only when the workspace root is missing. `repoUrl` / `ref` are omitted unless `PIG_CLOUD_REPO_URL` / `PIG_CLOUD_REPO_REF` are set.
+`workspace.snapshot` is omitted only when the workspace root is missing. `repoUrl` / `ref` are omitted unless Settings, `env.json`, or `PIG_CLOUD_REPO_*` supplies them. `installHints` is omitted unless an `environment.json` (or alias) has non-secret install/deps/tools/setup.
 
 Response: `{ "id": "run_…", "status": "running" }` (`runId` or `{ run: { id } }` also accepted).
 
@@ -129,18 +167,21 @@ The workstation persists `remoteRunId` on the session JSON (`data/sessions/<id>.
 ## Pointing at a future real control plane
 
 ```bash
-# .env.local (gitignored)
+# env.json (gitignored; copy env.json.example) — non-secret hints only
+# { "cloud": { "baseUrl": "http://127.0.0.1:8080", "repoUrl": "https://github.com/acme/app.git", "repoRef": "main" } }
+
+# .env.local (gitignored) — secrets and overrides
 PIG_CLOUD_MODE=remote
 PIG_CLOUD_BASE_URL=http://127.0.0.1:8080
-PIG_CLOUD_TOKEN=          # optional
+PIG_CLOUD_TOKEN=          # optional; never put this in env.json
 # optional isolated stub dir (default ./data/cloud-runs)
 # PIG_CLOUD_RUNS_DIR=./data/cloud-runs
-# optional repo hint (clone instead of / in addition to the snapshot)
+# optional repo hint if you are not using env.json / Settings
 # PIG_CLOUD_REPO_URL=https://github.com/acme/app.git
 # PIG_CLOUD_REPO_REF=main
 ```
 
-Or Settings → 云端 → remote → paste the origin. For CI / offline smoke, `pnpm mock:cloud` speaks the four routes above (keys stay on the pig host). The workstation does not embed Firecracker, an LLM gateway, or a worker image.
+Or Settings → 云端 → remote → paste the origin and optional repo URL/ref (or click **填入 env.json 提示**). For CI / offline smoke, `pnpm mock:cloud` speaks the four routes above (keys stay on the pig host). The workstation does not embed Firecracker, an LLM gateway, or a worker image.
 
 ## What we deliberately did not copy from neo-cloud-agent
 

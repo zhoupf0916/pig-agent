@@ -11,6 +11,14 @@ export const CLOUD_EVENTS_PATH = (runId: string) => `/v1/runs/${runId}/events`;
 export const CLOUD_ABORT_PATH = (runId: string) => `/v1/runs/${runId}/abort`;
 export const CLOUD_FOLLOW_UP_PATH = (runId: string) => `/v1/runs/${runId}/follow-ups`;
 
+/** Non-secret worker/local prep hints. Never include API keys or .env values. */
+export type CloudInstallHints = {
+  install?: string;
+  deps?: string[];
+  tools?: string[];
+  setup?: string[];
+};
+
 export type CloudWorkspaceHandoff = {
   snapshot?: {
     encoding: "tar.gz";
@@ -22,6 +30,8 @@ export type CloudWorkspaceHandoff = {
   };
   repoUrl?: string;
   ref?: string;
+  /** Sanitized environment.json-style install hints for the plane / worker prep. */
+  installHints?: CloudInstallHints;
 };
 
 export type CloudCreateRunRequest = {

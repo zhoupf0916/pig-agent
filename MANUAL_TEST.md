@@ -74,6 +74,27 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] Same session, second message `再写一个文件` — reply is `[stub] follow-up: …`. `data/sessions/<id>.json` keeps the same `remoteRunId`
 - [ ] Isolated snapshot never includes `.env*`, `id_rsa` / `*.pem`, `node_modules`, or `.git` (see [docs/cloud-runtime.md](./docs/cloud-runtime.md))
 
+## Remote-cloud env.json / environment.json hints (Milestone J1)
+
+Non-secret hints only. Default runtime stays **本机 Pig**. See [docs/cloud-runtime.md](./docs/cloud-runtime.md), `env.json.example`, and `environment.json.example`.
+
+Connection / repo (host):
+
+- [ ] Copy `env.json.example` → `env.json` (repo root). File is gitignored. Do **not** add `PIG_CLOUD_TOKEN` / API keys
+- [ ] Settings → 云端 → remote — status shows `env.json 已发现` with baseUrl / repoUrl / ref
+- [ ] Click **填入 env.json 提示** — Base URL / 仓库 URL / Ref populate when those fields were empty
+- [ ] Settings repo fields win over `env.json`, which wins over `PIG_CLOUD_REPO_*`
+
+Install hints (worker / local prep — Cursor-style `environment.json`):
+
+- [ ] Copy `environment.json.example` → `{workspace}/environment.json` (or repo-root `environment.json`). Values are commands (`pnpm install`), never keys
+- [ ] Settings → 云端 → remote — status shows `environment.json 安装提示：install=pnpm install · …`
+- [ ] `pnpm mock:cloud`, Settings → remote → Base URL `http://127.0.0.1:8080`. New session: first-turn reply mentions `install pnpm install` (or the command you set)
+- [ ] Create-run JSON has `workspace.installHints` and no `DEEPSEEK_API_KEY` / token / `sk-`
+- [ ] Isolated snapshot / `data/cloud-runs/<id>/` still skip `.env*` and key files; no worker env file gets a provider key
+- [ ] Leave runtime on **本机 Pig** (or switch cloud off) — local golden path unchanged; `environment.json` is just a workspace file
+- [ ] Automated: `pnpm test` (parse/strip secrets, ship + control-plane read, default runtime pig)
+
 ## Projects + multi-tab sync (Milestone A)
 
 No LLM required for the project surface. Sync live tokens still need a model or `pnpm mock:llm`.

@@ -58,13 +58,23 @@ describe("workspace snapshot", () => {
     expect(existsSync(join(dest, "node_modules"))).toBe(false);
   });
 
-  it("reads optional repo hint from env only", () => {
-    expect(resolveCloudRepoHint({} as NodeJS.ProcessEnv)).toEqual({});
+  it("reads optional repo hint with Settings > env.json > process env precedence", () => {
+    expect(resolveCloudRepoHint({ envJson: {}, env: {} })).toEqual({});
     expect(
       resolveCloudRepoHint({
-        PIG_CLOUD_REPO_URL: "https://github.com/acme/app.git",
-        PIG_CLOUD_REPO_REF: "main",
-      } as NodeJS.ProcessEnv),
+        envJson: {},
+        env: {
+          PIG_CLOUD_REPO_URL: "https://github.com/acme/app.git",
+          PIG_CLOUD_REPO_REF: "main",
+        },
+      }),
     ).toEqual({ repoUrl: "https://github.com/acme/app.git", ref: "main" });
+    expect(
+      resolveCloudRepoHint({
+        settings: { cloudRepoUrl: "https://settings.example/app.git" },
+        envJson: { repoUrl: "https://json.example/app.git", repoRef: "dev" },
+        env: { PIG_CLOUD_REPO_URL: "https://env.example/app.git" },
+      }),
+    ).toEqual({ repoUrl: "https://settings.example/app.git", ref: "dev" });
   });
 });

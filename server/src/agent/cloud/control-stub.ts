@@ -4,6 +4,8 @@ import { streamSSE } from "hono/streaming";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { newId } from "../../util.ts";
+import type { CloudInstallHints } from "./contract.ts";
+import { hasInstallHints, loadInstallHints, parseInstallHints } from "./environment-json.ts";
 import { extractWorkspaceSnapshot } from "./snapshot.ts";
 
 export type CloudStubRun = {
@@ -15,6 +17,7 @@ export type CloudStubRun = {
   skipped: string[];
   repoUrl?: string;
   ref?: string;
+  installHints?: CloudInstallHints;
 };
 
 export type CloudControlStub = {
@@ -44,6 +47,7 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
         };
         repoUrl?: string;
         ref?: string;
+        installHints?: CloudInstallHints;
       };
     };
     const id = newId("run");
@@ -78,6 +82,13 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
       }
     }
 
+    const shipped = parseInstallHints(body.workspace?.installHints ?? {});
+    const dest = options.runsRoot ? join(options.runsRoot, id, "workspace") : "";
+    const fromSnapshot = dest
+      ? loadInstallHints({ workspaceRoot: dest, projectRoot: dest }).hints
+      : {};
+    const installHints = hasInstallHints(shipped) ? shipped : fromSnapshot;
+
     const run: CloudStubRun = {
       id,
       sessionId: typeof body.sessionId === "string" ? body.sessionId : "",
@@ -87,6 +98,7 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
       skipped,
       repoUrl: body.workspace?.repoUrl,
       ref: body.workspace?.ref,
+      ...(hasInstallHints(installHints) ? { installHints } : {}),
     };
     runs.set(id, run);
     return c.json({ id, status: "running" });
@@ -106,9 +118,14 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
         data: JSON.stringify({ type: "run.started" }),
       });
       const repoBit = run.repoUrl ? `; repo ${run.repoUrl}${run.ref ? `@${run.ref}` : ""}` : "";
+      const installBit = run.installHints?.install
+        ? `; install ${run.installHints.install}`
+        : run.installHints
+          ? `; install hints`
+          : "";
       const content = followUp
         ? `[stub] follow-up: ${prompt}`
-        : `[stub] accepted workspace (${run.files.length} files${repoBit}): ${prompt}`;
+        : `[stub] accepted workspace (${run.files.length} files${repoBit}${installBit}): ${prompt}`;
       await stream.writeSSE({
         data: JSON.stringify({ type: "assistant.message", content }),
       });

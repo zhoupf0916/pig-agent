@@ -1,6 +1,7 @@
 import type { Session, Settings } from "../../types.ts";
 import { prependBoundInstructions, type BoundInstructions } from "../bound-instructions.ts";
 import type { CloudCreateRunRequest, CloudWorkspaceHandoff } from "./contract.ts";
+import { loadInstallHints } from "./environment-json.ts";
 import { collectWorkspaceHandoff, resolveCloudRepoHint } from "./snapshot.ts";
 
 /**
@@ -27,7 +28,10 @@ export function buildCreateRunRequest(
       })),
     model: settings.llmModel,
   };
-  if (workspace && (workspace.snapshot || workspace.repoUrl || workspace.ref)) {
+  if (
+    workspace &&
+    (workspace.snapshot || workspace.repoUrl || workspace.ref || workspace.installHints)
+  ) {
     body.workspace = workspace;
   }
   return body;
@@ -38,11 +42,13 @@ export function buildFollowUpRequest(session: Session): { prompt: string } {
   return { prompt: lastUser?.content ?? "" };
 }
 
-/** Snapshot of sandbox-safe files plus optional env repo hint. */
+/** Snapshot of sandbox-safe files plus optional repo / install hints. */
 export function buildRemoteWorkspaceHandoff(settings: Settings): CloudWorkspaceHandoff {
+  const install = loadInstallHints({ workspaceRoot: settings.workspaceRoot });
   return collectWorkspaceHandoff({
     workspaceRoot: settings.workspaceRoot,
-    ...resolveCloudRepoHint(),
+    ...resolveCloudRepoHint({ settings }),
+    installHints: install.hints,
   });
 }
 

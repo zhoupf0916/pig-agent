@@ -113,6 +113,8 @@ export const DEFAULT_SETTINGS = {
   cloudBaseUrl: resolveCloudBaseUrl(),
   cloudToken: resolveCloudToken(),
   cloudMode: resolveCloudMode(),
+  cloudRepoUrl: "",
+  cloudRepoRef: "",
 } as const;
 
 export function ensureDir(path: string): void {

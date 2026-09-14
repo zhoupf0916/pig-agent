@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveEffectiveCloudBaseUrl } from "./agent/cloud/env-json.ts";
 import {
   CODEX_DEEPSEEK_BASE_URL,
   DEEPSEEK_BASE_URL,
@@ -70,5 +71,14 @@ describe("Cloud env isolation", () => {
       "https://example.com/app.git",
     );
     expect(resolveCloudRepoRef({ PIG_CLOUD_REPO_REF: "main" } as NodeJS.ProcessEnv)).toBe("main");
+    expect(
+      resolveEffectiveCloudBaseUrl(
+        { cloudBaseUrl: "" },
+        {
+          envJson: { baseUrl: "http://from-json.example" },
+          env: { PIG_CLOUD_BASE_URL: "http://from-env.example" },
+        },
+      ),
+    ).toBe("http://from-json.example");
   });
 });
