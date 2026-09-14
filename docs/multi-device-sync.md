@@ -106,6 +106,10 @@ The workstation workspace tree is a **read-only** refresh of `GET /api/workspace
 
 When Tab B already has a sandbox path open in the preview pane, that preview is a **read-only** refresh of `GET /api/workspace/file`. Another same-host tab that modifies that same path during a turn updates Tab B's preview on focus, visibility, or a short poll — no full page reload. Change detection uses the existing snapshot `size` plus content (no new write path, no ETag header). Secrets in file text are redacted with the existing display helper. This is orthogonal to Milestone T (tree listing only). It does **not** dual-write workspace files, session JSON, or `events.jsonl`. Default runtime stays **pig**. Sandbox boundary is unchanged.
 
+## Theme (Milestone V)
+
+Light / dark stays in the existing client-only `localStorage` key `pig-agent.theme` (Milestone J2). Another same-host tab applies Tab A's header toggle through the `storage` event, or by re-reading the key on focus / visibility — no full page reload. This does **not** invent a second key, persist theme on the server, or dual-write settings / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## What this is not
 
 - No Redis / MySQL bus
