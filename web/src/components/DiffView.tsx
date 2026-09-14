@@ -6,16 +6,16 @@ export function DiffView({ before, after }: { before: string; after: string }) {
     return <p className="text-xs text-ink-500">无差异。</p>;
   }
   return (
-    <pre className="overflow-auto rounded-lg border border-white/5 bg-ink-950/80 font-mono text-[11px] leading-5">
+    <pre className="overflow-auto rounded-lg border border-ink-200 bg-ink-50 font-mono text-[11px] leading-5">
       {lines.map((line, i) => (
         <div
           key={`${i}-${line.type}`}
           className={
             line.type === "add"
-              ? "bg-emerald-500/10 text-emerald-100"
+              ? "bg-emerald-50 text-emerald-900"
               : line.type === "del"
-                ? "bg-red-500/10 text-red-100"
-                : "text-ink-400"
+                ? "bg-red-50 text-red-900"
+                : "text-ink-600"
           }
         >
           <span className="inline-block w-4 select-none text-center opacity-60">

@@ -36,12 +36,12 @@ export function RightPanel({
   }, [artifacts]);
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-white/5 bg-ink-900/70 xl:w-[360px]">
-      <div className="flex border-b border-white/5">
+    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-ink-200 bg-ink-100 xl:w-[360px]">
+      <div className="flex border-b border-ink-200 bg-white/60">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
           {artifacts.length > 0 && (
-            <span className="ml-1 rounded-full bg-accent/20 px-1.5 text-[10px] text-sky-200">
+            <span className="ml-1 rounded-full bg-accent-soft px-1.5 text-[10px] text-accent">
               {artifacts.length}
             </span>
           )}
@@ -74,8 +74,10 @@ export function RightPanel({
                               setMode(a.before !== undefined && a.after !== undefined ? "diff" : "file");
                               onOpenFile(a.path);
                             }}
-                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-ink-800 ${
-                              previewPath === a.path ? "bg-ink-800 text-white" : "text-ink-300"
+                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-white ${
+                              previewPath === a.path
+                                ? "bg-white text-ink-900 shadow-panel"
+                                : "text-ink-700"
                             }`}
                           >
                             <FileCode size={14} className="text-accent" />
@@ -108,23 +110,27 @@ export function RightPanel({
         )}
       </div>
 
-      <div className="min-h-[42%] border-t border-white/5">
+      <div className="min-h-[42%] border-t border-ink-200 bg-white">
         <div className="flex items-center justify-between px-3 py-2 text-[11px] text-ink-500">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">
             {selected && selected.before !== undefined && selected.after !== undefined && (
-              <div className="flex rounded-md border border-white/10">
+              <div className="flex overflow-hidden rounded-md border border-ink-200">
                 <button
                   type="button"
                   onClick={() => setMode("file")}
-                  className={`px-2 py-0.5 text-[10px] ${mode === "file" ? "bg-ink-800 text-white" : ""}`}
+                  className={`px-2 py-0.5 text-[10px] ${
+                    mode === "file" ? "bg-ink-900 text-white" : "bg-white text-ink-600 hover:bg-ink-100"
+                  }`}
                 >
                   文件
                 </button>
                 <button
                   type="button"
                   onClick={() => setMode("diff")}
-                  className={`px-2 py-0.5 text-[10px] ${mode === "diff" ? "bg-ink-800 text-white" : ""}`}
+                  className={`px-2 py-0.5 text-[10px] ${
+                    mode === "diff" ? "bg-ink-900 text-white" : "bg-white text-ink-600 hover:bg-ink-100"
+                  }`}
                 >
                   对比
                 </button>
@@ -148,7 +154,7 @@ export function RightPanel({
               {isMarkdown(preview.path) ? (
                 <MarkdownView text={preview.content} />
               ) : (
-                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-300">
+                <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-700">
                   {preview.content}
                 </pre>
               )}
@@ -156,8 +162,8 @@ export function RightPanel({
           )}
           {mode === "file" && !preview && selected?.action === "deleted" && selected.before && (
             <div>
-              <div className="mb-2 font-mono text-[11px] text-red-300">{selected.path}（已删除）</div>
-              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-300">
+              <div className="mb-2 font-mono text-[11px] text-red-700">{selected.path}（已删除）</div>
+              <pre className="whitespace-pre-wrap font-mono text-[11px] leading-5 text-ink-700">
                 {selected.before}
               </pre>
             </div>
@@ -182,7 +188,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`flex-1 px-3 py-2.5 text-xs font-medium ${
-        active ? "border-b-2 border-accent text-white" : "text-ink-500 hover:text-ink-300"
+        active ? "border-b-2 border-ink-900 text-ink-900" : "text-ink-500 hover:text-ink-700"
       }`}
     >
       {children}
@@ -209,12 +215,12 @@ function FileTree({
       <button
         type="button"
         onClick={() => onOpen(node.path)}
-        className={`flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs hover:bg-ink-800 ${
-          selected === node.path ? "bg-ink-800 text-white" : "text-ink-300"
+        className={`flex w-full items-center gap-1.5 rounded-md py-1 pr-2 text-left text-xs hover:bg-white ${
+          selected === node.path ? "bg-white text-ink-900 shadow-panel" : "text-ink-700"
         }`}
         style={{ paddingLeft: 8 + depth * 12 }}
       >
-        <FileText size={13} className="shrink-0 text-ink-500" />
+        <FileText size={13} className="shrink-0 text-ink-400" />
         <span className="truncate">{node.name}</span>
       </button>
     );
@@ -226,11 +232,11 @@ function FileTree({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center gap-1 rounded-md py-1 text-left text-xs text-ink-300 hover:bg-ink-800"
+          className="flex w-full items-center gap-1 rounded-md py-1 text-left text-xs text-ink-700 hover:bg-white"
           style={{ paddingLeft: 8 + depth * 12 }}
         >
-          <ChevronRight size={12} className={`shrink-0 transition ${open ? "rotate-90" : ""}`} />
-          <Folder size={13} className="text-amber-200/80" />
+          <ChevronRight size={12} className={`shrink-0 text-ink-400 transition ${open ? "rotate-90" : ""}`} />
+          <Folder size={13} className="text-amber-700/80" />
           <span className="truncate">{node.name}</span>
         </button>
       )}

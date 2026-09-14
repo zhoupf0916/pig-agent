@@ -15,17 +15,13 @@ export function Sidebar({
   onDelete: (id: string) => void;
 }) {
   return (
-    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-white/5 bg-ink-900/80 lg:w-[240px]">
+    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-ink-200 bg-ink-100 lg:w-[240px]">
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <div>
           <div className="text-[11px] uppercase tracking-[0.16em] text-ink-500">会话</div>
-          <div className="mt-0.5 text-sm font-medium text-white">任务列表</div>
+          <div className="mt-0.5 text-sm font-medium text-ink-900">任务列表</div>
         </div>
-        <button
-          type="button"
-          onClick={onCreate}
-          className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-ink-950 hover:bg-sky-300"
-        >
+        <button type="button" onClick={onCreate} className="btn-primary px-2.5 py-1.5">
           <Plus size={14} />
           新任务
         </button>
@@ -42,7 +38,9 @@ export function Sidebar({
             <div
               key={s.id}
               className={`group flex items-start gap-2 rounded-lg px-2.5 py-2 ${
-                active ? "bg-ink-800 text-white" : "text-ink-300 hover:bg-ink-850"
+                active
+                  ? "bg-white text-ink-900 shadow-panel"
+                  : "text-ink-700 hover:bg-ink-200/80"
               }`}
             >
               <button type="button" onClick={() => onSelect(s.id)} className="min-w-0 flex-1 text-left">
@@ -56,7 +54,7 @@ export function Sidebar({
                 type="button"
                 title="删除会话"
                 onClick={() => onDelete(s.id)}
-                className="mt-0.5 rounded p-1 text-ink-500 opacity-0 hover:bg-ink-700 hover:text-red-300 group-hover:opacity-100"
+                className="mt-0.5 rounded p-1 text-ink-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
               >
                 <Trash2 size={13} />
               </button>
@@ -70,6 +68,10 @@ export function Sidebar({
 
 function StatusDot({ status }: { status: SessionSummary["status"] }) {
   const color =
-    status === "running" ? "bg-accent animate-pulse" : status === "error" ? "bg-red-400" : "bg-emerald-400/80";
+    status === "running"
+      ? "bg-accent animate-pulse"
+      : status === "error"
+        ? "bg-red-500"
+        : "bg-emerald-500";
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />;
 }

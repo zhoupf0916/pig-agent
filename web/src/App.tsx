@@ -270,14 +270,14 @@ export function App() {
   }, [settings]);
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-white/5 bg-ink-900/90 px-4 py-2.5">
+    <div className="flex h-full flex-col bg-ink-50">
+      <header className="flex items-center justify-between border-b border-ink-200 bg-white/90 px-4 py-2.5 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-bold text-ink-950">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-900 text-sm font-semibold text-white">
             P
           </div>
           <div>
-            <div className="text-sm font-medium text-white">Pig Agent</div>
+            <div className="text-sm font-medium text-ink-900">Pig Agent</div>
             <div className="text-[11px] text-ink-500">纯本地 · 纯 Web 工作台</div>
           </div>
         </div>
@@ -291,7 +291,7 @@ export function App() {
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-ink-300 hover:bg-ink-800"
+            className="btn-ghost"
           >
             <Settings2 size={14} />
             设置
@@ -300,12 +300,12 @@ export function App() {
       </header>
 
       {bootError && (
-        <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-200">
+        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
           无法连接本地后端：{bootError}。请确认已运行 <code>pnpm dev</code>。
         </div>
       )}
       {session?.lastError && (
-        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
           {session.lastError}
         </div>
       )}

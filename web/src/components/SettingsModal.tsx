@@ -31,17 +31,17 @@ export function SettingsModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-ink-900 p-5 shadow-panel">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/30 p-4 backdrop-blur-[2px]">
+      <div className="w-full max-w-xl rounded-2xl border border-ink-200 bg-white p-5 shadow-lift">
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-base font-medium text-white">设置</h2>
+            <h2 className="text-base font-medium text-ink-900">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
               保存在本机 data/settings.json，覆盖 .env / .env.local。默认 DeepSeek
               （https://api.deepseek.com/v1 · deepseek-chat）。切勿把密钥提交到仓库。
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-ink-800">
             关闭
           </button>
         </div>
@@ -82,11 +82,11 @@ export function SettingsModal({
           </Field>
         </div>
 
-        <div className="mt-4 rounded-xl border border-white/5 bg-ink-850 p-3">
+        <div className="mt-4 rounded-xl border border-ink-200 bg-ink-50 p-3">
           <div className="text-[11px] uppercase tracking-[0.14em] text-ink-500">本地技能</div>
           <ul className="mt-2 space-y-1.5">
             {skills.map((s) => (
-              <li key={s.name} className="text-xs text-ink-300">
+              <li key={s.name} className="text-xs text-ink-700">
                 <span className="font-mono text-accent">{s.name}</span>
                 <span className="text-ink-500"> — {s.description}</span>
               </li>
@@ -95,10 +95,10 @@ export function SettingsModal({
           </ul>
         </div>
 
-        {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+        {error && <p className="mt-3 text-xs text-red-700">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-ink-800">
+          <button type="button" onClick={onClose} className="btn-quiet">
             取消
           </button>
           <button
@@ -114,23 +114,12 @@ export function SettingsModal({
                 })
                 .finally(() => setSaving(false));
             }}
-            className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-ink-950 hover:bg-sky-300 disabled:opacity-50"
+            className="btn-primary"
           >
             {saving ? "保存中…" : "保存"}
           </button>
         </div>
       </div>
-      <style>{`
-        .field {
-          width: 100%;
-          border-radius: 0.6rem;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: #11141a;
-          padding: 0.55rem 0.7rem;
-          font-size: 13px;
-          color: white;
-        }
-      `}</style>
     </div>
   );
 }

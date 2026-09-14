@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -14,10 +14,8 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(90, 167, 255, 0.08), transparent 50%),
-    radial-gradient(800px 400px at 100% 0%, rgba(90, 167, 255, 0.04), transparent 40%),
-    #0b0d11;
+  background: #f7f7f4;
+  color: #2e2e2a;
 }
 
 ::-webkit-scrollbar {
@@ -26,8 +24,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a3140;
+  background: #d4d4cc;
   border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a0;
 }
 
 ::-webkit-scrollbar-track {
@@ -35,19 +37,79 @@ body {
 }
 
 .prose-pig {
-  --tw-prose-body: #c6cbd6;
-  --tw-prose-headings: #eef1f6;
-  --tw-prose-links: #5aa7ff;
-  --tw-prose-bold: #eef1f6;
-  --tw-prose-code: #f4d58d;
-  --tw-prose-pre-bg: #11141a;
-  --tw-prose-pre-code: #c6cbd6;
-  --tw-prose-quotes: #8b93a7;
-  --tw-prose-hr: #2a3140;
+  --tw-prose-body: #2e2e2a;
+  --tw-prose-headings: #141411;
+  --tw-prose-links: #2f6f6c;
+  --tw-prose-bold: #141411;
+  --tw-prose-code: #1c1c19;
+  --tw-prose-pre-bg: #f1f1ed;
+  --tw-prose-pre-code: #2e2e2a;
+  --tw-prose-quotes: #6e6e67;
+  --tw-prose-hr: #e6e6e0;
+  --tw-prose-counters: #6e6e67;
+  --tw-prose-bullets: #a8a8a0;
+  --tw-prose-th-borders: #d4d4cc;
+  --tw-prose-td-borders: #e6e6e0;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-ink-200 bg-white px-2.5 py-2 text-[13px] text-ink-800 placeholder:text-ink-400;
+  }
+
+  .field:hover {
+    @apply border-ink-300;
+  }
+
+  .field:focus {
+    @apply border-ink-800 bg-white;
+    box-shadow: 0 0 0 3px rgba(20, 20, 17, 0.08);
+  }
+
+  .field:disabled {
+    @apply cursor-not-allowed bg-ink-100 text-ink-400;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1 rounded-lg bg-ink-900 px-3 py-2 text-xs font-medium text-white;
+  }
+
+  .btn-primary:hover {
+    @apply bg-ink-800;
+  }
+
+  .btn-primary:disabled {
+    @apply cursor-not-allowed opacity-40 hover:bg-ink-900;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs text-ink-700;
+  }
+
+  .btn-ghost:hover {
+    @apply border-ink-300 bg-ink-100;
+  }
+
+  .btn-quiet {
+    @apply rounded-lg px-3 py-2 text-xs text-ink-600;
+  }
+
+  .btn-quiet:hover {
+    @apply bg-ink-100 text-ink-800;
+  }
 }
 
 textarea:focus,
 input:focus,
 button:focus-visible {
   outline: none;
+}
+
+button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(20, 20, 17, 0.12);
+}
+
+textarea:focus,
+input:focus {
+  box-shadow: 0 0 0 3px rgba(20, 20, 17, 0.08);
 }
