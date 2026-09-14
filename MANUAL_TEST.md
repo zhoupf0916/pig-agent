@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab session sidebar status (Milestone Q)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh. No second write path, no events.jsonl change. Not a credentials vault / connector / multi-agent change.
+
+- [ ] Two workstation tabs on the same host. Tab A starts a turn — Tab B sidebar shows that session as **运行中** (pulse) without a full page refresh
+- [ ] When the turn ends (success / fail / **停止**), Tab B sidebar returns to idle (or **出错**); title / time may update
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P drafts, and L/M/N retry / abort paths unchanged
+- [ ] Banner / settings / list JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Composer drafts per session (Milestone P)
 
 Client-only (`localStorage` key `pig-agent.composer-drafts`). Does **not** change Settings runtime (still **本机 Pig**). Does **not** write API keys or Settings into draft storage.

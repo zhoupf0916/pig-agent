@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { sessionStatusLabel } from "../lib/session-list-sync";
 import type { SessionSummary } from "../types";
 
 export function Sidebar({
@@ -50,7 +51,9 @@ export function Sidebar({
                 <div className="truncate text-[13px] font-medium">{s.title}</div>
                 <div className="mt-0.5 flex items-center gap-2 text-meta text-ink-500">
                   <StatusDot status={s.status} />
-                  {new Date(s.updatedAt).toLocaleTimeString()}
+                  {s.status === "running" || s.status === "error"
+                    ? sessionStatusLabel(s.status)
+                    : new Date(s.updatedAt).toLocaleTimeString()}
                 </div>
               </button>
               <button
@@ -70,11 +73,18 @@ export function Sidebar({
 }
 
 function StatusDot({ status }: { status: SessionSummary["status"] }) {
+  const label = sessionStatusLabel(status);
   const color =
     status === "running"
       ? "bg-accent animate-pulse"
       : status === "error"
         ? "bg-danger"
         : "bg-success";
-  return <span className={`inline-block h-1.5 w-1.5 rounded-full ${color}`} />;
+  return (
+    <span
+      className={`inline-block h-1.5 w-1.5 rounded-full ${color}`}
+      title={label}
+      aria-label={label}
+    />
+  );
 }
