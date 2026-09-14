@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab workspace browser tree (Milestone T)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/tree` refresh. No second write path, no dual-write of workspace / sessions / events. Not a credentials vault / connector / multi-agent change. Sandbox boundary unchanged.
+
+- [ ] Two workstation tabs on the same host. Tab A runs a turn that creates or modifies a sandbox file — Tab B **工作区** tree shows the new / updated path without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** need to be on the same session; switching to the 工作区 tab (or focusing the window) is enough. Tree nodes are names only — no file contents / API keys
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, and L/M/N retry / abort paths unchanged
+- [ ] Tree / banner / settings never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Cross-tab composer drafts (Milestone S)
 
 Client-only (`localStorage` key `pig-agent.composer-drafts`). Same-host Tab B follows Tab A's unsent composer via the `storage` event, or on focus / visibility. Does **not** change Settings runtime (still **本机 Pig**). No server persist, no dual-write of settings / sessions / events. Not a credentials vault / connector / multi-agent change.

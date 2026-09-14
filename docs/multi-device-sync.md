@@ -98,6 +98,10 @@ The top-bar runtime chip (本机 Pig / 本机 Codex / 云端) is a **read-only**
 
 Unsent workstation composer text stays in the existing client-only `localStorage` key `pig-agent.composer-drafts` (Milestone P). Another same-host tab on the **same `sessionId`** applies Tab A's typing / clear / send through the `storage` event, or by re-reading the store on focus / visibility — no full page reload. Different sessions do not overwrite each other. This does **not** persist drafts on the server or dual-write settings / sessions / `events.jsonl`.
 
+## Workspace browser tree (Milestone T)
+
+The workstation workspace tree is a **read-only** refresh of `GET /api/workspace/tree`. Another tab on the same host that creates or modifies sandbox files during a turn updates Tab B's tree on focus, visibility, or a short poll — no full page reload. Nodes stay name / path / type / size (no file contents). This does **not** dual-write workspace files, session JSON, or `events.jsonl`. Default runtime stays **pig**. Sandbox boundary is unchanged.
+
 ## What this is not
 
 - No Redis / MySQL bus

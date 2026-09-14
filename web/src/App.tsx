@@ -30,6 +30,10 @@ import {
   startSessionListSync,
 } from "./lib/session-list-sync";
 import {
+  applyWorkspaceTreeSnapshot,
+  startWorkspaceTreeSync,
+} from "./lib/workspace-tree-sync";
+import {
   applySettingsSnapshot,
   startSettingsSurfaceSync,
 } from "./lib/settings-surface-sync";
@@ -115,7 +119,7 @@ export function App() {
   const refreshTree = useCallback(async () => {
     try {
       const data = await api.tree();
-      setTree(data.tree);
+      setTree((prev) => applyWorkspaceTreeSnapshot(prev, data.tree));
     } catch {
       setTree(null);
     }
@@ -238,6 +242,16 @@ export function App() {
     return startSettingsSurfaceSync({
       fetchSettings: () => api.settings(),
       onSettings: (next) => setSettings((prev) => applySettingsSnapshot(prev, next)),
+    });
+  }, []);
+
+  useEffect(() => {
+    return startWorkspaceTreeSync({
+      fetchTree: async () => {
+        const { tree: next } = await api.tree();
+        return next;
+      },
+      onTree: (next) => setTree((prev) => applyWorkspaceTreeSnapshot(prev, next)),
     });
   }, []);
 
