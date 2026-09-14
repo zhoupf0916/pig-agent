@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 
 export function MarkdownView({ text }: { text: string }) {
   return (
-    <div className="prose prose-sm prose-invert prose-pig max-w-none">
+    <div className="prose prose-sm prose-pig max-w-none">
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
@@ -16,7 +16,7 @@ export function MarkdownView({ text }: { text: string }) {
           const inline = !className;
           if (inline) {
             return (
-              <code className="rounded bg-ink-800 px-1 py-0.5 text-[12px] text-amber-200" {...props}>
+              <code className="rounded bg-ink-100 px-1 py-0.5 text-[12px] text-ink-800" {...props}>
                 {children}
               </code>
             );

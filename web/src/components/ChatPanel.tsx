@@ -35,7 +35,7 @@ export function ChatPanel({
   );
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col">
+    <section className="flex min-w-0 flex-1 flex-col bg-ink-50">
       <StepStrip steps={session?.steps ?? []} />
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {!session && (
@@ -157,8 +157,8 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   const running = steps.filter((s) => s.status === "running").length;
   const done = steps.filter((s) => s.status === "done").length;
   return (
-    <div className="border-b border-white/5 bg-ink-900/40 px-6 py-3">
-      <div className="mb-2 flex items-center justify-between text-[11px] text-ink-500">
+    <div className="border-b border-ink-300 bg-white/80 px-6 py-3">
+      <div className="mb-2 flex items-center justify-between text-meta text-ink-500">
         <span className="uppercase tracking-[0.16em]">步骤</span>
         <span>
           {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
@@ -169,9 +169,9 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
           <li
             key={step.id}
             title={step.detail}
-            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] ${tone(step.status)}`}
+            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(step.status)}`}
           >
-            <span className="font-mono text-[10px] opacity-70">{i + 1}</span>
+            <span className="font-mono text-[12px] opacity-70">{i + 1}</span>
             {step.title}
           </li>
         ))}
@@ -181,10 +181,10 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
 }
 
 function tone(status: PlanStep["status"]): string {
-  if (status === "running") return "border-accent/40 bg-accent/10 text-sky-200";
-  if (status === "done") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  if (status === "error") return "border-red-500/30 bg-red-500/10 text-red-200";
-  return "border-white/10 bg-ink-850 text-ink-300";
+  if (status === "running") return "border-accent/30 bg-accent-soft text-accent";
+  if (status === "done") return "border-success/20 bg-success-soft text-success";
+  if (status === "error") return "border-danger/20 bg-danger-soft text-danger";
+  return "border-ink-300 bg-white text-ink-600";
 }
 
 function MessageBlock({ message }: { message: ChatMessage }) {
@@ -193,10 +193,10 @@ function MessageBlock({ message }: { message: ChatMessage }) {
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+        className={`max-w-[85%] rounded-card px-4 py-3 text-body ${
           mine
-            ? "bg-accent text-ink-950 shadow-panel"
-            : "border border-white/5 bg-ink-850 text-ink-300"
+            ? "border border-ink-300 bg-ink-100 text-ink-800"
+            : "border border-ink-300 bg-white text-ink-800 shadow-panel"
         }`}
       >
         {mine ? (
@@ -212,36 +212,39 @@ function MessageBlock({ message }: { message: ChatMessage }) {
 function ToolCard({ tool }: { tool: LiveTool }) {
   const summary = summarizeArgs(tool.arguments);
   return (
-    <details className="rounded-xl border border-white/5 bg-ink-900/70" open={!tool.done || !tool.ok}>
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs text-ink-300">
+    <details
+      className="rounded-card border border-ink-300 bg-white shadow-panel"
+      open={!tool.done || !tool.ok}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta text-ink-700">
         <Terminal size={13} className="text-accent" />
-        <span className="font-medium">{toolLabel(tool.name)}</span>
-        <span className="truncate text-ink-500">{summary}</span>
-        <span className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-wider">
+        <span className="font-medium text-ink-800">{toolLabel(tool.name)}</span>
+        <span className="truncate text-ink-600">{summary}</span>
+        <span className="ml-auto flex items-center gap-2 text-meta uppercase tracking-wider">
           {tool.durationMs !== undefined && (
-            <span className="normal-case text-ink-500">{formatDuration(tool.durationMs)}</span>
+            <span className="normal-case text-ink-600">{formatDuration(tool.durationMs)}</span>
           )}
           {!tool.done && (
-            <span className="inline-flex items-center gap-1 text-sky-200">
+            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 text-accent">
               <Loader2 size={11} className="animate-spin" />
               进行中
             </span>
           )}
           {tool.done && tool.ok && (
-            <span className="inline-flex items-center gap-1 text-emerald-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 text-success">
               <Check size={11} />
               成功
             </span>
           )}
           {tool.done && !tool.ok && (
-            <span className="inline-flex items-center gap-1 text-red-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-danger">
               <X size={11} />
               失败
             </span>
           )}
         </span>
       </summary>
-      <pre className="max-h-56 overflow-auto border-t border-white/5 px-3 py-2 font-mono text-[11px] text-ink-300">
+      <pre className="max-h-56 overflow-auto border-t border-ink-300 bg-ink-100 px-3 py-2 font-mono text-[12px] text-ink-700">
         {tool.done ? tool.output : JSON.stringify(tool.arguments, null, 2)}
       </pre>
     </details>
@@ -264,8 +267,8 @@ function Composer({
   onStop: () => void;
 }) {
   return (
-    <div className="border-t border-white/5 bg-ink-900/50 px-6 py-4">
-      <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-2xl border border-white/10 bg-ink-850 px-3 py-2 shadow-panel">
+    <div className="border-t border-ink-300 bg-white/80 px-6 py-4">
+      <div className="mx-auto flex max-w-3xl items-end gap-3 rounded-card border border-ink-300 bg-white px-3 py-2 shadow-panel">
         <textarea
           value={draft}
           disabled={disabled || streaming}
@@ -278,13 +281,13 @@ function Composer({
               onSend();
             }
           }}
-          className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-sm text-white placeholder:text-ink-500"
+          className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-body text-ink-800 placeholder:text-ink-500 disabled:cursor-not-allowed disabled:text-ink-500"
         />
         {streaming ? (
           <button
             type="button"
             onClick={onStop}
-            className="mb-1 inline-flex items-center gap-1 rounded-lg bg-red-500/90 px-3 py-2 text-xs font-medium text-white hover:bg-red-400"
+            className="mb-1 inline-flex items-center gap-1 rounded-btn bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
           >
             <Square size={12} />
             停止
@@ -294,13 +297,13 @@ function Composer({
             type="button"
             disabled={disabled || !draft.trim()}
             onClick={onSend}
-            className="mb-1 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-ink-950 hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-primary mb-1"
           >
             发送
           </button>
         )}
       </div>
-      <p className="mx-auto mt-2 max-w-3xl text-[11px] text-ink-500">
+      <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
         Enter 发送 · Shift+Enter 换行 · 运行中可点停止 · 文件与命令仅作用于本地工作区
       </p>
     </div>
@@ -310,7 +313,7 @@ function Composer({
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="mx-auto max-w-lg py-16 text-center">
-      <h2 className="text-lg font-medium text-white">{title}</h2>
+      <h2 className="text-lg font-medium text-ink-800">{title}</h2>
       <p className="mt-2 text-sm leading-relaxed text-ink-500">{body}</p>
     </div>
   );
