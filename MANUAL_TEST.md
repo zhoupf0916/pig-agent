@@ -259,9 +259,20 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Leave runtime on **本机 Pig** — local golden path unchanged
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Local-turn recoverability (Milestone M)
+
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / Milestone N.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig
+- [ ] Deliberate Pig failure (bad API key / closed LLM port / tool loop that cannot recover) — yellow banner shows a **Chinese** reason (密钥无效 / 无法连接 LLM 网关 / 工具调用失败). Session is **idle**, not stuck `running`
+- [ ] Click **重试本轮** — the same user goal runs again; the transcript does **not** get a second copy of that user message. Or the button reads **无法重试** when there is no user goal
+- [ ] Banner / session JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Remote L still works: 云端 / remote **重试 · 继续跟进** / **重试 · 重新创建运行** / abort → idle. Do not regress #24
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
 ## Remote recoverability (Milestone L)
 
-Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / Milestone M.
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO. Milestone M covers the local pig path.
 
 - [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
 - [ ] Settings → 云端 / remote without a URL — Chinese reason（未配置控制面 URL）, not a hang; **重试** stays available / clearly unavailable until a URL is set

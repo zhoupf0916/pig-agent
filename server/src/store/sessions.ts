@@ -112,11 +112,17 @@ async function readSessionFile(file: string): Promise<Session> {
         ? raw.remoteRunId.trim()
         : undefined,
     remoteRetry: parseRemoteRetry(raw.remoteRetry),
+    localRetry: parseLocalRetry(raw.localRetry),
     teamRun: normalizeTeamRun(raw.teamRun),
   };
 }
 
 function parseRemoteRetry(raw: unknown): Session["remoteRetry"] {
   if (raw === "follow-up" || raw === "create-run" || raw === "unavailable") return raw;
+  return undefined;
+}
+
+function parseLocalRetry(raw: unknown): Session["localRetry"] {
+  if (raw === "turn" || raw === "unavailable") return raw;
   return undefined;
 }
