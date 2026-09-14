@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CODEX_DEEPSEEK_BASE_URL } from "../../config.ts";
 import {
+  assertCodexModelsCatalogFile,
   assertCwdMatchesWorkspace,
   projectTableHeader,
   renderCodexConfig,
@@ -13,6 +14,7 @@ import {
   syncCodexHome,
   trustedProjectsInToml,
 } from "./home.ts";
+import { assertModelsHaveBaseInstructions } from "./models-catalog.ts";
 import type { Settings } from "../../types.ts";
 
 function settings(workspaceRoot: string, extra: Partial<Settings> = {}): Settings {
@@ -96,5 +98,45 @@ describe("Codex project trust", () => {
     expect(toml).not.toContain("/v1");
     expect(toml).not.toContain("should-not-appear");
     expect(toml).not.toContain("experimental_bearer_token");
+  });
+});
+
+describe("Codex models catalog", () => {
+  it("writes models.json with base_instructions and reasoning levels, then asserts the on-disk file", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "pig-codex-ws-"));
+    const home = mkdtempSync(join(tmpdir(), "pig-codex-home-"));
+    await syncCodexHome(settings(workspace), { home });
+    const catalogPath = join(home, "models.json");
+    const catalog = JSON.parse(readFileSync(catalogPath, "utf8")) as {
+      models: Array<{
+        slug: string;
+        base_instructions?: string;
+        default_reasoning_level?: string;
+        supported_reasoning_levels?: unknown[];
+      }>;
+    };
+    expect(catalog.models.length).toBeGreaterThan(0);
+    for (const model of catalog.models) {
+      expect(model.base_instructions?.trim()).toBeTruthy();
+      expect(model.default_reasoning_level).toBe("high");
+      expect(model.supported_reasoning_levels?.length).toBeGreaterThan(0);
+    }
+    expect(() => assertCodexModelsCatalogFile(catalogPath)).not.toThrow();
+  });
+
+  it("fails fast when the on-disk catalog is missing base_instructions", () => {
+    const home = mkdtempSync(join(tmpdir(), "pig-codex-bad-catalog-"));
+    const catalogPath = join(home, "models.json");
+    writeFileSync(
+      catalogPath,
+      `${JSON.stringify({ models: [{ slug: "broken-model", display_name: "Broken" }] }, null, 2)}\n`,
+      "utf8",
+    );
+    expect(() => assertCodexModelsCatalogFile(catalogPath)).toThrow(
+      /broken-model.*base_instructions/,
+    );
+    expect(() =>
+      assertModelsHaveBaseInstructions({ models: [{ slug: "no-instr" }] }, catalogPath),
+    ).toThrow(/no-instr.*base_instructions/);
   });
 });

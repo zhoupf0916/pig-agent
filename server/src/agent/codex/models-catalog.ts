@@ -55,6 +55,32 @@ function deepseekModel(slug: string, displayName: string, description: string, p
   };
 }
 
+/** Fail fast: modern Codex cannot parse catalog entries without `base_instructions`. */
+export function assertModelsHaveBaseInstructions(
+  catalog: unknown,
+  source = "models.json",
+): void {
+  if (!catalog || typeof catalog !== "object" || !("models" in catalog)) {
+    throw new Error(`Codex models catalog is invalid (${source}): expected a { models: [...] } object`);
+  }
+  const models = (catalog as { models: unknown }).models;
+  if (!Array.isArray(models) || models.length === 0) {
+    throw new Error(`Codex models catalog has no model entries (${source})`);
+  }
+  for (const [index, entry] of models.entries()) {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(`Codex models catalog entry #${index} is not an object (${source})`);
+    }
+    const model = entry as { slug?: unknown; base_instructions?: unknown };
+    const label = typeof model.slug === "string" && model.slug ? model.slug : `#${index}`;
+    if (typeof model.base_instructions !== "string" || !model.base_instructions.trim()) {
+      throw new Error(
+        `Codex model "${label}" is missing required base_instructions (${source}). Modern Codex cannot parse this catalog.`,
+      );
+    }
+  }
+}
+
 export const CODEX_MODELS_CATALOG = {
   models: [
     deepseekModel(

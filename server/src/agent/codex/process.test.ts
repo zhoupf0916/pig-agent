@@ -14,6 +14,8 @@ describe("buildCodexExecArgs", () => {
     });
     expect(args[args.indexOf("-C") + 1]).toBe(workspace);
     expect(args).toContain("--json");
+    expect(args).toContain("--ephemeral");
+    expect(args[args.indexOf("--color") + 1]).toBe("never");
     expect(args).toContain("sandbox_workspace_write.network_access=false");
     expect(args.at(-1)).toBe("write hello.md");
   });
