@@ -16,6 +16,9 @@ function pigSettings(workspaceRoot: string, extra: Partial<Settings> = {}): Sett
     codexBinaryPath: "",
     codexModel: "deepseek-flash",
     codexNetworkAccess: false,
+    cloudBaseUrl: "",
+    cloudToken: "",
+    cloudMode: "local-stub",
     ...extra,
   };
 }

@@ -42,9 +42,25 @@ describe("HTTP API", () => {
   it("defaults settings runtime to pig", async () => {
     const res = await app.request("/api/settings");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { runtime: string; codexNetworkAccess: boolean };
+    const body = (await res.json()) as {
+      runtime: string;
+      codexNetworkAccess: boolean;
+      cloudMode?: string;
+    };
     expect(body.runtime).toBe("pig");
     expect(body.codexNetworkAccess).toBe(false);
+    expect(body.cloudMode ?? "local-stub").toBe("local-stub");
+  });
+
+  it("rejects remote cloud settings without a control-plane URL", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runtime: "cloud", cloudMode: "remote", cloudBaseUrl: "" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/Cloud base URL is required/);
   });
 
   it("lists shipped skills", async () => {

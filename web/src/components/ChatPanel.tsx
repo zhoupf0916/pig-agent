@@ -304,7 +304,7 @@ function Composer({
         )}
       </div>
       <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
-        Enter 发送 · Shift+Enter 换行 · 运行中可点停止 · 文件与命令仅作用于本地工作区
+        Enter 发送 · Shift+Enter 换行 · 运行中可点停止 · 文件与命令仅作用于当前执行面工作区
       </p>
     </div>
   );

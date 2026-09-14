@@ -2,6 +2,7 @@ import { config as loadEnv } from "dotenv";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CloudMode } from "./types.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const PROJECT_ROOT = resolve(here, "../..");
@@ -69,6 +70,26 @@ export const HTTP_FETCH_ALLOWLIST = (process.env.HTTP_FETCH_ALLOWLIST ?? "")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
+export function resolveCloudMode(env: NodeJS.ProcessEnv = process.env): CloudMode {
+  return env.PIG_CLOUD_MODE === "remote" ? "remote" : "local-stub";
+}
+
+/** Control-plane origin. Trailing slashes and a redundant `/v1` are stripped later. */
+export function resolveCloudBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PIG_CLOUD_BASE_URL?.trim() || env.CLOUD_BASE_URL?.trim() || "";
+}
+
+export function resolveCloudToken(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PIG_CLOUD_TOKEN?.trim() || env.CLOUD_TOKEN?.trim() || "";
+}
+
+/** Isolated per-run workspaces for the local-stub cloud worker. */
+export function resolveCloudRunsDir(env: NodeJS.ProcessEnv = process.env): string {
+  const override = env.PIG_CLOUD_RUNS_DIR?.trim();
+  if (override) return resolveFromProject(override);
+  return resolve(DATA_DIR, "cloud-runs");
+}
+
 export const DEFAULT_SETTINGS = {
   llmBaseUrl: process.env.LLM_BASE_URL?.trim() || DEEPSEEK_BASE_URL,
   llmApiKey: resolveLlmApiKey(),
@@ -80,6 +101,9 @@ export const DEFAULT_SETTINGS = {
   codexBinaryPath: process.env.CODEX_BIN?.trim() || "",
   codexModel: process.env.CODEX_MODEL?.trim() || CODEX_DEFAULT_MODEL,
   codexNetworkAccess: false,
+  cloudBaseUrl: resolveCloudBaseUrl(),
+  cloudToken: resolveCloudToken(),
+  cloudMode: resolveCloudMode(),
 } as const;
 
 export function ensureDir(path: string): void {

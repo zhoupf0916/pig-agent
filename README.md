@@ -87,6 +87,19 @@ pnpm dev
 
 已知缺口（刻意不做）：skills 桥、update_plan/步骤条、细粒度 token 流、danger-full-access。详见 [docs/codex-runtime.md](./docs/codex-runtime.md)。仓库里只有 [examples/codex/](./examples/codex/) 模板，不要提交真实密钥。
 
+### 可选：云端执行面
+
+默认仍是 **本机 Pig**。设置里可把运行时切到 **云端**（与 Codex 一样是 opt-in）。工作台会话 / 计划 / 工具 / 产物语义不变，只换执行面。
+
+| 项 | 默认 / 要求 |
+| --- | --- |
+| 运行时 | `pig`（不选云端则行为与以前完全一致） |
+| `cloudMode` | `local-stub`：在 `data/cloud-runs/<id>/` 隔离工作区副本上跑本机 Pig 循环 |
+| 远程 | `remote` + 控制面 origin；`POST /v1/runs` → SSE → abort |
+| 密钥 | 留在本机控制路径 / 未来 Gateway；**不会**写入 run 目录或提交 git |
+
+`local-stub` 让 `pnpm test` 和离线 mock 不需要集群。远程契约与刻意不从 [neo-cloud-agent](https://github.com/Neo2Agent/neo-cloud-agent) 搬过来的部分见 [docs/cloud-runtime.md](./docs/cloud-runtime.md)。
+
 没有可用模型时，可开离线 mock（同一套协议，用来看工具与产物）：
 
 ```bash
@@ -189,4 +202,6 @@ Tools resolve every path against the workspace root and refuse escapes. Shell st
 
 Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json` with an isolated `CODEX_HOME`, `wire_api=responses`, DeepSeek `deepseek-flash`, `approval_policy=never`, and `network_access=false` unless you explicitly opt in. Pig `llmBaseUrl` (`…/v1`) is never copied into the Codex provider. See [docs/codex-runtime.md](./docs/codex-runtime.md).
 
-Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access. Do not commit real API keys.
+Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks a minimal create-run / SSE / abort contract. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
+
+Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access, neo-cloud-agent control-plane / Firecracker / Java loop. Do not commit real API keys.

@@ -45,3 +45,17 @@ Use this after `pnpm install && pnpm dev`. UI is http://127.0.0.1:5173.
 - [ ] Reload the session — tool cards remain (synthetic tool messages persisted)
 - [ ] **停止** kills the Codex process group
 - [ ] Changing workspace rewrites isolated `data/codex-home/config.toml` `[projects."<realpath>"]` only
+
+## Cloud runtime (optional)
+
+Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
+
+- [ ] Settings shows three surfaces: **本机 Pig（默认）** / **本机 Codex（可选）** / **云端（可选）**
+- [ ] Switch to **云端**：mode defaults to `local-stub`; Base URL / token optional
+- [ ] Header hint reads `云端 · local-stub` (or the remote host when mode is remote)
+- [ ] `pnpm mock:llm`, Settings Pig Base URL `http://127.0.0.1:8788/v1`, runtime **云端** / local-stub
+- [ ] New session: `请写一个 hello-cloud.md，内容为 ok` — step chips + tool cards + **产物** list the file (stub copies into `data/cloud-runs/<id>/workspace/` then syncs back)
+- [ ] `data/cloud-runs/<id>/run.json` has no API keys; isolated copy has no `.env`
+- [ ] **停止** while the stub is running returns idle (same control as Pig)
+- [ ] Remote mode without a URL refuses to save (`Cloud base URL is required`)
+- [ ] Do **not** put `DEEPSEEK_API_KEY` into a worker env file or commit it

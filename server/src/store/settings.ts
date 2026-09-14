@@ -1,16 +1,49 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { inspectCloudStatus } from "../agent/cloud/validate.ts";
 import { syncCodexHome } from "../agent/codex/home.ts";
 import { inspectCodexStatus } from "../agent/codex/validate.ts";
 import { DATA_DIR, DEFAULT_SETTINGS, ensureDir, resolveFromProject } from "../config.ts";
-import type { AgentRuntime, Settings } from "../types.ts";
+import type { AgentRuntime, CloudMode, Settings } from "../types.ts";
 import { atomicWriteJson } from "../util.ts";
 
 const FILE = join(DATA_DIR, "settings.json");
 
+export function parseAgentRuntime(raw: unknown): AgentRuntime {
+  if (raw === "codex") return "codex";
+  if (raw === "cloud") return "cloud";
+  return "pig";
+}
+
+export function parseCloudMode(raw: unknown): CloudMode {
+  return raw === "remote" ? "remote" : "local-stub";
+}
+
+/** Strip trailing slashes and a redundant `/v1` so callers can paste either origin. */
+export function normalizeCloudBaseUrl(raw: string): string {
+  return raw.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
+export function assertCloudSettings(settings: Settings): void {
+  if (settings.runtime !== "cloud") return;
+  if (settings.cloudMode !== "remote") return;
+  if (!settings.cloudBaseUrl) {
+    throw new Error("Cloud base URL is required in remote mode");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(settings.cloudBaseUrl);
+  } catch {
+    throw new Error("Cloud base URL must be a valid http(s) origin");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Cloud base URL must be http(s)");
+  }
+}
+
 export function normalizeSettings(raw: Partial<Settings> = {}): Settings {
-  const runtime: AgentRuntime = raw.runtime === "codex" ? "codex" : "pig";
+  const runtime = parseAgentRuntime(raw.runtime);
   return {
     llmBaseUrl: (raw.llmBaseUrl || DEFAULT_SETTINGS.llmBaseUrl).trim(),
     llmApiKey: raw.llmApiKey ?? DEFAULT_SETTINGS.llmApiKey,
@@ -22,6 +55,9 @@ export function normalizeSettings(raw: Partial<Settings> = {}): Settings {
     codexBinaryPath: (raw.codexBinaryPath ?? DEFAULT_SETTINGS.codexBinaryPath).trim(),
     codexModel: (raw.codexModel || DEFAULT_SETTINGS.codexModel).trim(),
     codexNetworkAccess: raw.codexNetworkAccess === true,
+    cloudBaseUrl: normalizeCloudBaseUrl(raw.cloudBaseUrl ?? DEFAULT_SETTINGS.cloudBaseUrl),
+    cloudToken: raw.cloudToken ?? DEFAULT_SETTINGS.cloudToken,
+    cloudMode: parseCloudMode(raw.cloudMode ?? DEFAULT_SETTINGS.cloudMode),
   };
 }
 
@@ -52,7 +88,11 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
       patch.codexNetworkAccess !== undefined
         ? patch.codexNetworkAccess
         : current.codexNetworkAccess,
+    cloudBaseUrl: patch.cloudBaseUrl ?? current.cloudBaseUrl,
+    cloudToken: patch.cloudToken ?? current.cloudToken,
+    cloudMode: patch.cloudMode ?? current.cloudMode,
   });
+  assertCloudSettings(next);
   if (!next.llmBaseUrl) {
     throw new Error("LLM base URL is required");
   }
@@ -74,10 +114,15 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
 
 export function publicSettings(
   settings: Settings,
-): Settings & { workspaceExists: boolean; codexStatus: ReturnType<typeof inspectCodexStatus> } {
+): Settings & {
+  workspaceExists: boolean;
+  codexStatus: ReturnType<typeof inspectCodexStatus>;
+  cloudStatus: ReturnType<typeof inspectCloudStatus>;
+} {
   return {
     ...settings,
     workspaceExists: existsSync(settings.workspaceRoot),
     codexStatus: inspectCodexStatus(settings),
+    cloudStatus: inspectCloudStatus(settings),
   };
 }

@@ -54,7 +54,9 @@ export type SessionSummary = Pick<
   "id" | "title" | "createdAt" | "updatedAt" | "status"
 >;
 
-export type AgentRuntime = "pig" | "codex";
+export type AgentRuntime = "pig" | "codex" | "cloud";
+
+export type CloudMode = "local-stub" | "remote";
 
 export type CodexStatus = {
   binaryFound: boolean;
@@ -62,12 +64,18 @@ export type CodexStatus = {
   apiKeyPresent: boolean;
 };
 
+export type CloudStatus = {
+  mode: CloudMode;
+  remoteUrlConfigured: boolean;
+  tokenPresent: boolean;
+};
+
 export type Settings = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
   workspaceRoot: string;
-  /** Default pig loop. `codex` is an optional subprocess backend. */
+  /** Default pig loop. `codex` and `cloud` are optional opt-in backends. */
   runtime: AgentRuntime;
   /** Empty = look up `codex` on PATH (or `CODEX_BIN`). */
   codexBinaryPath: string;
@@ -78,6 +86,15 @@ export type Settings = {
    * Default false; must be an explicit opt-in.
    */
   codexNetworkAccess: boolean;
+  /**
+   * Remote control-plane origin (no `/v1` suffix). Empty in local-stub mode.
+   * Provider keys must not be sent to workers — this URL is the host control path.
+   */
+  cloudBaseUrl: string;
+  /** Optional bearer token for the control plane. Never commit; store in env / data/. */
+  cloudToken: string;
+  /** Default `local-stub` so CI and `pnpm test` need no cluster. */
+  cloudMode: CloudMode;
 };
 
 export type SkillMeta = {
