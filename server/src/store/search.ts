@@ -1,8 +1,10 @@
 import { classifyAssetPreview, readAssetBytes } from "./asset-preview.ts";
+import { listMemoryRecords } from "./memory.ts";
 import { listProjectRecords } from "./projects.ts";
 import { listSessionRecords } from "./sessions.ts";
 import type {
   ChatMessage,
+  MemoryNote,
   Project,
   ProjectAsset,
   SearchHit,
@@ -121,6 +123,10 @@ function projectHref(
   if (extra?.todoId) qs.set("todo", extra.todoId);
   const q = qs.toString();
   return q ? `#/projects/${id}?${q}` : `#/projects/${id}`;
+}
+
+function memoryHref(id: string): string {
+  return `#/memory/${id}`;
 }
 
 function recentTranscript(session: Session): ChatMessage[] {
@@ -268,6 +274,34 @@ async function searchProjectChildren(
   return hits;
 }
 
+function memoryTitle(note: MemoryNote): string {
+  const first = note.text.replace(/\s+/g, " ").trim();
+  if (!first) return note.kind === "recap" ? "回合摘要" : "钉住笔记";
+  return first.length <= 48 ? first : `${first.slice(0, 47)}…`;
+}
+
+function searchMemory(note: MemoryNote, query: string, tokens: string[]): RankedHit | null {
+  const textHit = fieldMatch(clip(note.text), query, tokens);
+  const tagHay = (note.tags ?? []).join(" ");
+  const tagHit = fieldMatch(tagHay, query, tokens);
+  if (!textHit.matched && !tagHit.matched) return null;
+  const score = textHit.score + tagHit.score + recencyBoost(note.updatedAt);
+  const snippet = textHit.matched
+    ? snippetFor(note.text, query, tokens)
+    : snippetFor(tagHay, query, tokens);
+  return {
+    type: "memory",
+    id: note.id,
+    title: memoryTitle(note),
+    snippet,
+    href: memoryHref(note.id),
+    sessionId: note.sessionId,
+    projectId: note.projectId,
+    score,
+    updatedAt: note.updatedAt,
+  };
+}
+
 function toPublicHit(hit: RankedHit): SearchHit {
   const out: SearchHit = {
     type: hit.type,
@@ -295,7 +329,11 @@ export async function searchLocal(
   const tokens = tokenizeQuery(q);
   const ranked: RankedHit[] = [];
 
-  const [sessions, projects] = await Promise.all([listSessionRecords(), listProjectRecords()]);
+  const [sessions, projects, notes] = await Promise.all([
+    listSessionRecords(),
+    listProjectRecords(),
+    listMemoryRecords(),
+  ]);
   for (const session of sessions) {
     pushHit(ranked, searchSession(session, q, tokens));
   }
@@ -303,11 +341,14 @@ export async function searchLocal(
     pushHit(ranked, searchProjectMeta(project, q, tokens));
     ranked.push(...(await searchProjectChildren(project, q, tokens)));
   }
+  for (const note of notes) {
+    pushHit(ranked, searchMemory(note, q, tokens));
+  }
 
   ranked.sort((a, b) => b.score - a.score || b.updatedAt.localeCompare(a.updatedAt));
   return { q, limit, hits: ranked.slice(0, limit).map(toPublicHit) };
 }
 
 export function searchHitTypes(): SearchHitType[] {
-  return ["session", "project", "todo", "asset", "project_message"];
+  return ["session", "project", "todo", "asset", "project_message", "memory"];
 }

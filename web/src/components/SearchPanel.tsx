@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
 import type { SearchHit, SearchHitType } from "../types";
 
-const GROUPS: SearchHitType[] = ["session", "project", "todo", "asset", "project_message"];
+const GROUPS: SearchHitType[] = ["session", "project", "todo", "asset", "project_message", "memory"];
 
 export function SearchPanel({
   initialQ = "",
@@ -76,7 +76,7 @@ export function SearchPanel({
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-6">
         <div className="mb-4">
           <div className="text-meta uppercase tracking-[0.16em] text-ink-500">本机记忆</div>
-          <h2 className="mt-0.5 text-base font-medium text-ink-800">搜索会话与项目</h2>
+          <h2 className="mt-0.5 text-base font-medium text-ink-800">搜索会话、项目与记忆</h2>
           <p className="mt-1 text-xs text-ink-500">
             子串 / 分词匹配，不含向量库。Ctrl+K 或 / 聚焦顶栏搜索框。
           </p>
@@ -91,7 +91,7 @@ export function SearchPanel({
           <Search size={14} className="pointer-events-none absolute left-3 top-3 text-ink-500" />
           <input
             className="field pl-9"
-            placeholder="标题、消息、待办、资产正文…"
+            placeholder="标题、消息、待办、资产、钉住笔记…"
             value={q}
             autoFocus
             onChange={(e) => setQ(e.target.value)}

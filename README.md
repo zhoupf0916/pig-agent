@@ -21,11 +21,12 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 - **本机专家 / playbook（MVP）**：`#/experts` 目录 + 工作台钉选。内置侦察 / 规划 / 实现 / 评审；可引用 `skills/`。**专家指令先于项目指令**注入 pig / Codex / cloud-stub。见 [docs/experts.md](./docs/experts.md)
 - **本机自动化（MVP）**：`#/automations` 可手动或简单 cron 开一轮 pig 会话并钉选专家 / 项目。可选 `saveArtifactsToProject`（默认关）。无公网 webhook、无远程 worker。见 [docs/automations.md](./docs/automations.md)
 - **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
-- **本机搜索 / 记忆（MVP）**：顶栏或 `#/search` 对会话标题 / 近讯、项目名称 / 指令 / 待办 / 动态、资产文件名与文本正文做子串检索（无向量库）。见 [docs/search.md](./docs/search.md)
+- **本机搜索 / 记忆（MVP）**：顶栏或 `#/search` 对会话标题 / 近讯、项目名称 / 指令 / 待办 / 动态、资产文件名与文本正文、**钉住笔记 / 回合摘要**做子串检索（无向量库）。见 [docs/search.md](./docs/search.md)
+- **可写本机记忆（MVP）**：`#/memory` 钉住事实或写启发式回合摘要，JSON 在 `data/memory/`。工作台可钉住 / 写摘要。最近若干条钉住会小剂量注入 pig 系统提示。见 [docs/memory.md](./docs/memory.md)
 
-会话写在 `data/sessions/`，项目写在 `data/projects/`，专家写在 `data/experts/`，自动化写在 `data/automations/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
+会话写在 `data/sessions/`，项目写在 `data/projects/`，专家写在 `data/experts/`，自动化写在 `data/automations/`，记忆写在 `data/memory/`，设置写在 `data/settings.json`。默认工作区是仓库内的 `sample-workspace/`。
 
-这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。
+这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。
 
 ### 快速开始
 
@@ -200,7 +201,7 @@ server/src/     Hono API, agent runtime, sandboxed tools
 web/src/        React + Vite + Tailwind UI
 skills/         Local skill playbooks
 sample-workspace/   Default sandbox with demo files
-data/           Created at runtime (sessions, projects, experts, automations, settings) — gitignored
+data/           Created at runtime (sessions, projects, experts, automations, memory, settings) — gitignored
 ```
 
 ### Security notes
@@ -211,6 +212,6 @@ Optional **Codex** backend: Settings → runtime `codex` runs `codex exec --json
 
 Optional **cloud** execution surface: Settings → runtime `cloud` (default `cloudMode=local-stub`) runs the pig loop against `data/cloud-runs/<id>/` and emits the same `AgentEvent`s. Remote mode talks create-run (workspace snapshot / optional repo hint) → SSE → IDLE follow-up / abort. `pnpm mock:cloud` is the in-repo plane. Provider keys stay on the host control path. See [docs/cloud-runtime.md](./docs/cloud-runtime.md).
 
-Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Bound sessions can copy artifacts into project assets ([docs/artifacts-to-project.md](./docs/artifacts-to-project.md)). Project assets can be previewed (text / Markdown / JSON / image) and downloaded, and a bound session can be handed off into the project inbox (optional recent artifacts) — see [docs/project-assets.md](./docs/project-assets.md). Local experts are JSON playbooks under `data/experts/` (see [docs/experts.md](./docs/experts.md)); expert text precedes project text in the system prompt. Local automations (`data/automations/`, `#/automations`) can manually or on a simple cron start a pig session with pinned expert/project — optional `saveArtifactsToProject` (default off); no public webhooks (see [docs/automations.md](./docs/automations.md)). Local search (`GET /api/search`, header / `#/search`) is substring/token match over session transcripts and project records — no embeddings ([docs/search.md](./docs/search.md)). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, experts marketplace, or public webhooks.
+Collaboration + multi-tab sync is an MVP (projects JSON under `data/projects/`, per-session event JSONL). Bound sessions can copy artifacts into project assets ([docs/artifacts-to-project.md](./docs/artifacts-to-project.md)). Project assets can be previewed (text / Markdown / JSON / image) and downloaded, and a bound session can be handed off into the project inbox (optional recent artifacts) — see [docs/project-assets.md](./docs/project-assets.md). Local experts are JSON playbooks under `data/experts/` (see [docs/experts.md](./docs/experts.md)); expert text precedes project text in the system prompt. Local automations (`data/automations/`, `#/automations`) can manually or on a simple cron start a pig session with pinned expert/project — optional `saveArtifactsToProject` (default off); no public webhooks (see [docs/automations.md](./docs/automations.md)). Local search (`GET /api/search`, header / `#/search`) is substring/token match over session transcripts, project records, and writable memory notes — no embeddings ([docs/search.md](./docs/search.md)). Pins / recaps live under `data/memory/` (`#/memory`); recent pins inject into the pig system prompt only ([docs/memory.md](./docs/memory.md)). Not full neo-cloud-agent: no Desk Remote, Firecracker, Java loop, admin platform, experts marketplace, or public webhooks.
 
 Out of scope: Electron, Tencent connectors, cloud multi-tenant hosting, billing, Expert marketplace, Codex skills bridge / token streaming / danger-full-access, neo-cloud-agent control-plane / Firecracker / Java loop. Do not commit real API keys.

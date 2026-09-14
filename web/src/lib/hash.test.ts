@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseHash, projectsHash, searchHash, sessionHash } from "./hash";
+import { memoryHash, parseHash, projectsHash, searchHash, sessionHash } from "./hash";
 
 describe("hash routes", () => {
   it("parses search, session, and project asset/todo hints", () => {
@@ -12,6 +12,8 @@ describe("hash routes", () => {
       todoId: "todo_3",
     });
     expect(parseHash("#/")).toEqual({ name: "workstation" });
+    expect(parseHash("#/memory/mem_abc")).toEqual({ name: "memory", noteId: "mem_abc" });
+    expect(parseHash("#/memory")).toEqual({ name: "memory" });
   });
 
   it("builds hrefs that parseHash understands", () => {
@@ -23,5 +25,7 @@ describe("hash routes", () => {
       projectId: "prj_1",
       todoId: "todo_8",
     });
+    expect(memoryHash("mem_1")).toBe("#/memory/mem_1");
+    expect(parseHash(memoryHash("mem_9"))).toEqual({ name: "memory", noteId: "mem_9" });
   });
 });

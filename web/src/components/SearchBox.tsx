@@ -90,7 +90,7 @@ export function SearchBox({
         <input
           ref={inputRef}
           className="field pl-8"
-          placeholder="搜索会话 / 项目 / 资产…"
+          placeholder="搜索会话 / 项目 / 记忆…"
           value={q}
           aria-label="全局搜索"
           onFocus={() => setOpen(true)}
