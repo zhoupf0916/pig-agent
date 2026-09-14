@@ -11,6 +11,8 @@ export async function runCloudAgent(options: {
   runsRoot?: string;
   fetchImpl?: typeof fetch;
   projectInstruction?: string;
+  expertInstruction?: string;
+  preferredSkillIds?: string[];
 }): Promise<Session> {
   const mode = resolveEffectiveCloudMode(options.settings);
   if (mode === "remote") {

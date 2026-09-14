@@ -8,7 +8,9 @@ import { deleteSessionEvents, getLastEventSeq } from "./events.ts";
 
 const DIR = join(DATA_DIR, "sessions");
 
-export async function createSession(input: { projectId?: string } = {}): Promise<Session> {
+export async function createSession(
+  input: { projectId?: string; expertId?: string; expertTeamId?: string } = {},
+): Promise<Session> {
   ensureDir(DIR);
   const ts = nowIso();
   const session: Session = {
@@ -23,6 +25,8 @@ export async function createSession(input: { projectId?: string } = {}): Promise
     eventCheckpointSeq: 0,
   };
   if (input.projectId) session.projectId = input.projectId;
+  if (input.expertId) session.expertId = input.expertId;
+  if (input.expertTeamId) session.expertTeamId = input.expertTeamId;
   await writeSession(session);
   return session;
 }
@@ -41,6 +45,8 @@ export async function listSessions(): Promise<SessionSummary[]> {
         updatedAt: session.updatedAt,
         status: session.status,
         projectId: session.projectId,
+        expertId: session.expertId,
+        expertTeamId: session.expertTeamId,
       });
     } catch {
       // skip corrupt files
@@ -90,6 +96,12 @@ async function readSessionFile(file: string): Promise<Session> {
     status: raw.status ?? "idle",
     eventCheckpointSeq: raw.eventCheckpointSeq ?? 0,
     projectId: raw.projectId,
+    expertId:
+      typeof raw.expertId === "string" && raw.expertId.trim() ? raw.expertId.trim() : undefined,
+    expertTeamId:
+      typeof raw.expertTeamId === "string" && raw.expertTeamId.trim()
+        ? raw.expertTeamId.trim()
+        : undefined,
     remoteRunId:
       typeof raw.remoteRunId === "string" && raw.remoteRunId.trim()
         ? raw.remoteRunId.trim()

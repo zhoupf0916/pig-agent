@@ -11,10 +11,15 @@ export function ChatPanel({
   liveTools,
   projectName,
   projects,
+  experts,
+  teams,
+  expertName,
   onDraft,
   onSend,
   onStop,
   onBindProject,
+  onBindExpert,
+  onBindTeam,
 }: {
   session: Session | null;
   draft: string;
@@ -22,10 +27,15 @@ export function ChatPanel({
   liveTools: LiveTool[];
   projectName?: string;
   projects: Array<{ id: string; name: string }>;
+  experts: Array<{ id: string; name: string }>;
+  teams: Array<{ id: string; name: string }>;
+  expertName?: string;
   onDraft: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
   onBindProject: (projectId: string | null) => void;
+  onBindExpert: (expertId: string | null) => void;
+  onBindTeam: (teamId: string | null) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -43,21 +53,61 @@ export function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-ink-50">
       {session && (
-        <div className="flex items-center gap-2 border-b border-ink-300 bg-white/80 px-6 py-2">
-          <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
-          <select
-            className="field max-w-xs py-1 text-xs"
-            value={session.projectId ?? ""}
-            onChange={(e) => onBindProject(e.target.value || null)}
-          >
-            <option value="">未绑定</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          {projectName && <span className="text-xs text-ink-500">指令将注入本会话系统提示</span>}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-white/80 px-6 py-2">
+          <label className="flex items-center gap-2">
+            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
+            <select
+              className="field max-w-[160px] py-1 text-xs"
+              value={session.projectId ?? ""}
+              onChange={(e) => onBindProject(e.target.value || null)}
+            >
+              <option value="">未绑定</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">专家</span>
+            <select
+              className="field max-w-[180px] py-1 text-xs"
+              value={session.expertId ?? ""}
+              onChange={(e) => onBindExpert(e.target.value || null)}
+            >
+              <option value="">未绑定</option>
+              {experts.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">小队</span>
+            <select
+              className="field max-w-[160px] py-1 text-xs"
+              value={session.expertTeamId ?? ""}
+              onChange={(e) => onBindTeam(e.target.value || null)}
+            >
+              <option value="">未绑定</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(expertName || projectName) && (
+            <span className="text-xs text-ink-500">
+              {expertName && projectName
+                ? "专家指令先于项目指令注入"
+                : expertName
+                  ? "专家指令将注入本会话系统提示"
+                  : "项目指令将注入本会话系统提示"}
+            </span>
+          )}
         </div>
       )}
       <StepStrip steps={session?.steps ?? []} />

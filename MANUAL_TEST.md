@@ -80,3 +80,18 @@ No LLM required for the project surface. Sync live tokens still need a model or 
   4. `curl 'http://127.0.0.1:8787/api/sessions/<id>/events?after=1&live=0'` returns seq > 1
 - [ ] Re-open the session (or reconnect SSE) after another tab advanced it — transcript matches without refresh-from-scratch
 - [ ] This is **not** Desk Remote / Firecracker / experts marketplace
+
+## Local experts / playbooks (Milestone C)
+
+No LLM required for the directory. Prompt injection is covered by `pnpm test`.
+
+- [ ] Header shows **工作台** / **项目** / **专家**. Default runtime is still **本机 Pig**
+- [ ] Open `#/experts` — bundled **侦察 Scout** / **规划 Plan** / **实现 Implement** / **评审 Review** and team **编码流水线** are listed
+- [ ] Create a custom expert, edit its instruction, reload — JSON persists under `data/experts/`
+- [ ] **绑定到当前会话** (or the workstation **专家** select) sets `session.expertId`; hint reads 专家指令将注入 / 先于项目指令
+- [ ] Bind a project **and** an expert — precedence is expert then project (see [docs/experts.md](./docs/experts.md))
+- [ ] `GET /api/experts` lists bundled ids `exp_scout` … `exp_review`; `GET /api/expert-teams` includes `team_coding`
+- [ ] `DELETE /api/experts/exp_scout` → 400 (bundled). Custom experts can be deleted
+- [ ] Implement expert lists skill `coding-helper` (local `skills/`, not a marketplace)
+- [ ] Workstation cards (bubbles, tool cards, artifacts) are unchanged aside from the pin row
+- [ ] This is **not** an expert marketplace, Cordis, Desk Remote, or Firecracker

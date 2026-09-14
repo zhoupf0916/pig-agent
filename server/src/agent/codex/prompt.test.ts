@@ -39,4 +39,17 @@ describe("assembleCodexPrompt", () => {
     expect(prompt).toContain("始终用中文，先列提纲。");
     expect(prompt).toContain("写 hello.md");
   });
+
+  it("puts expert instruction before project instruction", () => {
+    const prompt = assembleCodexPrompt(
+      [msg("user", "写 hello.md")],
+      12,
+      "项目：用中文。",
+      "专家：先侦察，不要改文件。",
+    );
+    expect(prompt.indexOf("Expert instructions")).toBeGreaterThan(-1);
+    expect(prompt.indexOf("Expert instructions")).toBeLessThan(prompt.indexOf("Project instructions"));
+    expect(prompt).toContain("先侦察，不要改文件。");
+    expect(prompt).toContain("项目：用中文。");
+  });
 });

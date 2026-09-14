@@ -22,6 +22,8 @@ export async function runRemoteCloudAgent(options: {
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   fetchImpl?: typeof fetch;
+  projectInstruction?: string;
+  expertInstruction?: string;
 }): Promise<Session> {
   const { settings, signal, emit } = options;
   const fetchFn = options.fetchImpl ?? fetch;
@@ -57,7 +59,10 @@ export async function runRemoteCloudAgent(options: {
 
     if (!runId) {
       const workspace = buildRemoteWorkspaceHandoff(settings);
-      const body = buildCreateRunRequest(session, settings, workspace);
+      const body = buildCreateRunRequest(session, settings, workspace, {
+        expertInstruction: options.expertInstruction,
+        projectInstruction: options.projectInstruction,
+      });
       assertNoSecretsInPayload(body, settings);
       const created = await fetchFn(`${base}${CLOUD_CREATE_RUN_PATH}`, {
         method: "POST",

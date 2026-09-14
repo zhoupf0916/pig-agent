@@ -1,5 +1,9 @@
 import type {
   AgentEvent,
+  Expert,
+  ExpertKind,
+  ExpertTeam,
+  ExpertTeamMode,
   InboxItem,
   Project,
   ProjectSummary,
@@ -46,14 +50,31 @@ export const api = {
 
   session: (id: string) => fetch(`/api/sessions/${id}`).then((r) => json<Session>(r)),
 
-  createSession: (projectId?: string) =>
-    fetch("/api/sessions", {
+  createSession: (input?: { projectId?: string; expertId?: string; expertTeamId?: string } | string) => {
+    const body =
+      typeof input === "string"
+        ? { projectId: input }
+        : {
+            ...(input?.projectId ? { projectId: input.projectId } : {}),
+            ...(input?.expertId ? { expertId: input.expertId } : {}),
+            ...(input?.expertTeamId ? { expertTeamId: input.expertTeamId } : {}),
+          };
+    return fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projectId ? { projectId } : {}),
-    }).then((r) => json<Session>(r)),
+      body: JSON.stringify(body),
+    }).then((r) => json<Session>(r));
+  },
 
-  patchSession: (id: string, patch: { projectId?: string | null; title?: string }) =>
+  patchSession: (
+    id: string,
+    patch: {
+      projectId?: string | null;
+      expertId?: string | null;
+      expertTeamId?: string | null;
+      title?: string;
+    },
+  ) =>
     fetch(`/api/sessions/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -135,6 +156,56 @@ export const api = {
 
   markInboxRead: (id: string) =>
     fetch(`/api/inbox/${id}/read`, { method: "POST" }).then((r) => json<InboxItem>(r)),
+
+  experts: () => fetch("/api/experts").then((r) => json<{ experts: Expert[] }>(r)),
+
+  expert: (id: string) => fetch(`/api/experts/${id}`).then((r) => json<Expert>(r)),
+
+  createExpert: (input: {
+    name: string;
+    description?: string;
+    instruction: string;
+    kind?: ExpertKind;
+    skillIds?: string[];
+  }) =>
+    fetch("/api/experts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Expert>(r)),
+
+  patchExpert: (
+    id: string,
+    patch: {
+      name?: string;
+      description?: string;
+      instruction?: string;
+      kind?: ExpertKind;
+      skillIds?: string[];
+    },
+  ) =>
+    fetch(`/api/experts/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<Expert>(r)),
+
+  deleteExpert: (id: string) =>
+    fetch(`/api/experts/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+
+  expertTeams: () => fetch("/api/expert-teams").then((r) => json<{ teams: ExpertTeam[] }>(r)),
+
+  createExpertTeam: (input: {
+    name: string;
+    description?: string;
+    mode?: ExpertTeamMode;
+    expertIds: string[];
+  }) =>
+    fetch("/api/expert-teams", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<ExpertTeam>(r)),
 
   tree: () =>
     fetch("/api/workspace/tree").then((r) =>

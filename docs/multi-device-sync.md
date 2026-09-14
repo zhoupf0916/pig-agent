@@ -8,7 +8,7 @@ Workstation UX is unchanged: one `AgentEvent` protocol for pig / codex / cloud. 
 
 | Path | Role |
 | --- | --- |
-| `data/sessions/<id>.json` | Session snapshot (messages, steps, artifacts, optional `projectId`) |
+| `data/sessions/<id>.json` | Session snapshot (messages, steps, artifacts, optional `projectId` / `expertId` / `expertTeamId`) |
 | `data/sessions/<id>/events.jsonl` | Append-only ordered event log |
 
 Each JSONL line:
