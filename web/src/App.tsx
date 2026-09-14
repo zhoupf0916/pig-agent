@@ -15,6 +15,12 @@ import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { api, streamMessage, streamRetry, streamTeamRun, subscribeSessionEvents } from "./lib/api";
+import {
+  browserDraftStorage,
+  clearComposerDraft,
+  loadComposerDraft,
+  persistComposerDraft,
+} from "./lib/composer-draft";
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
 import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
 import {
@@ -69,7 +75,12 @@ export function App() {
     binary: boolean;
     size: number;
   } | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => {
+    const boot = parseHash();
+    return boot.name === "workstation" && boot.sessionId
+      ? loadComposerDraft(boot.sessionId, browserDraftStorage())
+      : "";
+  });
   const [streaming, setStreaming] = useState(false);
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -107,6 +118,7 @@ export function App() {
     setSession(next);
     setActiveId(id);
     setLiveTools([]);
+    setDraft(loadComposerDraft(id, browserDraftStorage()));
   }, []);
 
   const refreshProjects = useCallback(async () => {
@@ -227,12 +239,12 @@ export function App() {
     await refreshSessions();
     await refreshProjects();
     await loadSession(created.id);
-    setDraft("");
     goWorkstation(created.id);
   }, [goWorkstation, loadSession, refreshProjects, refreshSessions]);
 
   const removeSession = useCallback(
     async (id: string) => {
+      clearComposerDraft(id, browserDraftStorage());
       await api.deleteSession(id);
       const list = await refreshSessions();
       if (activeId === id) {
@@ -240,11 +252,17 @@ export function App() {
         else {
           setSession(null);
           setActiveId(null);
+          setDraft("");
         }
       }
     },
     [activeId, loadSession, refreshSessions],
   );
+
+  const onDraftChange = useCallback((text: string) => {
+    setDraft(text);
+    if (activeId) persistComposerDraft(activeId, text, browserDraftStorage());
+  }, [activeId]);
 
   const applyEvent = useCallback((event: AgentEvent, seq?: number) => {
     if (event.type === "sync") {
@@ -388,6 +406,7 @@ export function App() {
     if (!session || streaming || !draft.trim()) return;
     const content = draft.trim();
     setDraft("");
+    clearComposerDraft(session.id, browserDraftStorage());
     setStreaming(true);
     setLiveTools([]);
     setSession((prev) =>
@@ -501,7 +520,10 @@ export function App() {
     );
     const action: "start" | "continue" = !content && canContinue ? "continue" : "start";
     if (action === "start" && !content && !session.messages.some((m) => m.role === "user")) return;
-    if (content) setDraft("");
+    if (content) {
+      setDraft("");
+      clearComposerDraft(session.id, browserDraftStorage());
+    }
     setStreaming(true);
     setLiveTools([]);
     if (content) {
@@ -596,7 +618,6 @@ export function App() {
         const created = await api.createSession({ expertId });
         await refreshSessions();
         await loadSession(created.id);
-        setDraft("");
         goWorkstation(created.id);
         return;
       }
@@ -613,7 +634,6 @@ export function App() {
         const created = await api.createSession({ expertTeamId: teamId });
         await refreshSessions();
         await loadSession(created.id);
-        setDraft("");
         goWorkstation(created.id);
         return;
       }
@@ -800,7 +820,7 @@ export function App() {
               experts={experts}
               teams={expertTeams}
               expertName={experts.find((e) => e.id === session?.expertId)?.name}
-              onDraft={setDraft}
+              onDraft={onDraftChange}
               onSend={() => void send()}
               onStop={() => void stop()}
               onTeamRun={() => void startTeamRun()}
