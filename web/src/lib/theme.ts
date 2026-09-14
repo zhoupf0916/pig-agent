@@ -73,3 +73,89 @@ export function loadPersistedTheme(): Theme {
   applyTheme(theme, browserThemeRoot());
   return theme;
 }
+
+/** Same value keeps the previous reference (avoids extra theme renders). */
+export function applyThemeSnapshot(prev: Theme, next: Theme): Theme {
+  const parsed = parseTheme(next);
+  return prev === parsed ? prev : parsed;
+}
+
+export type StorageEventLike = {
+  key: string | null;
+  newValue?: string | null;
+};
+
+export type ThemeSyncBus = {
+  addStorageListener: (handler: (event: StorageEventLike) => void) => void;
+  removeStorageListener: (handler: (event: StorageEventLike) => void) => void;
+  addListener: (type: "visibilitychange" | "focus", handler: () => void) => void;
+  removeListener: (type: "visibilitychange" | "focus", handler: () => void) => void;
+};
+
+const storageListeners = new WeakMap<(event: StorageEventLike) => void, EventListener>();
+
+export function browserThemeSyncBus(): ThemeSyncBus {
+  return {
+    addStorageListener: (handler) => {
+      const listener: EventListener = (event) => {
+        handler(event as StorageEvent);
+      };
+      storageListeners.set(handler, listener);
+      window.addEventListener("storage", listener);
+    },
+    removeStorageListener: (handler) => {
+      const listener = storageListeners.get(handler);
+      if (!listener) return;
+      window.removeEventListener("storage", listener);
+      storageListeners.delete(handler);
+    },
+    addListener: (type, handler) => {
+      if (type === "visibilitychange") document.addEventListener(type, handler);
+      else window.addEventListener(type, handler);
+    },
+    removeListener: (type, handler) => {
+      if (type === "visibilitychange") document.removeEventListener(type, handler);
+      else window.removeEventListener(type, handler);
+    },
+  };
+}
+
+/**
+ * Same-host Tab B follows Tab A's light/dark theme from localStorage.
+ * Live path: `storage` event. Catch-up: focus / visibility.
+ * Client-only — existing `pig-agent.theme` key only; no server write, no BroadcastChannel.
+ */
+export function startThemeSync(opts: {
+  storage?: ThemeStorage | null;
+  root?: ThemeRoot | null;
+  onTheme: (next: Theme) => void;
+  bus?: ThemeSyncBus;
+}): () => void {
+  const storage = opts.storage === undefined ? browserThemeStorage() : opts.storage;
+  const root = opts.root === undefined ? browserThemeRoot() : opts.root;
+  const bus = opts.bus ?? browserThemeSyncBus();
+  let stopped = false;
+
+  const refresh = () => {
+    if (stopped) return;
+    const next = readTheme(storage);
+    applyTheme(next, root);
+    opts.onTheme(next);
+  };
+
+  const onStorage = (event: StorageEventLike) => {
+    if (event.key !== null && event.key !== THEME_STORAGE_KEY) return;
+    refresh();
+  };
+
+  bus.addStorageListener(onStorage);
+  bus.addListener("visibilitychange", refresh);
+  bus.addListener("focus", refresh);
+
+  return () => {
+    stopped = true;
+    bus.removeStorageListener(onStorage);
+    bus.removeListener("visibilitychange", refresh);
+    bus.removeListener("focus", refresh);
+  };
+}

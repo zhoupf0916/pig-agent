@@ -49,10 +49,12 @@ import {
   type TranscriptSyncPhase,
 } from "./lib/transcript-sync";
 import {
+  applyThemeSnapshot,
   browserThemeRoot,
   browserThemeStorage,
   loadPersistedTheme,
   persistTheme,
+  startThemeSync,
   type Theme,
 } from "./lib/theme";
 import {
@@ -272,6 +274,14 @@ export function App() {
       onDraft: (next) => setDraft((prev) => applyComposerDraft(prev, next)),
     });
   }, [activeId]);
+
+  useEffect(() => {
+    return startThemeSync({
+      storage: browserThemeStorage(),
+      root: browserThemeRoot(),
+      onTheme: (next) => setTheme((prev) => applyThemeSnapshot(prev, next)),
+    });
+  }, []);
 
   useEffect(() => {
     if (route.name !== "workstation" || !route.sessionId) return;

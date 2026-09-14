@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab theme (Milestone V)
+
+Client-only (`localStorage` key `pig-agent.theme`). Same-host Tab B follows Tab A's header 深色 / 浅色 via the `storage` event, or on focus / visibility. Does **not** change Settings runtime (still **本机 Pig**). No new key, no server persist, no dual-write of settings / sessions / events. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host. Tab A header **深色** — Tab B switches to dark without a full page refresh (switch to Tab B or wait for the `storage` event)
+- [ ] Tab A **浅色** — Tab B returns to light the same way. Reload still keeps the last choice (Milestone J2)
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, and L/M/N retry / abort paths unchanged
+- [ ] Theme toggle / banner / settings never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Only `pig-agent.theme` is used
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, or sandbox change
+
 ## Cross-tab workspace file preview (Milestone U)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/file` refresh of the already-open preview path. No second write path, no dual-write of workspace / sessions / events. Orthogonal to Milestone T tree listing. Not a credentials vault / connector / multi-agent change. Sandbox boundary unchanged.
