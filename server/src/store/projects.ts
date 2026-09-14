@@ -432,7 +432,6 @@ function addMemberFromInvite(project: Project, invite: ProjectInvite): ProjectMe
 }
 
 async function markInvite(
-  project: Project,
   invite: ProjectInvite,
   status: Exclude<ProjectInviteStatus, "pending">,
   extra: { memberId?: string } = {},
@@ -525,7 +524,7 @@ export async function acceptProjectInvite(
     throw new ProjectInviteError("Invite is no longer pending");
   }
   const member = addMemberFromInvite(project, invite);
-  await markInvite(project, invite, "accepted", { memberId: member.id });
+  await markInvite(invite, "accepted", { memberId: member.id });
   await activity(project, `${member.displayName} 已加入项目`);
   await writeProject(project);
   return { project, invite, member };
@@ -542,7 +541,7 @@ export async function declineProjectInvite(
     throw new ProjectInviteError("Invite already accepted");
   }
   if (invite.status === "pending") {
-    await markInvite(project, invite, "declined");
+    await markInvite(invite, "declined");
     await activity(project, `已拒绝 ${invite.displayName} 的邀请`);
     await writeProject(project);
   } else {
@@ -568,7 +567,7 @@ export async function revokeProjectInvite(
     throw new ProjectInviteError("Cannot revoke an accepted invite");
   }
   if (invite.status === "pending") {
-    await markInvite(project, invite, "revoked");
+    await markInvite(invite, "revoked");
     await activity(project, `已撤销对 ${invite.displayName} 的邀请`);
     await writeProject(project);
   }
