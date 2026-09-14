@@ -39,17 +39,17 @@ export function SettingsModal({
   const setRuntime = (runtime: AgentRuntime) => setForm({ ...form, runtime });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-ink-900 p-5 shadow-panel">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-800/20 p-4 backdrop-blur-[2px]">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-card border border-ink-300 bg-white p-5 shadow-lift">
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h2 className="text-base font-medium text-white">设置</h2>
+            <h2 className="text-base font-medium text-ink-800">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
               保存在本机 data/settings.json，覆盖 .env / .env.local。默认 Pig 运行时 + DeepSeek
               Chat Completions。Codex 为可选后端。切勿把密钥提交到仓库。
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-white">
+          <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-ink-800">
             关闭
           </button>
         </div>
@@ -73,14 +73,14 @@ export function SettingsModal({
           </Field>
 
           {form.runtime === "codex" && (
-            <div className="space-y-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-3">
-              <p className="text-[11px] leading-relaxed text-ink-400">
-                DeepSeek 走隔离 CODEX_HOME + <code className="text-ink-300">wire_api=responses</code>
-                ，模型如 <code className="text-ink-300">deepseek-flash</code>
-                。不会把 Pig 的 Chat Completions <code className="text-ink-300">llmBaseUrl</code>
+            <div className="space-y-3 rounded-card border border-accent/25 bg-accent-soft p-3">
+              <p className="text-meta leading-relaxed text-ink-600">
+                DeepSeek 走隔离 CODEX_HOME + <code className="font-mono text-ink-800">wire_api=responses</code>
+                ，模型如 <code className="font-mono text-ink-800">deepseek-flash</code>
+                。不会把 Pig 的 Chat Completions <code className="font-mono text-ink-800">llmBaseUrl</code>
                 （…/v1）映射进 Codex。密钥只用环境变量{" "}
-                <code className="text-ink-300">DEEPSEEK_API_KEY</code> /{" "}
-                <code className="text-ink-300">CODEX_API_KEY</code>。多轮只拼最近若干条文本，没有
+                <code className="font-mono text-ink-800">DEEPSEEK_API_KEY</code> /{" "}
+                <code className="font-mono text-ink-800">CODEX_API_KEY</code>。多轮只拼最近若干条文本，没有
                 Codex 原生跨轮记忆。
               </p>
               <Field label="Codex 二进制路径（可选，留空则用 PATH 中的 codex）">
@@ -99,7 +99,7 @@ export function SettingsModal({
                   placeholder="deepseek-flash"
                 />
               </Field>
-              <label className="flex items-start gap-2 rounded-lg border border-white/10 bg-ink-850 px-3 py-2">
+              <label className="flex items-start gap-2 rounded-card border border-ink-300 bg-white px-3 py-2">
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -107,20 +107,20 @@ export function SettingsModal({
                   onChange={(e) => setForm({ ...form, codexNetworkAccess: e.target.checked })}
                 />
                 <span>
-                  <span className="text-xs text-ink-200">允许 Codex 工作区外发网络</span>
-                  <span className="mt-0.5 block text-[11px] text-ink-500">
+                  <span className="text-xs text-ink-800">允许 Codex 工作区外发网络</span>
+                  <span className="mt-0.5 block text-meta text-ink-500">
                     默认关闭（sandbox_workspace_write.network_access=false）。显式勾选才会放开出站网络。
                   </span>
                 </span>
               </label>
               {form.codexNetworkAccess && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                <div className="rounded-card border border-warning/40 bg-warning-soft px-3 py-2 text-meta leading-relaxed text-warning">
                   警告：开启后 Codex 的 workspace-write 沙箱可以访问外网（下载、请求第三方 API
                   等）。只在你信任当前工作区与任务时启用。不会开启 danger-full-access。
                 </div>
               )}
               {settings?.codexStatus && (
-                <ul className="space-y-1 text-[11px] text-ink-400">
+                <ul className="space-y-1 text-meta text-ink-600">
                   <StatusLine ok={settings.codexStatus.binaryFound} label="找到 Codex 二进制" />
                   <StatusLine ok={settings.codexStatus.homeWritable} label="隔离 CODEX_HOME 可写" />
                   <StatusLine
@@ -167,11 +167,11 @@ export function SettingsModal({
           </Field>
         </div>
 
-        <div className="mt-4 rounded-xl border border-white/5 bg-ink-850 p-3">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-ink-500">本地技能</div>
+        <div className="mt-4 rounded-card border border-ink-300 bg-ink-100 p-3">
+          <div className="text-meta uppercase tracking-[0.14em] text-ink-500">本地技能</div>
           <ul className="mt-2 space-y-1.5">
             {skills.map((s) => (
-              <li key={s.name} className="text-xs text-ink-300">
+              <li key={s.name} className="text-xs text-ink-700">
                 <span className="font-mono text-accent">{s.name}</span>
                 <span className="text-ink-500"> — {s.description}</span>
               </li>
@@ -179,16 +179,16 @@ export function SettingsModal({
             {skills.length === 0 && <li className="text-xs text-ink-500">skills/ 下还没有技能文件</li>}
           </ul>
           {form.runtime === "codex" && (
-            <p className="mt-2 text-[11px] text-ink-500">
+            <p className="mt-2 text-meta text-ink-500">
               Codex MVP 不桥接 Pig skills / update_plan / 细粒度 token 流。
             </p>
           )}
         </div>
 
-        {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+        {error && <p className="mt-3 text-xs text-danger">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-xs text-ink-300 hover:bg-ink-800">
+          <button type="button" onClick={onClose} className="btn-quiet">
             取消
           </button>
           <button
@@ -204,23 +204,12 @@ export function SettingsModal({
                 })
                 .finally(() => setSaving(false));
             }}
-            className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-ink-950 hover:bg-sky-300 disabled:opacity-50"
+            className="btn-primary"
           >
             {saving ? "保存中…" : "保存"}
           </button>
         </div>
       </div>
-      <style>{`
-        .field {
-          width: 100%;
-          border-radius: 0.6rem;
-          border: 1px solid rgba(255,255,255,0.08);
-          background: #11141a;
-          padding: 0.55rem 0.7rem;
-          font-size: 13px;
-          color: white;
-        }
-      `}</style>
     </div>
   );
 }
@@ -240,12 +229,14 @@ function RuntimeChoice({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border px-3 py-2 text-left ${
-        active ? "border-accent/50 bg-accent/10 text-white" : "border-white/10 bg-ink-850 text-ink-300"
+      className={`rounded-card border px-3 py-2 text-left ${
+        active
+          ? "border-accent bg-accent-soft text-ink-800"
+          : "border-ink-300 bg-white text-ink-700 hover:border-ink-400 hover:bg-ink-100"
       }`}
     >
       <div className="text-xs font-medium">{title}</div>
-      <div className="mt-0.5 text-[11px] text-ink-500">{hint}</div>
+      <div className="mt-0.5 text-meta text-ink-500">{hint}</div>
     </button>
   );
 }
@@ -253,7 +244,7 @@ function RuntimeChoice({
 function StatusLine({ ok, label }: { ok: boolean; label: string }) {
   return (
     <li>
-      <span className={ok ? "text-emerald-300" : "text-amber-200"}>{ok ? "就绪" : "未就绪"}</span>
+      <span className={ok ? "text-success" : "text-warning"}>{ok ? "就绪" : "未就绪"}</span>
       <span className="text-ink-500"> · {label}</span>
     </li>
   );
@@ -262,7 +253,7 @@ function StatusLine({ ok, label }: { ok: boolean; label: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[11px] text-ink-500">{label}</div>
+      <div className="mb-1 text-meta text-ink-500">{label}</div>
       {children}
     </label>
   );

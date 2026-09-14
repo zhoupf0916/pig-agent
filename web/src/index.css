@@ -3,7 +3,24 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+  --bg-app: #f7f7f8;
+  --bg-panel: #ffffff;
+  --bg-subtle: #f3f4f6;
+  --bg-hover: #eef0f3;
+  --border-default: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent: #10a37f;
+  --accent-soft: #e6f6f1;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --success: #059669;
+  --code-bg: #f3f4f6;
 }
 
 html,
@@ -14,10 +31,10 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(90, 167, 255, 0.08), transparent 50%),
-    radial-gradient(800px 400px at 100% 0%, rgba(90, 167, 255, 0.04), transparent 40%),
-    #0b0d11;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 ::-webkit-scrollbar {
@@ -26,8 +43,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2a3140;
+  background: #d1d5db;
   border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 ::-webkit-scrollbar-track {
@@ -35,19 +56,79 @@ body {
 }
 
 .prose-pig {
-  --tw-prose-body: #c6cbd6;
-  --tw-prose-headings: #eef1f6;
-  --tw-prose-links: #5aa7ff;
-  --tw-prose-bold: #eef1f6;
-  --tw-prose-code: #f4d58d;
-  --tw-prose-pre-bg: #11141a;
-  --tw-prose-pre-code: #c6cbd6;
-  --tw-prose-quotes: #8b93a7;
-  --tw-prose-hr: #2a3140;
+  --tw-prose-body: #111827;
+  --tw-prose-headings: #111827;
+  --tw-prose-links: #10a37f;
+  --tw-prose-bold: #111827;
+  --tw-prose-code: #111827;
+  --tw-prose-pre-bg: #f3f4f6;
+  --tw-prose-pre-code: #111827;
+  --tw-prose-quotes: #6b7280;
+  --tw-prose-hr: #e5e7eb;
+  --tw-prose-counters: #6b7280;
+  --tw-prose-bullets: #9ca3af;
+  --tw-prose-th-borders: #d1d5db;
+  --tw-prose-td-borders: #e5e7eb;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-[10px] border border-ink-300 bg-white px-3 py-2 text-[13px] text-ink-800 placeholder:text-ink-500;
+  }
+
+  .field:hover {
+    @apply border-ink-400;
+  }
+
+  .field:focus {
+    @apply border-accent bg-white;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #10a37f;
+  }
+
+  .field:disabled {
+    @apply cursor-not-allowed bg-ink-100 text-ink-500;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1 rounded-btn bg-accent px-3 py-2 text-xs font-medium text-white;
+  }
+
+  .btn-primary:hover {
+    @apply bg-accent-mute;
+  }
+
+  .btn-primary:disabled {
+    @apply cursor-not-allowed opacity-40 hover:bg-accent;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-btn border border-ink-300 bg-white px-2.5 py-1.5 text-xs text-ink-700;
+  }
+
+  .btn-ghost:hover {
+    @apply border-ink-400 bg-ink-200;
+  }
+
+  .btn-quiet {
+    @apply rounded-btn px-3 py-2 text-xs text-ink-600;
+  }
+
+  .btn-quiet:hover {
+    @apply bg-ink-100 text-ink-800;
+  }
 }
 
 textarea:focus,
 input:focus,
 button:focus-visible {
   outline: none;
+}
+
+button:focus-visible {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #10a37f;
+}
+
+textarea:focus,
+input:focus {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #10a37f;
 }
