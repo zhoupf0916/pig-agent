@@ -381,7 +381,7 @@ export function SettingsModal({
           )}
           {form.runtime === "cloud" && form.cloudMode === "remote" && (
             <p className="mt-2 text-meta text-ink-500">
-              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。仓库提示来自本页、env.json 或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；断连 / 超时 / 过期会显示中文原因并可重试（继续跟进或重新创建运行）。停止后下一轮可继续发送，不会留下僵尸运行。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。密钥不会出现在错误横幅里。
+              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。create-run 等待期间步骤条显示中文进度（准备快照 / 创建运行 / 连接事件流），完成后进入推流或失败横幅。仓库提示来自本页、env.json 或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；断连 / 超时 / 过期会显示中文原因并可重试（继续跟进或重新创建运行）。停止后下一轮可继续发送，不会留下僵尸运行。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。密钥不会出现在进度或错误横幅里。
             </p>
           )}
         </div>

@@ -18,6 +18,7 @@ import {
   isUserAbort,
   redactCloudErrorDetail,
 } from "./errors.ts";
+import { CreateRunProgress } from "./create-run-progress.ts";
 import { mapCloudEvent } from "./events.ts";
 import {
   assertNoSecretsInPayload,
@@ -65,6 +66,7 @@ export async function runRemoteCloudAgent(options: {
 
   let runId = session.remoteRunId?.trim() ?? "";
   let eventsHold: Response | undefined;
+  const progress = new CreateRunProgress(session, emit);
 
   try {
     if (runId) {
@@ -85,12 +87,14 @@ export async function runRemoteCloudAgent(options: {
     }
 
     if (!runId) {
+      progress.begin("snapshot");
       const workspace = buildRemoteWorkspaceHandoff(settings);
       const body = buildCreateRunRequest(session, settings, workspace, {
         expertInstruction: options.expertInstruction,
         projectInstruction: options.projectInstruction,
       });
       assertNoSecretsInPayload(body, settings);
+      progress.begin("create");
       const created = await fetchUntilHeaders(
         fetchFn,
         `${base}${CLOUD_CREATE_RUN_PATH}`,
@@ -107,6 +111,7 @@ export async function runRemoteCloudAgent(options: {
       }
       runId = readRunId(await created.json());
       if (!runId) throw cloudRemoteError("no_run_id");
+      progress.begin("subscribe");
     }
 
     session.remoteRunId = runId;
@@ -138,12 +143,17 @@ export async function runRemoteCloudAgent(options: {
     }
 
     try {
+      let handedOff = false;
       for await (const raw of readSseJson(eventsRes, signal)) {
         for (const event of mapCloudEvent(raw)) {
           const mapped =
             event.type === "error"
               ? { ...event, message: formatCloudRemoteError(event.message) }
               : event;
+          if (!handedOff) {
+            progress.handoffToStream();
+            handedOff = true;
+          }
           applyRemoteEvent(session, mapped);
           // Host emits a single `done` after the stream so the UI always gets
           // the accumulated pig session, not a remote-shaped snapshot.
@@ -179,6 +189,7 @@ export async function runRemoteCloudAgent(options: {
       await abortRemoteRun(fetchFn, base, runId, headers);
     }
     if (aborted) {
+      progress.abort();
       const stop: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
@@ -191,6 +202,7 @@ export async function runRemoteCloudAgent(options: {
       session.lastError = undefined;
       session.remoteRetry = undefined;
     } else {
+      progress.fail();
       const message = formatCloudRemoteError(err);
       session.status = "error";
       session.lastError = message;

@@ -43,7 +43,7 @@ This is how automated tests and offline smoke work.
 
 When mode is `remote` and `cloudBaseUrl` is set, the host is a **client** of a control plane (real or `pnpm mock:cloud`):
 
-1. First turn (or after an expired run): `POST {cloudBaseUrl}/v1/runs` with prompt + recent messages + a workspace handoff
+1. First turn (or after an expired run): `POST {cloudBaseUrl}/v1/runs` with prompt + recent messages + a workspace handoff. While snapshot / create-run / event subscribe are in flight, the host emits Chinese `steps` chips (准备沙箱快照 → 创建远程运行 → 连接事件流). Secrets never appear in that copy. The first inbound stream event clears the bootstrap chips so the UI is the live turn (or a Milestone L failure banner).
 2. Persist the returned `runId` on the pig session as `remoteRunId`
 3. `GET {cloudBaseUrl}/v1/runs/{id}/events` (SSE) → map onto pig `AgentEvent`s
 4. Later IDLE user turns: `POST /v1/runs/{id}/follow-ups` then subscribe to events again
