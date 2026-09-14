@@ -37,6 +37,9 @@ export type Artifact = {
 
 export type SessionStatus = "idle" | "running" | "error";
 
+/** How the workstation retries a failed remote turn. Default runtime stays pig. */
+export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
+
 export type Session = {
   id: string;
   title: string;
@@ -47,6 +50,12 @@ export type Session = {
   steps: PlanStep[];
   artifacts: Artifact[];
   lastError?: string;
+  /**
+   * After a remote-cloud failure, how 重试 should reconnect (Milestone L).
+   * `follow-up` keeps `remoteRunId`; `create-run` allocates a new run;
+   * `unavailable` needs Settings / env.json before another round can work.
+   */
+  remoteRetry?: RemoteRetryKind;
   /** Optional project this session belongs to (collaboration layer). */
   projectId?: string;
   /**

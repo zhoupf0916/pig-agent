@@ -1,6 +1,6 @@
 import type { AgentEvent, Session, Settings } from "../../types.ts";
 import { nowIso } from "../../util.ts";
-import { formatCloudRemoteError } from "./errors.ts";
+import { decideRemoteRetry, formatCloudRemoteError } from "./errors.ts";
 import { runRemoteCloudAgent } from "./remote.ts";
 import { runStubCloudAgent } from "./stub.ts";
 import { resolveEffectiveCloudMode } from "./validate.ts";
@@ -29,6 +29,8 @@ export async function runCloudAgent(options: {
     const session = options.session;
     session.status = "error";
     session.lastError = message;
+    session.remoteRetry = decideRemoteRetry(err, session.remoteRunId);
+    if (session.remoteRetry === "create-run") delete session.remoteRunId;
     session.updatedAt = nowIso();
     options.emit({ type: "error", message });
     options.emit({ type: "status", status: "error" });

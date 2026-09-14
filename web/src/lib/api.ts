@@ -482,6 +482,23 @@ export async function streamMessage(
   await readSseStream(res.body, onEvent);
 }
 
+/** Re-run the last user turn (follow-up or new create-run). Does not add a message. */
+export async function streamRetry(
+  sessionId: string,
+  onEvent: (event: AgentEvent, seq?: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}/retry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(await parseError(res));
+  }
+  await readSseStream(res.body, onEvent);
+}
+
 export async function streamTeamRun(
   sessionId: string,
   input: { action: "start" | "continue"; content?: string },

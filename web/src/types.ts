@@ -37,6 +37,9 @@ export type Artifact = {
 
 export type SessionStatus = "idle" | "running" | "error";
 
+/** How the workstation retries a failed remote turn. Default runtime stays pig. */
+export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
+
 export type Session = {
   id: string;
   title: string;
@@ -47,6 +50,7 @@ export type Session = {
   steps: PlanStep[];
   artifacts: Artifact[];
   lastError?: string;
+  remoteRetry?: RemoteRetryKind;
   projectId?: string;
   eventCheckpointSeq?: number;
   remoteRunId?: string;

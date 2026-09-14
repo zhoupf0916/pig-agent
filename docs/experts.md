@@ -105,7 +105,7 @@ The same bound block is used by:
 
 A regular `POST /api/sessions/:id/messages` on a chain-team session (no `expertId`) also **starts** a sequential run, then auto-continues after each member idle. `POST /api/sessions/:id/abort` and the workstation **停止** button cancel the rest of the chain.
 
-409 if the session is already running. 400 if no chain team is pinned, or if `expertId` is set.
+409 if the session is already running (stale `running` with no in-process turn is released so abort → send again is not a zombie). 400 if no chain team is pinned, or if `expertId` is set.
 
 ## Web
 

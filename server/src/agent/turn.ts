@@ -13,6 +13,35 @@ import { runSequentialTeamTurn } from "./team-run.ts";
 
 export const runningTurns = new Map<string, AbortController>();
 
+export function isTurnActive(sessionId: string): boolean {
+  return runningTurns.has(sessionId);
+}
+
+/** True when the JSON says running but no in-process turn is registered (zombie). */
+export function isStaleRunningSession(session: Session): boolean {
+  return session.status === "running" && !runningTurns.has(session.id);
+}
+
+export async function releaseStaleRunningSession(session: Session): Promise<boolean> {
+  if (!isStaleRunningSession(session)) return false;
+  session.status = "idle";
+  session.updatedAt = nowIso();
+  await saveSession(session);
+  return true;
+}
+
+/** Wait for an aborted turn to leave `runningTurns` so the next send is not 409. */
+export async function waitForTurnRelease(
+  sessionId: string,
+  timeoutMs = 3_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (runningTurns.has(sessionId) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return !runningTurns.has(sessionId);
+}
+
 export function pickRunner(runtime: AgentRuntime) {
   if (runtime === "codex") return runCodexAgent;
   if (runtime === "cloud") return runCloudAgent;
@@ -32,6 +61,7 @@ export function prepareUserMessage(session: Session, content: string): ChatMessa
   }
   session.status = "running";
   session.lastError = undefined;
+  session.remoteRetry = undefined;
   return userMsg;
 }
 

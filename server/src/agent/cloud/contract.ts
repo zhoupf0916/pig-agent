@@ -102,6 +102,8 @@ export type CloudRemoteErrorCode =
   | "subscribe_failed"
   | "no_run_id"
   | "secrets_refused"
+  | "run_expired"
+  | "disconnected"
   | "generic";
 
 export class CloudRuntimeError extends Error {

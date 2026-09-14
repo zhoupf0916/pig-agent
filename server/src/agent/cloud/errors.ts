@@ -1,4 +1,5 @@
 import { CloudRuntimeError, type CloudRemoteErrorCode } from "./contract.ts";
+import type { RemoteRetryKind } from "../../types.ts";
 
 export const DEFAULT_CLOUD_CONTROL_TIMEOUT_MS = 15_000;
 
@@ -12,8 +13,58 @@ export const CLOUD_REMOTE_MESSAGES = {
   subscribe_failed: "订阅控制面事件失败。",
   no_run_id: "控制面未返回运行 ID。",
   secrets_refused: "拒绝向控制面发送本机密钥。请检查工作区快照是否误含密钥。",
+  run_expired: "远程运行已过期或不存在。可重试以重新创建运行。",
+  disconnected: "与控制面的连接已中断。可重试继续跟进，或重新创建运行。",
   generic: "云端远程执行失败。",
 } as const satisfies Record<CloudRemoteErrorCode, string>;
+
+const SECRET_DETAIL_RE =
+  /(sk-[A-Za-z0-9]{8,}|Bearer\s+\S+|BEGIN [A-Z ]*PRIVATE KEY|DEEPSEEK_API_KEY\s*[:=]\s*\S+|OPENAI_API_KEY\s*[:=]\s*\S+|LLM_API_KEY\s*[:=]\s*\S+|PIG_CLOUD_TOKEN\s*[:=]\s*\S+|CLOUD_TOKEN\s*[:=]\s*\S+)/gi;
+
+/** Strip provider keys / tokens so lastError never shows secrets in the UI. */
+export function redactCloudErrorDetail(text: string): string {
+  return text.replace(SECRET_DETAIL_RE, "…");
+}
+
+export function isExpiredHttpStatus(status: number): boolean {
+  return status === 404 || status === 410;
+}
+
+export function inferCloudRemoteCode(err: unknown): CloudRemoteErrorCode {
+  if (err instanceof CloudRuntimeError) return err.code;
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/Cloud base URL is required|requires a control-plane URL|未配置控制面 URL/i.test(raw)) {
+    return "missing_url";
+  }
+  if (/must be a valid http|must be http|控制面 URL 必须/i.test(raw)) return "invalid_url";
+  if (isTimeoutMessage(raw) || (err && typeof err === "object" && "name" in err && err.name === "TimeoutError")) {
+    return "control_plane_timeout";
+  }
+  if (/run expired|run not found|运行已过期/i.test(raw)) return "run_expired";
+  if (/ECONNRESET|socket hang up|premature close|UND_ERR_|连接中断|disconnected/i.test(raw)) {
+    return "disconnected";
+  }
+  if (/snapshot|快照/i.test(raw)) return "snapshot_failed";
+  if (/Refusing to send provider|secrets/i.test(raw)) return "secrets_refused";
+  return "generic";
+}
+
+/** Choose follow-up vs new create-run vs unavailable after a remote failure. */
+export function decideRemoteRetry(err: unknown, runId?: string): RemoteRetryKind {
+  const code = inferCloudRemoteCode(err);
+  if (code === "missing_url" || code === "invalid_url") return "unavailable";
+  if (
+    code === "run_expired" ||
+    code === "no_run_id" ||
+    code === "create_run_failed" ||
+    code === "snapshot_failed" ||
+    code === "secrets_refused"
+  ) {
+    return "create-run";
+  }
+  if (runId?.trim()) return "follow-up";
+  return "create-run";
+}
 
 export function cloudRemoteError(
   code: CloudRemoteErrorCode,
@@ -24,7 +75,7 @@ export function cloudRemoteError(
 
 export function cloudRemoteMessage(code: CloudRemoteErrorCode, detail?: string): string {
   const base = CLOUD_REMOTE_MESSAGES[code];
-  const extra = detail?.trim();
+  const extra = redactCloudErrorDetail(detail?.trim() ?? "");
   if (!extra) return base;
   if (code === "snapshot_failed") return `工作区快照失败：${extra}`;
   if (code === "create_run_failed" || code === "subscribe_failed") {
@@ -35,28 +86,20 @@ export function cloudRemoteMessage(code: CloudRemoteErrorCode, detail?: string):
 }
 
 export function formatCloudRemoteError(err: unknown): string {
-  if (err instanceof CloudRuntimeError) return err.message;
+  if (err instanceof CloudRuntimeError) return redactCloudErrorDetail(err.message);
   const raw = err instanceof Error ? err.message : String(err);
   if (!raw.trim()) return CLOUD_REMOTE_MESSAGES.generic;
-  if (/Cloud base URL is required|requires a control-plane URL|未配置控制面 URL/i.test(raw)) {
-    return CLOUD_REMOTE_MESSAGES.missing_url;
-  }
-  if (/must be a valid http|must be http|控制面 URL 必须/i.test(raw)) {
-    return CLOUD_REMOTE_MESSAGES.invalid_url;
-  }
-  if (isTimeoutMessage(raw) || (err && typeof err === "object" && "name" in err && err.name === "TimeoutError")) {
-    return CLOUD_REMOTE_MESSAGES.control_plane_timeout;
-  }
-  if (/snapshot|快照/i.test(raw)) {
-    return cloudRemoteMessage("snapshot_failed", raw.replace(/^工作区快照失败[：:]?\s*/u, ""));
-  }
-  if (/Refusing to send provider|secrets/i.test(raw)) {
-    return CLOUD_REMOTE_MESSAGES.secrets_refused;
+  const code = inferCloudRemoteCode(err);
+  if (code !== "generic") {
+    if (code === "snapshot_failed") {
+      return cloudRemoteMessage("snapshot_failed", raw.replace(/^工作区快照失败[：:]?\s*/u, ""));
+    }
+    return CLOUD_REMOTE_MESSAGES[code];
   }
   if (/ECONNREFUSED|ENOTFOUND|fetch failed|network/i.test(raw)) {
-    return `无法连接控制面。请确认地址正确且服务已启动。`;
+    return "无法连接控制面。请确认地址正确且服务已启动。";
   }
-  if (/[\u4e00-\u9fff]/.test(raw)) return raw;
+  if (/[\u4e00-\u9fff]/.test(raw)) return redactCloudErrorDetail(raw);
   return cloudRemoteMessage("generic", raw);
 }
 

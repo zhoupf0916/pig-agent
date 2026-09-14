@@ -258,3 +258,16 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Deliberate remote send failures show Chinese `session.lastError` in the yellow banner: missing URL / 工作区快照失败 / 控制面请求超时
 - [ ] Leave runtime on **本机 Pig** — local golden path unchanged
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
+
+## Remote recoverability (Milestone L)
+
+Does **not** change the default runtime (still **本机 Pig**). No new backends / SSO / Milestone M.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
+- [ ] Settings → 云端 / remote without a URL — Chinese reason（未配置控制面 URL）, not a hang; **重试** stays available / clearly unavailable until a URL is set
+- [ ] `pnpm mock:cloud` then remote URL `http://127.0.0.1:8080`. Send a turn, then stop the mock mid-stream or point at a closed port — yellow banner shows 控制面请求超时 / 连接已中断 (Chinese), no deadlock
+- [ ] Click **重试 · 继续跟进** or **重试 · 重新创建运行** — another round runs, or the same Chinese unavailable reason if the plane is still down
+- [ ] Expire / delete the remote run (or `404` the events route) — banner reads 远程运行已过期; retry allocates a new create-run
+- [ ] **停止** while remote SSE is open → session idle; send again works (no 409 zombie)
+- [ ] Banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`

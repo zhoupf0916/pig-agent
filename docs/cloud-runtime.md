@@ -2,7 +2,7 @@
 
 Pig Agent’s default backend is still the built-in **pig** OpenAI-compatible tool-calling loop. Cloud is an **opt-in** execution surface — same workstation session / plan / tool / artifact semantics, different place the tools run.
 
-The topbar chip and Settings「当前执行面」show which surface is active: **本机 Pig** / **本机 Codex** / **云端 · local-stub** / **云端 · remote · &lt;生效 URL&gt;**. Remote failures (missing URL, snapshot, control-plane timeout) surface as readable Chinese `lastError`s — they do not fail silently.
+The topbar chip and Settings「当前执行面」show which surface is active: **本机 Pig** / **本机 Codex** / **云端 · local-stub** / **云端 · remote · &lt;生效 URL&gt;**. Remote failures (missing URL, snapshot, control-plane timeout, disconnect, expired run) surface as readable Chinese `lastError`s with a **重试** action — they do not hang or fail silently. Default runtime stays **pig**.
 
 This is **not** a fork or vendored copy of [neo-cloud-agent](https://github.com/Neo2Agent/neo-cloud-agent). We borrowed three principles only:
 
@@ -48,7 +48,8 @@ When mode is `remote` and `cloudBaseUrl` is set, the host is a **client** of a c
 3. `GET {cloudBaseUrl}/v1/runs/{id}/events` (SSE) → map onto pig `AgentEvent`s
 4. Later IDLE user turns: `POST /v1/runs/{id}/follow-ups` then subscribe to events again
 5. If follow-up returns 404/410 (or the run id is missing): fall back to a new `POST /v1/runs` with a fresh snapshot
-6. On stop: abort the SSE and `POST /v1/runs/{id}/abort` (the session still keeps `remoteRunId` so the next message can follow up)
+6. On stop: abort the SSE and `POST /v1/runs/{id}/abort` (the session still keeps `remoteRunId` so the next message can follow up). The host turn returns to **idle**; the next send is not blocked by a zombie `running` session
+7. On timeout / disconnect / expired events: the workstation shows a Chinese reason and `remoteRetry` (`follow-up` | `create-run` | `unavailable`). **重试** is `POST /api/sessions/:id/retry` (no extra user message) — follow-up when the run id is still live, otherwise a new create-run. Missing URL is `unavailable` until Settings / env.json is fixed. Secrets never appear in `lastError`
 
 ### Workspace handoff
 
@@ -164,7 +165,7 @@ Unknown types are dropped so a richer plane cannot break the workstation.
 
 `{ "prompt": "…" }` — neo-style follow-up / steer after the previous turn went IDLE (also accepted while RUNNING). Response `{ "ok": true, "id": "run_…" }`.
 
-The workstation persists `remoteRunId` on the session JSON (`data/sessions/<id>.json`). The next user message prefers this route. **404 / 410 / network miss** → new `POST /v1/runs` with a fresh snapshot. No UI card changes.
+The workstation persists `remoteRunId` on the session JSON (`data/sessions/<id>.json`). The next user message prefers this route. **404 / 410 / network miss** → new `POST /v1/runs` with a fresh snapshot. A failed turn also stores `remoteRetry` so the yellow banner can **重试 · 继续跟进** or **重试 · 重新创建运行**. No UI card changes. Provider keys / tokens are redacted from error text.
 
 ## Pointing at a future real control plane
 
