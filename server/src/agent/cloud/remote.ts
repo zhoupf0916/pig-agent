@@ -70,6 +70,7 @@ export async function runRemoteCloudAgent(options: {
 
   try {
     if (runId) {
+      progress.begin("followup");
       const follow = await postFollowUp(
         fetchFn,
         base,
@@ -112,6 +113,8 @@ export async function runRemoteCloudAgent(options: {
       runId = readRunId(await created.json());
       if (!runId) throw cloudRemoteError("no_run_id");
       progress.begin("subscribe");
+    } else {
+      progress.begin("reconnect");
     }
 
     session.remoteRunId = runId;
