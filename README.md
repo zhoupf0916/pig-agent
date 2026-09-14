@@ -21,6 +21,7 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 - **本机专家 / playbook（MVP）**：`#/experts` 目录 + 工作台钉选。内置侦察 / 规划 / 实现 / 评审；可引用 `skills/`。**专家指令先于项目指令**注入 pig / Codex / cloud-stub。`mode=chain` 小队在同一会话里顺序各跑一轮（`session.teamRun` + **顺序执行小队**）。见 [docs/experts.md](./docs/experts.md)
 - **本机自动化（MVP）**：`#/automations` 可手动或简单 cron 开一轮 pig 会话并钉选专家 / 项目。可选 `saveArtifactsToProject`（默认关）。无公网 webhook、无远程 worker。见 [docs/automations.md](./docs/automations.md)
 - **多端同步（MVP）**：同一会话的多个 SSE 客户端看到同一 `seq`；晚加入先拉会话快照再 `?after=` / `Last-Event-ID` 追平。断线重连只补缺口（不回放全部历史），追平中显示「正在追平未送达事件…」。契约见 [docs/multi-device-sync.md](./docs/multi-device-sync.md)
+- **未发送草稿（本机）**：工作台输入框按 `sessionId` 写入 `localStorage`（`pig-agent.composer-drafts`）。刷新 / 重开或切换会话不会丢草稿；发送或清空只清当前会话。不写入设置或 API Key
 - **本机搜索 / 记忆（MVP）**：顶栏或 `#/search` 对会话标题 / 近讯、项目名称 / 指令 / 待办 / 动态、资产文件名与文本正文、**钉住笔记 / 回合摘要**做子串检索（无向量库）。见 [docs/search.md](./docs/search.md)
 - **可写本机记忆（MVP）**：`#/memory` 钉住事实或写启发式回合摘要，JSON 在 `data/memory/`。工作台可钉住 / 写摘要。最近若干条钉住会小剂量注入 pig 系统提示。见 [docs/memory.md](./docs/memory.md)
 
@@ -173,7 +174,7 @@ pnpm typecheck
 
 ### What you get
 
-A localhost workstation: chat + plan/steps, live tool cards (args, ok/fail, duration), stoppable runs, grouped artifacts with text diffs, workspace tree, OpenAI-compatible agent loop (DeepSeek-friendly tool calling), disk-persisted sessions/settings, and local Markdown skills with keyword auto-load. File, shell, and HTTP tools stay sandboxed / SSRF-safe.
+A localhost workstation: chat + plan/steps, live tool cards (args, ok/fail, duration), stoppable runs, grouped artifacts with text diffs, workspace tree, OpenAI-compatible agent loop (DeepSeek-friendly tool calling), disk-persisted sessions/settings, per-session unsent composer drafts in `localStorage` (never Settings/API keys), and local Markdown skills with keyword auto-load. File, shell, and HTTP tools stay sandboxed / SSRF-safe.
 
 ### Start
 

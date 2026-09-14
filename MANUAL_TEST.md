@@ -124,6 +124,18 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Composer drafts per session (Milestone P)
+
+Client-only (`localStorage` key `pig-agent.composer-drafts`). Does **not** change Settings runtime (still **本机 Pig**). Does **not** write API keys or Settings into draft storage.
+
+- [ ] Same session: type unsent text in the workstation composer, refresh or reopen `#/sessions/<id>` — the draft is still there
+- [ ] Switch to another session, type a different draft, switch back — each session keeps its own text; neither overwrites the other
+- [ ] **发送** (or empty the composer) clears only the current session's draft; the other session still restores
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar and L/M/N retry / abort paths unchanged
+- [ ] Settings / API key fields never appear in `localStorage` `pig-agent.composer-drafts`. Banner / settings still redact secrets
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, or multi-agent parallelism change
+
 ## Local experts / playbooks (Milestone C)
 
 No LLM required for the directory. Prompt injection is covered by `pnpm test`.
