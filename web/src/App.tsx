@@ -68,6 +68,7 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(() => loadPersistedTheme());
   const [route, setRoute] = useState<AppRoute>(() => parseHash());
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectRefreshTick, setProjectRefreshTick] = useState(0);
   const [experts, setExperts] = useState<Expert[]>([]);
   const [expertTeams, setExpertTeams] = useState<ExpertTeam[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -616,6 +617,7 @@ export function App() {
           <div className="hidden h-4 w-px bg-ink-300 sm:block" aria-hidden />
           <InboxMenu
             onOpenProject={(id) => goProjects(id)}
+            onInviteResolved={() => setProjectRefreshTick((n) => n + 1)}
             onOpenSession={(id) => {
               void loadSession(id);
               goWorkstation(id);
@@ -654,6 +656,7 @@ export function App() {
         {route.name === "projects" ? (
           <ProjectsPanel
             selectedId={route.projectId}
+            refreshTick={projectRefreshTick}
             highlightAssetId={route.assetId}
             highlightTodoId={route.todoId}
             sessions={sessions}

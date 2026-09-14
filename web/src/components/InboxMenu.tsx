@@ -16,9 +16,11 @@ function invitePending(item: InboxItem): boolean {
 
 export function InboxMenu({
   onOpenProject,
+  onInviteResolved,
   onOpenSession,
 }: {
   onOpenProject: (projectId: string) => void;
+  onInviteResolved?: (projectId: string) => void;
   onOpenSession?: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -71,6 +73,7 @@ export function InboxMenu({
       if (action === "accept") await api.acceptInboxInvite(item.id);
       else await api.declineInboxInvite(item.id);
       await refresh();
+      onInviteResolved?.(item.projectId);
       if (action === "accept") {
         onOpenProject(item.projectId);
         setOpen(false);
