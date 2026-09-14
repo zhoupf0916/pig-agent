@@ -195,7 +195,7 @@ function MessageBlock({ message }: { message: ChatMessage }) {
       <div
         className={`max-w-[85%] rounded-card px-4 py-3 text-body ${
           mine
-            ? "bg-ink-100 text-ink-800"
+            ? "border border-ink-300 bg-ink-100 text-ink-800"
             : "border border-ink-300 bg-white text-ink-800 shadow-panel"
         }`}
       >
