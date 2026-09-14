@@ -40,6 +40,17 @@ export function isMarkdown(path: string): boolean {
   return extOf(path) === "md" || extOf(path) === "mdx";
 }
 
+export function isJson(path: string): boolean {
+  return extOf(path) === "json";
+}
+
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
+
+export function isImage(path: string, mimeType?: string): boolean {
+  if (mimeType?.toLowerCase().startsWith("image/")) return true;
+  return IMAGE_EXT.has(extOf(path));
+}
+
 export function isTextLike(path: string): boolean {
   const ext = extOf(path);
   return ext === "" || CODE_EXT.has(ext);

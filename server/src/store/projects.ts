@@ -349,12 +349,16 @@ export async function inviteMember(id: string, displayName?: string): Promise<{
 
 export async function createHandoff(
   id: string,
-  input: { sessionId: string; note?: string },
+  input: { sessionId: string; note?: string; assetIds?: string[] },
 ): Promise<{ project: Project; inboxItem: InboxItem } | null> {
   const project = await readProjectFile(id);
   if (!project) return null;
   const note = input.note?.trim() || "请接手继续。";
-  await activity(project, `转交会话 ${input.sessionId}：${note}`, {
+  const names = (input.assetIds ?? [])
+    .map((assetId) => project.assets.find((a) => a.id === assetId)?.filename)
+    .filter((n): n is string => Boolean(n));
+  const body = names.length > 0 ? `${note}\n\n附带资产：${names.join("、")}` : note;
+  await activity(project, `转交会话 ${input.sessionId}：${body}`, {
     kind: "handoff",
     sessionId: input.sessionId,
   });
@@ -363,8 +367,9 @@ export async function createHandoff(
     kind: "handoff",
     projectId: project.id,
     title: `转交：${project.name}`,
-    body: note,
+    body,
     sessionId: input.sessionId,
+    assetIds: input.assetIds,
   });
   return { project, inboxItem };
 }

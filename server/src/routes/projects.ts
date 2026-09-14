@@ -15,6 +15,17 @@ import {
   updateProject,
   updateTodo,
 } from "../store/projects.ts";
+import {
+  ArtifactSaveError,
+  recentSavableArtifactPaths,
+  saveAllSessionArtifactsToProject,
+} from "../store/artifacts-to-project.ts";
+import {
+  buildAssetPreview,
+  contentDisposition,
+  findProjectAsset,
+  readAssetBytes,
+} from "../store/asset-preview.ts";
 import { listInbox, markInboxRead } from "../store/inbox.ts";
 import { createSession, getSession, listSessions, saveSession } from "../store/sessions.ts";
 
@@ -51,6 +62,8 @@ const inviteSchema = z.object({
 const handoffSchema = z.object({
   sessionId: z.string().min(1),
   note: z.string().max(4_000).optional(),
+  artifactPaths: z.array(z.string().min(1).max(500)).max(20).optional(),
+  attachRecentArtifacts: z.boolean().optional(),
 });
 
 const assetSchema = z.object({
@@ -182,6 +195,37 @@ export function registerProjectRoutes(app: Hono): void {
     return c.json({ asset: result.asset, assets: result.project.assets }, 201);
   });
 
+  app.get("/api/projects/:id/assets/:assetId/download", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const asset = findProjectAsset(project, c.req.param("assetId"));
+    if (!asset) return c.json({ error: "Asset not found" }, 404);
+    const buf = await readAssetBytes(project.id, asset);
+    if (!buf) return c.json({ error: "Asset file is missing on disk" }, 404);
+    const inline = c.req.query("inline") === "1" || c.req.query("inline") === "true";
+    return new Response(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": asset.mimeType || "application/octet-stream",
+        "Content-Disposition": contentDisposition(asset.filename, inline ? "inline" : "attachment"),
+        "Content-Length": String(buf.length),
+        "Cache-Control": "private, max-age=0",
+      },
+    });
+  });
+
+  app.get("/api/projects/:id/assets/:assetId", async (c) => {
+    const project = await getProject(c.req.param("id"));
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    const asset = findProjectAsset(project, c.req.param("assetId"));
+    if (!asset) return c.json({ error: "Asset not found" }, 404);
+    try {
+      return c.json(await buildAssetPreview(project.id, asset));
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
   app.get("/api/projects/:id/messages", async (c) => {
     const project = await getProject(c.req.param("id"));
     if (!project) return c.json({ error: "Project not found" }, 404);
@@ -204,9 +248,51 @@ export function registerProjectRoutes(app: Hono): void {
   app.post("/api/projects/:id/handoffs", async (c) => {
     const parsed = handoffSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "sessionId is required" }, 400);
-    const result = await createHandoff(c.req.param("id"), parsed.data);
+    const projectId = c.req.param("id");
+    const session = await getSession(parsed.data.sessionId);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const wantAttach =
+      Boolean(parsed.data.attachRecentArtifacts) || (parsed.data.artifactPaths?.length ?? 0) > 0;
+    let attached: Array<{ artifactPath: string; asset: { id: string; filename: string } }> = [];
+    let skipped: Array<{ artifactPath: string; reason: string }> = [];
+    if (wantAttach) {
+      if (session.projectId !== projectId) {
+        return c.json({ error: "Session is not bound to this project" }, 400);
+      }
+      const paths =
+        parsed.data.artifactPaths && parsed.data.artifactPaths.length > 0
+          ? parsed.data.artifactPaths
+          : recentSavableArtifactPaths(session);
+      try {
+        const copied = await saveAllSessionArtifactsToProject(session, { paths });
+        attached = copied.saved;
+        skipped = copied.skipped;
+      } catch (err) {
+        if (err instanceof ArtifactSaveError) {
+          return c.json({ error: err.message }, err.status);
+        }
+        const { error, status } = fail(err);
+        return c.json({ error }, status);
+      }
+    }
+
+    const result = await createHandoff(projectId, {
+      sessionId: parsed.data.sessionId,
+      note: parsed.data.note,
+      assetIds: attached.map((a) => a.asset.id),
+    });
     if (!result) return c.json({ error: "Project not found" }, 404);
-    return c.json({ inboxItem: result.inboxItem, messages: result.project.messages }, 201);
+    return c.json(
+      {
+        inboxItem: result.inboxItem,
+        messages: result.project.messages,
+        assets: result.project.assets,
+        attached,
+        skipped,
+      },
+      201,
+    );
   });
 
   app.post("/api/projects/:id/sessions", async (c) => {

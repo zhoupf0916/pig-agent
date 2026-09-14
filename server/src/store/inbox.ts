@@ -35,6 +35,7 @@ export async function addInboxItem(input: {
   body: string;
   inviteToken?: string;
   sessionId?: string;
+  assetIds?: string[];
 }): Promise<InboxItem> {
   const items = await loadAll();
   const item: InboxItem = {
@@ -47,6 +48,7 @@ export async function addInboxItem(input: {
     createdAt: nowIso(),
     inviteToken: input.inviteToken,
     sessionId: input.sessionId,
+    assetIds: input.assetIds?.length ? input.assetIds : undefined,
   };
   items.push(item);
   await saveAll(items);

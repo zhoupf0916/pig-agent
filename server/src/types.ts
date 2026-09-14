@@ -187,6 +187,19 @@ export type InboxItem = {
   createdAt: string;
   inviteToken?: string;
   sessionId?: string;
+  /** Project assets attached when this handoff was created. */
+  assetIds?: string[];
+};
+
+export type AssetPreviewKind = "text" | "markdown" | "json" | "image" | "binary";
+
+export type AssetPreview = {
+  asset: ProjectAsset;
+  kind: AssetPreviewKind;
+  content: string;
+  contentBase64?: string;
+  binary: boolean;
+  size: number;
 };
 
 export const LOCAL_USER_ID = "user_local";

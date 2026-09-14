@@ -70,6 +70,16 @@ export function isSavableArtifact(artifact: Artifact): boolean {
   return artifact.action !== "deleted";
 }
 
+/** Newest created/modified/moved artifacts, for handoff "attach recent". */
+export function recentSavableArtifactPaths(session: Session, limit = 8): string[] {
+  return session.artifacts
+    .filter(isSavableArtifact)
+    .slice()
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit)
+    .map((a) => a.path);
+}
+
 export async function readArtifactBytes(
   workspaceRoot: string,
   artifact: Artifact,

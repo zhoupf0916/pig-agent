@@ -6,6 +6,7 @@ import type {
   ExpertKind,
   ExpertTeam,
   ExpertTeamMode,
+  AssetPreview,
   InboxItem,
   Project,
   ProjectAsset,
@@ -133,12 +134,44 @@ export const api = {
       json<{ todos: Project["todos"] }>(r),
     ),
 
-  uploadAsset: (projectId: string, input: { filename: string; content: string; mimeType?: string }) =>
+  uploadAsset: (
+    projectId: string,
+    input: { filename: string; content?: string; contentBase64?: string; mimeType?: string },
+  ) =>
     fetch(`/api/projects/${projectId}/assets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<{ assets: Project["assets"] }>(r)),
+
+  assetPreview: (projectId: string, assetId: string) =>
+    fetch(`/api/projects/${projectId}/assets/${assetId}`).then((r) => json<AssetPreview>(r)),
+
+  assetDownloadUrl: (projectId: string, assetId: string, inline = false) =>
+    `/api/projects/${projectId}/assets/${assetId}/download${inline ? "?inline=1" : ""}`,
+
+  createHandoff: (
+    projectId: string,
+    input: {
+      sessionId: string;
+      note?: string;
+      artifactPaths?: string[];
+      attachRecentArtifacts?: boolean;
+    },
+  ) =>
+    fetch(`/api/projects/${projectId}/handoffs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) =>
+      json<{
+        inboxItem: InboxItem;
+        messages: Project["messages"];
+        assets: ProjectAsset[];
+        attached: Array<{ artifactPath: string; asset: ProjectAsset }>;
+        skipped: Array<{ artifactPath: string; reason: string }>;
+      }>(r),
+    ),
 
   postProjectMessage: (projectId: string, body: string) =>
     fetch(`/api/projects/${projectId}/messages`, {

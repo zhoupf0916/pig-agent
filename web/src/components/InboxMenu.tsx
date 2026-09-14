@@ -5,8 +5,10 @@ import type { InboxItem } from "../types";
 
 export function InboxMenu({
   onOpenProject,
+  onOpenSession,
 }: {
   onOpenProject: (projectId: string) => void;
+  onOpenSession?: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
@@ -69,8 +71,27 @@ export function InboxMenu({
                   }}
                 >
                   <div className="text-[13px] font-medium text-ink-800">{item.title}</div>
-                  <div className="mt-0.5 text-xs text-ink-500">{item.body}</div>
+                  <div className="mt-0.5 whitespace-pre-wrap text-xs text-ink-500">{item.body}</div>
+                  <div className="mt-1 text-meta text-ink-400">
+                    {item.kind === "handoff" ? "转交" : "邀请"}
+                    {item.assetIds && item.assetIds.length > 0
+                      ? ` · ${item.assetIds.length} 个资产`
+                      : ""}
+                  </div>
                 </button>
+                {item.kind === "handoff" && item.sessionId && onOpenSession && (
+                  <button
+                    type="button"
+                    className="mt-1 text-meta text-accent hover:underline"
+                    onClick={() => {
+                      void api.markInboxRead(item.id).then(() => refresh());
+                      onOpenSession(item.sessionId!);
+                      setOpen(false);
+                    }}
+                  >
+                    打开会话
+                  </button>
+                )}
               </li>
             ))}
           </ul>
