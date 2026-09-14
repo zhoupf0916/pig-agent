@@ -49,6 +49,7 @@ describe("HTTP API", () => {
       cloudRepoUrl?: string;
       cloudRepoRef?: string;
       cloudStatus?: { envJson?: { file?: string } };
+      executionSurface?: { runtime?: string; kind?: string; label?: string };
     };
     expect(body.runtime).toBe("pig");
     expect(body.codexNetworkAccess).toBe(false);
@@ -56,6 +57,9 @@ describe("HTTP API", () => {
     expect(body.cloudRepoUrl ?? "").toBe("");
     expect(body.cloudRepoRef ?? "").toBe("");
     expect(body.cloudStatus?.envJson?.file).toBe("env.json");
+    expect(body.executionSurface?.runtime).toBe("pig");
+    expect(body.executionSurface?.kind).toBe("pig");
+    expect(body.executionSurface?.label).toBe("本机 Pig");
   });
 
   it("rejects remote cloud settings without a control-plane URL", async () => {
@@ -66,7 +70,7 @@ describe("HTTP API", () => {
     });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toMatch(/Cloud base URL is required/);
+    expect(body.error).toMatch(/未配置控制面 URL/);
   });
 
   it("lists shipped skills", async () => {

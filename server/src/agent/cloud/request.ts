@@ -1,7 +1,8 @@
 import type { Session, Settings } from "../../types.ts";
 import { prependBoundInstructions, type BoundInstructions } from "../bound-instructions.ts";
-import type { CloudCreateRunRequest, CloudWorkspaceHandoff } from "./contract.ts";
+import { CloudRuntimeError, type CloudCreateRunRequest, type CloudWorkspaceHandoff } from "./contract.ts";
 import { loadInstallHints } from "./environment-json.ts";
+import { cloudRemoteError } from "./errors.ts";
 import { collectWorkspaceHandoff, resolveCloudRepoHint } from "./snapshot.ts";
 
 /**
@@ -44,12 +45,18 @@ export function buildFollowUpRequest(session: Session): { prompt: string } {
 
 /** Snapshot of sandbox-safe files plus optional repo / install hints. */
 export function buildRemoteWorkspaceHandoff(settings: Settings): CloudWorkspaceHandoff {
-  const install = loadInstallHints({ workspaceRoot: settings.workspaceRoot });
-  return collectWorkspaceHandoff({
-    workspaceRoot: settings.workspaceRoot,
-    ...resolveCloudRepoHint({ settings }),
-    installHints: install.hints,
-  });
+  try {
+    const install = loadInstallHints({ workspaceRoot: settings.workspaceRoot });
+    return collectWorkspaceHandoff({
+      workspaceRoot: settings.workspaceRoot,
+      ...resolveCloudRepoHint({ settings }),
+      installHints: install.hints,
+    });
+  } catch (err) {
+    if (err instanceof CloudRuntimeError) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw cloudRemoteError("snapshot_failed", detail);
+  }
 }
 
 export function assertNoSecretsInPayload(payload: unknown, settings: Settings): void {
@@ -57,7 +64,7 @@ export function assertNoSecretsInPayload(payload: unknown, settings: Settings): 
   const secrets = [settings.llmApiKey, settings.cloudToken].filter((s) => s && s.length >= 4);
   for (const secret of secrets) {
     if (dumped.includes(secret)) {
-      throw new Error("Refusing to send provider/control-plane secrets to a cloud worker payload");
+      throw cloudRemoteError("secrets_refused");
     }
   }
 }

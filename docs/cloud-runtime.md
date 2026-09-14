@@ -2,6 +2,8 @@
 
 Pig Agent’s default backend is still the built-in **pig** OpenAI-compatible tool-calling loop. Cloud is an **opt-in** execution surface — same workstation session / plan / tool / artifact semantics, different place the tools run.
 
+The topbar chip and Settings「当前执行面」show which surface is active: **本机 Pig** / **本机 Codex** / **云端 · local-stub** / **云端 · remote · &lt;生效 URL&gt;**. Remote failures (missing URL, snapshot, control-plane timeout) surface as readable Chinese `lastError`s — they do not fail silently.
+
 This is **not** a fork or vendored copy of [neo-cloud-agent](https://github.com/Neo2Agent/neo-cloud-agent). We borrowed three principles only:
 
 1. The client talks one protocol. Switching 本机 Pig / 本机 Codex / 云端 does not change UI cards.

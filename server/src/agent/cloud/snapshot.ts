@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -81,6 +82,9 @@ export function collectWorkspaceHandoff(options: {
 }
 
 export function packWorkspaceSnapshot(root: string): CloudWorkspaceSnapshot {
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    throw new Error("工作区路径不是可读目录");
+  }
   const collected: Array<{ path: string; data: Buffer }> = [];
   const skipped: string[] = [];
   let truncated = false;

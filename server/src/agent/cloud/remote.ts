@@ -6,9 +6,15 @@ import {
   CLOUD_CREATE_RUN_PATH,
   CLOUD_EVENTS_PATH,
   CLOUD_FOLLOW_UP_PATH,
-  CloudRuntimeError,
 } from "./contract.ts";
 import { resolveEffectiveCloudBaseUrl } from "./env-json.ts";
+import {
+  DEFAULT_CLOUD_CONTROL_TIMEOUT_MS,
+  cloudRemoteError,
+  formatCloudRemoteError,
+  isCloudTimeoutError,
+  isUserAbort,
+} from "./errors.ts";
 import { mapCloudEvent } from "./events.ts";
 import {
   assertNoSecretsInPayload,
@@ -25,9 +31,11 @@ export async function runRemoteCloudAgent(options: {
   fetchImpl?: typeof fetch;
   projectInstruction?: string;
   expertInstruction?: string;
+  timeoutMs?: number;
 }): Promise<Session> {
   const { settings, signal, emit } = options;
   const fetchFn = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_CLOUD_CONTROL_TIMEOUT_MS;
   const keepRunId = options.session.remoteRunId;
   const session: Session = {
     ...options.session,
@@ -38,7 +46,11 @@ export async function runRemoteCloudAgent(options: {
   };
   emit({ type: "status", status: "running" });
 
-  const base = resolveEffectiveCloudBaseUrl(settings).replace(/\/+$/, "");
+  const resolved = resolveEffectiveCloudBaseUrl(settings).replace(/\/+$/, "");
+  if (!resolved) {
+    throw cloudRemoteError("missing_url");
+  }
+  const base = resolved;
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",
@@ -65,36 +77,43 @@ export async function runRemoteCloudAgent(options: {
         projectInstruction: options.projectInstruction,
       });
       assertNoSecretsInPayload(body, settings);
-      const created = await fetchFn(`${base}${CLOUD_CREATE_RUN_PATH}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
+      const created = await fetchUntilHeaders(
+        fetchFn,
+        `${base}${CLOUD_CREATE_RUN_PATH}`,
+        { method: "POST", headers, body: JSON.stringify(body) },
         signal,
-      });
+        timeoutMs,
+      );
       if (!created.ok) {
         const text = await created.text().catch(() => "");
-        throw new CloudRuntimeError(
-          `Create run failed (${created.status})${text ? `: ${text.slice(0, 240)}` : ""}`,
+        throw cloudRemoteError(
+          "create_run_failed",
+          `（HTTP ${created.status}）${text ? text.slice(0, 240) : ""}`,
         );
       }
       runId = readRunId(await created.json());
-      if (!runId) throw new CloudRuntimeError("Control plane did not return a run id");
+      if (!runId) throw cloudRemoteError("no_run_id");
     }
 
     session.remoteRunId = runId;
 
-    const eventsRes = await fetchFn(`${base}${CLOUD_EVENTS_PATH(runId)}`, {
-      method: "GET",
-      headers: {
-        accept: "text/event-stream",
-        ...(settings.cloudToken.trim()
-          ? { authorization: `Bearer ${settings.cloudToken.trim()}` }
-          : {}),
+    const eventsRes = await fetchUntilHeaders(
+      fetchFn,
+      `${base}${CLOUD_EVENTS_PATH(runId)}`,
+      {
+        method: "GET",
+        headers: {
+          accept: "text/event-stream",
+          ...(settings.cloudToken.trim()
+            ? { authorization: `Bearer ${settings.cloudToken.trim()}` }
+            : {}),
+        },
       },
       signal,
-    });
+      timeoutMs,
+    );
     if (!eventsRes.ok || !eventsRes.body) {
-      throw new CloudRuntimeError(`Subscribe events failed (${eventsRes.status})`);
+      throw cloudRemoteError("subscribe_failed", `（HTTP ${eventsRes.status}）`);
     }
 
     for await (const raw of readSseJson(eventsRes, signal)) {
@@ -115,8 +134,7 @@ export async function runRemoteCloudAgent(options: {
     emit({ type: "done", session });
     return session;
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const aborted = message === "Aborted" || err instanceof DOMException || signal.aborted;
+    const aborted = isUserAbort(err, signal);
     if (runId) {
       await abortRemoteRun(fetchFn, base, runId, headers);
     }
@@ -132,6 +150,7 @@ export async function runRemoteCloudAgent(options: {
       session.status = "idle";
       session.lastError = undefined;
     } else {
+      const message = formatCloudRemoteError(err);
       session.status = "error";
       session.lastError = message;
       emit({ type: "error", message });
@@ -140,6 +159,37 @@ export async function runRemoteCloudAgent(options: {
     emit({ type: "status", status: session.status });
     emit({ type: "done", session });
     return session;
+  }
+}
+
+/**
+ * Timeout applies only until response headers arrive so SSE bodies can run longer
+ * than the control-plane connect budget.
+ */
+async function fetchUntilHeaders(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  userSignal: AbortSignal,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const onUserAbort = () => ctrl.abort(userSignal.reason);
+  if (userSignal.aborted) throw new Error("Aborted");
+  userSignal.addEventListener("abort", onUserAbort);
+  const timer = setTimeout(() => ctrl.abort("cloud-timeout"), timeoutMs);
+  try {
+    return await fetchFn(url, { ...init, signal: ctrl.signal });
+  } catch (err) {
+    if (isUserAbort(err, userSignal)) throw new Error("Aborted");
+    if (ctrl.signal.aborted && !userSignal.aborted) {
+      throw cloudRemoteError("control_plane_timeout");
+    }
+    if (isCloudTimeoutError(err, userSignal)) throw cloudRemoteError("control_plane_timeout");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    userSignal.removeEventListener("abort", onUserAbort);
   }
 }
 

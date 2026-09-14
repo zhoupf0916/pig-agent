@@ -93,9 +93,22 @@ export type CloudInboundEvent =
   | { type: "error" | "run.error"; message: string }
   | { type: "done" | "run.idle"; session?: import("../../types.ts").Session };
 
+export type CloudRemoteErrorCode =
+  | "missing_url"
+  | "invalid_url"
+  | "snapshot_failed"
+  | "control_plane_timeout"
+  | "create_run_failed"
+  | "subscribe_failed"
+  | "no_run_id"
+  | "secrets_refused"
+  | "generic";
+
 export class CloudRuntimeError extends Error {
-  constructor(message: string) {
+  readonly code: CloudRemoteErrorCode;
+  constructor(message: string, code: CloudRemoteErrorCode = "generic") {
     super(message);
     this.name = "CloudRuntimeError";
+    this.code = code;
   }
 }

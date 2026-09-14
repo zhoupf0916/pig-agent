@@ -52,7 +52,7 @@ describe("normalizeSettings", () => {
         normalizeSettings({ runtime: "cloud", cloudMode: "remote", cloudBaseUrl: "" }),
         isolated,
       ),
-    ).toThrow(/Cloud base URL is required/);
+    ).toThrow(/未配置控制面 URL/);
     expect(() =>
       assertCloudSettings(
         normalizeSettings({
