@@ -12,6 +12,8 @@ import type {
   MemoryNote,
   Project,
   ProjectAsset,
+  ProjectInvite,
+  ProjectMember,
   ProjectSummary,
   SearchResponse,
   Session,
@@ -190,18 +192,53 @@ export const api = {
       body: JSON.stringify({ body }),
     }).then((r) => json<{ messages: Project["messages"] }>(r)),
 
-  inviteMember: (projectId: string, displayName?: string) =>
+  inviteMember: (projectId: string, input: { displayName?: string; note?: string } = {}) =>
     fetch(`/api/projects/${projectId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName }),
-    }).then((r) => json<{ inviteToken: string }>(r)),
+      body: JSON.stringify(input),
+    }).then((r) =>
+      json<{
+        inviteToken: string;
+        invite: ProjectInvite;
+        members: ProjectMember[];
+        invites: ProjectInvite[];
+        inboxItem: InboxItem;
+      }>(r),
+    ),
+
+  redeemInvite: (projectId: string, token: string) =>
+    fetch(`/api/projects/${projectId}/invites/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    }).then((r) => json<{ project: Project; invite: ProjectInvite; member: ProjectMember }>(r)),
+
+  revokeInvite: (projectId: string, inviteId: string) =>
+    fetch(`/api/projects/${projectId}/invites/${inviteId}`, { method: "DELETE" }).then((r) =>
+      json<{ invite: ProjectInvite; members: ProjectMember[]; invites: ProjectInvite[] }>(r),
+    ),
+
+  removeMember: (projectId: string, memberId: string) =>
+    fetch(`/api/projects/${projectId}/members/${memberId}`, { method: "DELETE" }).then((r) =>
+      json<{ members: ProjectMember[] }>(r),
+    ),
 
   inbox: () =>
     fetch("/api/inbox").then((r) => json<{ items: InboxItem[]; unread: number }>(r)),
 
   markInboxRead: (id: string) =>
     fetch(`/api/inbox/${id}/read`, { method: "POST" }).then((r) => json<InboxItem>(r)),
+
+  acceptInboxInvite: (id: string) =>
+    fetch(`/api/inbox/${id}/accept`, { method: "POST" }).then((r) =>
+      json<{ item: InboxItem; project: Project; invite: ProjectInvite; member: ProjectMember }>(r),
+    ),
+
+  declineInboxInvite: (id: string) =>
+    fetch(`/api/inbox/${id}/decline`, { method: "POST" }).then((r) =>
+      json<{ item: InboxItem; project: Project; invite: ProjectInvite }>(r),
+    ),
 
   experts: () => fetch("/api/experts").then((r) => json<{ experts: Expert[] }>(r)),
 

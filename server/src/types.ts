@@ -139,12 +139,28 @@ export type BoundPlaybook = {
 
 export type ProjectRole = "owner" | "admin" | "member";
 
+export type ProjectInviteStatus = "pending" | "accepted" | "declined" | "revoked";
+
 export type ProjectMember = {
   id: string;
   userId: string;
   displayName: string;
   role: ProjectRole;
   joinedAt: string;
+};
+
+/** Lightweight named invite on a single Pig host (not cloud SSO). */
+export type ProjectInvite = {
+  id: string;
+  token: string;
+  displayName: string;
+  note?: string;
+  invitedByUserId: string;
+  invitedByName: string;
+  status: ProjectInviteStatus;
+  createdAt: string;
+  resolvedAt?: string;
+  memberId?: string;
 };
 
 export type TodoStatus = "todo" | "doing" | "done";
@@ -190,9 +206,11 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   members: ProjectMember[];
+  invites: ProjectInvite[];
   todos: ProjectTodo[];
   assets: ProjectAsset[];
   messages: ProjectMessage[];
+  /** Latest generated invite token (compat + copy from the project page). */
   inviteToken: string;
 };
 
@@ -259,6 +277,12 @@ export type InboxItem = {
   read: boolean;
   createdAt: string;
   inviteToken?: string;
+  inviteId?: string;
+  inviteStatus?: ProjectInviteStatus;
+  projectName?: string;
+  inviterName?: string;
+  inviteeName?: string;
+  inviteNote?: string;
   sessionId?: string;
   /** Project assets attached when this handoff was created. */
   assetIds?: string[];

@@ -1,17 +1,23 @@
 import type { Hono } from "hono";
 import { z } from "zod";
 import {
+  acceptInboxInvite,
+  acceptProjectInvite,
   addAsset,
   addProjectMessage,
   createHandoff,
   createProject,
   createTodo,
+  declineInboxInvite,
   deleteProject,
   deleteTodo,
   getProject,
   inviteMember,
   listProjects,
+  ProjectInviteError,
   recordSessionBound,
+  removeProjectMember,
+  revokeProjectInvite,
   updateProject,
   updateTodo,
 } from "../store/projects.ts";
@@ -57,6 +63,11 @@ const messageSchema = z.object({
 
 const inviteSchema = z.object({
   displayName: z.string().max(80).optional(),
+  note: z.string().max(500).optional(),
+});
+
+const redeemSchema = z.object({
+  token: z.string().min(1).max(120),
 });
 
 const handoffSchema = z.object({
@@ -73,7 +84,8 @@ const assetSchema = z.object({
   mimeType: z.string().max(120).optional(),
 });
 
-function fail(err: unknown): { error: string; status: 400 } {
+function fail(err: unknown): { error: string; status: 400 | 404 | 409 } {
+  if (err instanceof ProjectInviteError) return { error: err.message, status: err.status };
   return { error: err instanceof Error ? err.message : String(err), status: 400 };
 }
 
@@ -122,18 +134,70 @@ export function registerProjectRoutes(app: Hono): void {
   app.get("/api/projects/:id/members", async (c) => {
     const project = await getProject(c.req.param("id"));
     if (!project) return c.json({ error: "Project not found" }, 404);
-    return c.json({ members: project.members, inviteToken: project.inviteToken });
+    const pendingInvites = project.invites.filter((i) => i.status === "pending");
+    return c.json({
+      members: project.members,
+      invites: project.invites,
+      pendingInvites,
+      inviteToken: pendingInvites.at(-1)?.token ?? project.inviteToken,
+    });
   });
 
   app.post("/api/projects/:id/members", async (c) => {
     const parsed = inviteSchema.safeParse(await c.req.json().catch(() => ({})));
-    const result = await inviteMember(c.req.param("id"), parsed.success ? parsed.data.displayName : undefined);
+    if (!parsed.success) return c.json({ error: "Invalid invite" }, 400);
+    const result = await inviteMember(c.req.param("id"), parsed.data);
     if (!result) return c.json({ error: "Project not found" }, 404);
     return c.json({
       inviteToken: result.inviteToken,
+      invite: result.invite,
       members: result.project.members,
+      invites: result.project.invites,
       inboxItem: result.inboxItem,
     }, 201);
+  });
+
+  app.delete("/api/projects/:id/members/:memberId", async (c) => {
+    try {
+      const project = await removeProjectMember(c.req.param("id"), c.req.param("memberId"));
+      if (!project) return c.json({ error: "Project not found" }, 404);
+      return c.json({ members: project.members });
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
+  app.post("/api/projects/:id/invites/redeem", async (c) => {
+    const parsed = redeemSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return c.json({ error: "请粘贴邀请令牌" }, 400);
+    try {
+      const result = await acceptProjectInvite(c.req.param("id"), { token: parsed.data.token });
+      if (!result) return c.json({ error: "Project not found" }, 404);
+      return c.json({
+        project: result.project,
+        invite: result.invite,
+        member: result.member,
+      });
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
+  app.delete("/api/projects/:id/invites/:inviteId", async (c) => {
+    try {
+      const result = await revokeProjectInvite(c.req.param("id"), c.req.param("inviteId"));
+      if (!result) return c.json({ error: "Project not found" }, 404);
+      return c.json({
+        invite: result.invite,
+        members: result.project.members,
+        invites: result.project.invites,
+      });
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
   });
 
   app.get("/api/projects/:id/todos", async (c) => {
@@ -316,5 +380,27 @@ export function registerProjectRoutes(app: Hono): void {
     const item = await markInboxRead(c.req.param("id"));
     if (!item) return c.json({ error: "Inbox item not found" }, 404);
     return c.json(item);
+  });
+
+  app.post("/api/inbox/:id/accept", async (c) => {
+    try {
+      const result = await acceptInboxInvite(c.req.param("id"));
+      if (!result) return c.json({ error: "Inbox item not found" }, 404);
+      return c.json(result);
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
+  });
+
+  app.post("/api/inbox/:id/decline", async (c) => {
+    try {
+      const result = await declineInboxInvite(c.req.param("id"));
+      if (!result) return c.json({ error: "Inbox item not found" }, 404);
+      return c.json(result);
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
   });
 }

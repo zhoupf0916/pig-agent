@@ -112,12 +112,27 @@ export type ExpertTeam = {
 
 export type TodoStatus = "todo" | "doing" | "done";
 
+export type ProjectInviteStatus = "pending" | "accepted" | "declined" | "revoked";
+
 export type ProjectMember = {
   id: string;
   userId: string;
   displayName: string;
   role: "owner" | "admin" | "member";
   joinedAt: string;
+};
+
+export type ProjectInvite = {
+  id: string;
+  token: string;
+  displayName: string;
+  note?: string;
+  invitedByUserId: string;
+  invitedByName: string;
+  status: ProjectInviteStatus;
+  createdAt: string;
+  resolvedAt?: string;
+  memberId?: string;
 };
 
 export type ProjectTodo = {
@@ -168,6 +183,7 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   members: ProjectMember[];
+  invites: ProjectInvite[];
   todos: ProjectTodo[];
   assets: ProjectAsset[];
   messages: ProjectMessage[];
@@ -218,6 +234,12 @@ export type InboxItem = {
   read: boolean;
   createdAt: string;
   inviteToken?: string;
+  inviteId?: string;
+  inviteStatus?: ProjectInviteStatus;
+  projectName?: string;
+  inviterName?: string;
+  inviteeName?: string;
+  inviteNote?: string;
   sessionId?: string;
   assetIds?: string[];
 };
