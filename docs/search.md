@@ -11,8 +11,9 @@ Default runtime stays **pig**. This is not Desk Remote, marketplace, or environm
 | Sessions (`data/sessions/*.json`) | Title + the last 40 user / assistant messages |
 | Projects (`data/projects/<id>/project.json`) | Name, instruction, todos, activity / comment / handoff bodies |
 | Project assets | Filename always; text / Markdown / JSON **content** when the file is small and not binary |
+| Memory (`data/memory/*.json`) | Pin / recap `text` and `tags` (Milestone H) |
 
-Skipped: tool / system messages, images, other binary assets, files over **256KB**, missing asset bytes. Experts and automations are not in this index.
+Skipped: tool / system messages, images, other binary assets, files over **256KB**, missing asset bytes. Experts and automations are not in this index. Recaps are searchable but are **not** injected into the pig prompt (pins are; see [memory.md](./memory.md)).
 
 ## Matching
 
@@ -48,7 +49,7 @@ Chinese queries without spaces are one token and use substring match (`调研报
 }
 ```
 
-`type` is one of `session` | `project` | `todo` | `asset` | `project_message`.
+`type` is one of `session` | `project` | `todo` | `asset` | `project_message` | `memory`.
 
 Route hints (in addition to `href`):
 
@@ -59,12 +60,13 @@ Route hints (in addition to `href`):
 | todo | `#/projects/<id>?todo=<todoId>` | `projectId`, `todoId` |
 | asset | `#/projects/<id>?asset=<assetId>` | `projectId`, `assetId` |
 | project_message | `#/projects/<id>` | `projectId`, `messageId` |
+| memory | `#/memory/<id>` | optional `sessionId`, `projectId` |
 
 ## Web
 
 - Header search box (desktop) with a live dropdown. **Enter** or **查看全部结果** opens `#/search?q=`.
 - `#/search` is the full result page, grouped by type.
-- Clicking a hit opens the session workstation, the project, a highlighted todo, or the existing asset preview modal.
+- Clicking a hit opens the session workstation, the project, a highlighted todo, the existing asset preview modal, or `#/memory/<id>`.
 - Shortcuts: `Ctrl+K` / `⌘K`, or `/` when not typing in another field.
 
 ## Out of scope

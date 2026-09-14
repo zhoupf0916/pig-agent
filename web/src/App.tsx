@@ -1,9 +1,10 @@
-import { Search, Settings2 } from "lucide-react";
+import { Pin, Search, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
+import { MemoryPanel } from "./components/MemoryPanel";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SearchBox } from "./components/SearchBox";
@@ -14,6 +15,7 @@ import { api, streamMessage, subscribeSessionEvents } from "./lib/api";
 import {
   automationsHash,
   expertsHash,
+  memoryHash,
   parseHash,
   projectsHash,
   searchHash,
@@ -107,12 +109,20 @@ export function App() {
     window.location.hash = searchHash(q);
   }, []);
 
+  const goMemory = useCallback((noteId?: string) => {
+    window.location.hash = memoryHash(noteId);
+  }, []);
+
   const openHit = useCallback(
     (hit: SearchHit) => {
       if (hit.type === "session") {
         const id = hit.sessionId || hit.id;
         void loadSession(id);
         window.location.hash = hit.href || sessionHash(id);
+        return;
+      }
+      if (hit.type === "memory") {
+        window.location.hash = hit.href || memoryHash(hit.id);
         return;
       }
       window.location.hash = hit.href;
@@ -517,6 +527,14 @@ export function App() {
           </button>
           <button
             type="button"
+            className={route.name === "memory" ? "btn-primary" : "btn-ghost"}
+            onClick={() => goMemory(route.name === "memory" ? route.noteId : undefined)}
+          >
+            <Pin size={14} />
+            记忆
+          </button>
+          <button
+            type="button"
             className={route.name === "search" ? "btn-primary" : "btn-ghost"}
             onClick={() => goSearch(route.name === "search" ? route.q : undefined)}
           >
@@ -578,6 +596,16 @@ export function App() {
             onQueryChange={(q) => goSearch(q)}
             onOpenHit={openHit}
           />
+        ) : route.name === "memory" ? (
+          <MemoryPanel
+            selectedId={route.noteId}
+            onSelect={(id) => goMemory(id)}
+            onOpenSession={(id) => {
+              void loadSession(id);
+              goWorkstation(id);
+            }}
+            onOpenProject={(id) => goProjects(id)}
+          />
         ) : route.name === "experts" ? (
           <ExpertsPanel
             selectedId={route.expertId}
@@ -627,6 +655,7 @@ export function App() {
               onBindExpert={(id) => void bindExpert(id)}
               onBindTeam={(id) => void bindTeam(id)}
               onHandoffDone={() => void refreshProjects()}
+              onOpenMemory={(id) => goMemory(id)}
             />
             <RightPanel
               artifacts={session?.artifacts ?? []}

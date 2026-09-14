@@ -7,6 +7,7 @@ import type {
   Settings,
 } from "../types.ts";
 import { newId, nowIso, safeJsonParse } from "../util.ts";
+import { formatMemoryPinBlock, listRecentPinTexts } from "../store/memory.ts";
 import { formatBoundInstructionBlock } from "./bound-instructions.ts";
 import { LlmError, complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
@@ -24,9 +25,17 @@ export async function buildSystemPrompt(
     loadedBodies?: Array<{ name: string; body: string }>;
     projectInstruction?: string;
     expertInstruction?: string;
+    /** Top-N recent pin texts. Empty / omitted = no memory block. */
+    memoryPins?: string[];
   } = {},
 ): Promise<string> {
-  const { suggested = [], loadedBodies = [], projectInstruction, expertInstruction } = options;
+  const {
+    suggested = [],
+    loadedBodies = [],
+    projectInstruction,
+    expertInstruction,
+    memoryPins,
+  } = options;
   const skillLines =
     suggested.length === 0
       ? "- (keyword match will be added per user turn; list_skills to see all)"
@@ -44,6 +53,7 @@ export async function buildSystemPrompt(
         ].join("\n");
 
   const boundBlock = formatBoundInstructionBlock({ expertInstruction, projectInstruction });
+  const memoryBlock = formatMemoryPinBlock(memoryPins ?? []);
 
   return [
     "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
@@ -68,6 +78,7 @@ export async function buildSystemPrompt(
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
     ...(boundBlock ? [boundBlock, ""] : []),
+    ...(memoryBlock ? [memoryBlock, ""] : []),
     "Suggested skills for this task:",
     skillLines,
     loaded,
@@ -82,6 +93,8 @@ export async function runAgent(options: {
   projectInstruction?: string;
   expertInstruction?: string;
   preferredSkillIds?: string[];
+  /** Override pin injection (tests). Default: load recent in-scope pins. */
+  memoryPins?: string[];
 }): Promise<Session> {
   const { settings, signal, emit, projectInstruction, expertInstruction, preferredSkillIds } = options;
   const session: Session = {
@@ -115,6 +128,12 @@ export async function runAgent(options: {
       loadedBodies,
       projectInstruction,
       expertInstruction,
+      memoryPins:
+        options.memoryPins ??
+        (await listRecentPinTexts({
+          sessionId: session.id,
+          projectId: session.projectId,
+        })),
     }),
     createdAt: nowIso(),
   };

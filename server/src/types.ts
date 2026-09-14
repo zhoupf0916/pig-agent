@@ -175,7 +175,24 @@ export type ProjectSummary = {
   sessionCount: number;
 };
 
-export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message";
+export type MemoryKind = "pin" | "recap";
+
+/**
+ * Writable local memory note (Milestone H). JSON under `data/memory/`.
+ * Pins are user-curated facts; recaps are short turn summaries.
+ */
+export type MemoryNote = {
+  id: string;
+  kind: MemoryKind;
+  text: string;
+  tags?: string[];
+  sessionId?: string;
+  projectId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message" | "memory";
 
 /** Read-only local search hit (Milestone G). No embeddings. */
 export type SearchHit = {

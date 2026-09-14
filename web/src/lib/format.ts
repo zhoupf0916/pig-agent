@@ -120,6 +120,7 @@ export function searchHitLabel(type: string): string {
   if (type === "todo") return "待办";
   if (type === "asset") return "资产";
   if (type === "project_message") return "动态";
+  if (type === "memory") return "记忆";
   return type;
 }
 

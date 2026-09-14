@@ -8,6 +8,8 @@ import type {
   ExpertTeamMode,
   AssetPreview,
   InboxItem,
+  MemoryKind,
+  MemoryNote,
   Project,
   ProjectAsset,
   ProjectSummary,
@@ -313,6 +315,53 @@ export const api = {
         skipped: Array<{ artifactPath: string; reason: string }>;
       }>(r),
     ),
+
+  memory: (filter?: { kind?: MemoryKind; sessionId?: string; projectId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (filter?.kind) params.set("kind", filter.kind);
+    if (filter?.sessionId) params.set("sessionId", filter.sessionId);
+    if (filter?.projectId) params.set("projectId", filter.projectId);
+    if (typeof filter?.limit === "number") params.set("limit", String(filter.limit));
+    const qs = params.toString();
+    return fetch(`/api/memory${qs ? `?${qs}` : ""}`).then((r) => json<{ notes: MemoryNote[] }>(r));
+  },
+
+  memoryNote: (id: string) => fetch(`/api/memory/${id}`).then((r) => json<MemoryNote>(r)),
+
+  createMemory: (input: {
+    kind?: MemoryKind;
+    text: string;
+    tags?: string[];
+    sessionId?: string;
+    projectId?: string;
+  }) =>
+    fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<MemoryNote>(r)),
+
+  patchMemory: (
+    id: string,
+    patch: {
+      kind?: MemoryKind;
+      text?: string;
+      tags?: string[] | null;
+      sessionId?: string | null;
+      projectId?: string | null;
+    },
+  ) =>
+    fetch(`/api/memory/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((r) => json<MemoryNote>(r)),
+
+  deleteMemory: (id: string) =>
+    fetch(`/api/memory/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+
+  sessionRecap: (sessionId: string) =>
+    fetch(`/api/sessions/${sessionId}/recap`, { method: "POST" }).then((r) => json<MemoryNote>(r)),
 
   search: (q: string, limit?: number) => {
     const params = new URLSearchParams({ q });

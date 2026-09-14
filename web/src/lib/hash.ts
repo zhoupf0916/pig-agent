@@ -3,7 +3,8 @@ export type AppRoute =
   | { name: "projects"; projectId?: string; assetId?: string; todoId?: string }
   | { name: "experts"; expertId?: string }
   | { name: "automations"; automationId?: string }
-  | { name: "search"; q?: string };
+  | { name: "search"; q?: string }
+  | { name: "memory"; noteId?: string };
 
 export function splitHash(hash: string): { path: string; query: URLSearchParams } {
   const raw = hash.replace(/^#/, "") || "/";
@@ -35,6 +36,9 @@ export function parseHash(hash = window.location.hash): AppRoute {
   }
   if (parts[0] === "search") {
     return { name: "search", q: query.get("q") || undefined };
+  }
+  if (parts[0] === "memory") {
+    return { name: "memory", noteId: parts[1] };
   }
   if (parts[0] === "sessions" && parts[1]) {
     return { name: "workstation", sessionId: parts[1] };
@@ -73,4 +77,8 @@ export function sessionHash(sessionId: string): string {
 export function searchHash(q?: string): string {
   const trimmed = q?.trim();
   return trimmed ? `#/search?q=${encodeURIComponent(trimmed)}` : "#/search";
+}
+
+export function memoryHash(noteId?: string): string {
+  return noteId ? `#/memory/${noteId}` : "#/memory";
 }

@@ -151,7 +151,20 @@ export type Project = {
   sessions?: SessionSummary[];
 };
 
-export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message";
+export type MemoryKind = "pin" | "recap";
+
+export type MemoryNote = {
+  id: string;
+  kind: MemoryKind;
+  text: string;
+  tags?: string[];
+  sessionId?: string;
+  projectId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SearchHitType = "session" | "project" | "todo" | "asset" | "project_message" | "memory";
 
 export type SearchHit = {
   type: SearchHitType;

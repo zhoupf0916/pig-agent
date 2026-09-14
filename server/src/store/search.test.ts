@@ -214,6 +214,33 @@ describe("GET /api/search", () => {
     expect(named.hits.some((h) => h.type === "asset" && h.title.includes("shot.png"))).toBe(true);
   });
 
+  it("indexes memory pins and recaps as type memory", async () => {
+    const pin = await json<{ id: string; text: string }>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "pin",
+          text: `${MARKER} 记忆钉：只检索本机 JSON`,
+          tags: [`${MARKER}-memtag`],
+        }),
+      }),
+    );
+
+    const byText = await json<{ hits: Array<{ type: string; id: string; href: string }> }>(
+      await app.request(`/api/search?q=${encodeURIComponent(`${MARKER} 记忆钉`)}`),
+    );
+    const hit = byText.hits.find((h) => h.type === "memory" && h.id === pin.id);
+    expect(hit?.href).toBe(`#/memory/${pin.id}`);
+
+    const byTag = await json<{ hits: Array<{ type: string; id: string }> }>(
+      await app.request(`/api/search?q=${encodeURIComponent(`${MARKER}-memtag`)}`),
+    );
+    expect(byTag.hits.some((h) => h.type === "memory" && h.id === pin.id)).toBe(true);
+
+    await app.request(`/api/memory/${pin.id}`, { method: "DELETE" });
+  });
+
   it("respects limit and does not invent embeddings fields", async () => {
     const res = await app.request(`/api/search?q=${encodeURIComponent(MARKER)}&limit=2`);
     expect(res.status).toBe(200);

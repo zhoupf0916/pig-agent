@@ -1,9 +1,11 @@
-import { Check, Loader2, Square, Terminal, X } from "lucide-react";
+import { Check, Loader2, Pin, Square, StickyNote, Terminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../lib/api";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
 import type { ChatMessage, LiveTool, PlanStep, Session } from "../types";
 import { HandoffDialog } from "./HandoffDialog";
 import { MarkdownView } from "./MarkdownView";
+import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
   session,
@@ -22,6 +24,7 @@ export function ChatPanel({
   onBindExpert,
   onBindTeam,
   onHandoffDone,
+  onOpenMemory,
 }: {
   session: Session | null;
   draft: string;
@@ -39,8 +42,12 @@ export function ChatPanel({
   onBindExpert: (expertId: string | null) => void;
   onBindTeam: (teamId: string | null) => void;
   onHandoffDone?: () => void;
+  onOpenMemory?: (noteId?: string) => void;
 }) {
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [memoryStatus, setMemoryStatus] = useState<string | null>(null);
+  const [recapBusy, setRecapBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112,11 +119,41 @@ export function ChatPanel({
                   : "项目指令将注入本会话系统提示"}
             </span>
           )}
-          {session.projectId && (
-            <button type="button" className="btn-ghost ml-auto" onClick={() => setHandoffOpen(true)}>
-              转交到收件箱
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {memoryStatus && <span className="text-xs text-ink-500">{memoryStatus}</span>}
+            <button type="button" className="btn-ghost" onClick={() => setPinOpen(true)}>
+              <Pin size={13} />
+              钉住笔记
             </button>
-          )}
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={recapBusy || !session.messages.some((m) => m.role === "user" || m.role === "assistant")}
+              onClick={() => {
+                void (async () => {
+                  setRecapBusy(true);
+                  setMemoryStatus(null);
+                  try {
+                    const note = await api.sessionRecap(session.id);
+                    setMemoryStatus("已写入回合摘要");
+                    onOpenMemory?.(note.id);
+                  } catch (err) {
+                    setMemoryStatus(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setRecapBusy(false);
+                  }
+                })();
+              }}
+            >
+              <StickyNote size={13} />
+              写摘要
+            </button>
+            {session.projectId && (
+              <button type="button" className="btn-ghost" onClick={() => setHandoffOpen(true)}>
+                转交到收件箱
+              </button>
+            )}
+          </div>
         </div>
       )}
       <StepStrip steps={session?.steps ?? []} />
@@ -167,6 +204,16 @@ export function ChatPanel({
           onDone={() => {
             setHandoffOpen(false);
             onHandoffDone?.();
+          }}
+        />
+      )}
+      {pinOpen && session && (
+        <PinNoteDialog
+          session={session}
+          onClose={() => setPinOpen(false)}
+          onDone={() => {
+            setPinOpen(false);
+            setMemoryStatus("已钉住到本机记忆");
           }}
         />
       )}

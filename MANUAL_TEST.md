@@ -154,3 +154,19 @@ No LLM required. No embeddings. See [docs/search.md](./docs/search.md).
 - [ ] `GET /api/search?q=` → `{ hits: [] }`; `GET /api/search?q=<term>&limit=2` returns at most 2 hits with `href` / id hints
 - [ ] Ctrl+K (or `/` when not typing) focuses the header box; Enter opens the full `#/search` page
 - [ ] This is **not** a vector DB, Mem0, marketplace, Desk Remote, or environment builds
+
+## Writable local memory (Milestone H)
+
+No LLM required. Recap is a heuristic template. See [docs/memory.md](./docs/memory.md).
+
+- [ ] Header shows **记忆**. Default runtime is still **本机 Pig**
+- [ ] Open `#/memory`, add a pin with unique text + optional tags — JSON appears under `data/memory/`
+- [ ] Edit the pin, reload — text persists. Delete removes the file
+- [ ] Workstation: **钉住笔记** binds the current `sessionId` (and `projectId` when bound)
+- [ ] After a session has user/assistant messages, **写摘要** creates a `kind=recap` note without calling the model
+- [ ] Search the pin text (header or `#/search`) — a **记忆** hit opens `#/memory/<id>`
+- [ ] `GET /api/memory` lists notes; `POST /api/memory` with `{ "text": "…" }` → 201 pin
+- [ ] `POST /api/sessions/<id>/recap` → 201 recap; empty session → 400
+- [ ] `GET /api/search?q=<pin text>` includes `{ "type": "memory", "href": "#/memory/…" }`
+- [ ] Recent pins inject into the pig system prompt only (covered by `pnpm test`); recaps do not
+- [ ] This is **not** embeddings, Mem0, marketplace, Desk Remote, or environment builds
