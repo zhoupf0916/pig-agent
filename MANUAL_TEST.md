@@ -51,6 +51,7 @@ Use this after `pnpm install && pnpm dev`. UI is http://127.0.0.1:5173.
 - [ ] Switch to **Codex**：binary path optional, model `deepseek-flash`, network toggle default off
 - [ ] Enabling outbound network shows the amber warning
 - [ ] With `@openai/codex` 0.154.x on PATH and `DEEPSEEK_API_KEY` in `.env.local`, new session: `请在工作区写一个 hello-codex.md，内容为 ok`
+- [ ] While Codex env sync / process spawn is in flight the step strip shows 准备 Codex 环境 → 启动 Codex 进程 (not create-run / follow-up / local-stub chips); first tool card or assistant message clears them
 - [ ] Tool cards (shell / apply_patch) and an assistant summary appear; **产物** lists the new file
 - [ ] Reload the session — tool cards remain (synthetic tool messages persisted)
 - [ ] **停止** kills the Codex process group
@@ -449,6 +450,18 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Expire / delete the remote run (or `404` the events route) — banner reads 远程运行已过期; retry allocates a new create-run
 - [ ] **停止** while remote SSE is open → session idle; send again works (no 409 zombie)
 - [ ] Banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
+## Codex startup progress (Milestone AE)
+
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel and the Milestone W `CreateRunProgress` machine (fourth catalog `codex:`, not a new SM). Mutually exclusive with W `create-run:` / X `follow-up:` / AD `local-stub:` copy. No public webhooks. Failures stay on Milestone N Chinese banner / **重试本轮**; abort → idle.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
+- [ ] Settings → **本机 Codex**. New session, send a turn — while env sync / process spawn is in flight the step strip (and the 正在思考 line) shows Chinese progress: 准备 Codex 环境 → 启动 Codex 进程 — **not** create-run / follow-up / local-stub chips
+- [ ] After the first tool card or assistant message, bootstrap chips clear and the UI is the live turn (tool cards / assistant / idle)
+- [ ] Deliberate Codex failure (no binary / bad start) — yellow banner + existing **重试本轮**; session is `idle` after abort, never stuck `running`
+- [ ] **停止** during hung Codex spawn → idle; next send works (no 409 zombie)
+- [ ] Progress copy / banner / session JSON never show `sk-…` / `CODEX_API_KEY` / Bearer tokens
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
 ## Local-stub materialize progress (Milestone AD)

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { AgentEvent, PlanStep, Session } from "../../types.ts";
 import { DEFAULT_SETTINGS } from "../../config.ts";
 import {
+  CODEX_PROGRESS,
   CREATE_RUN_PROGRESS,
   CreateRunProgress,
   FOLLOW_UP_PROGRESS,
   LOCAL_STUB_PROGRESS,
+  isCodexProgressStep,
   isCreateRunProgressStep,
   isFollowUpProgressStep,
   isLocalStubProgressStep,
@@ -182,6 +184,7 @@ describe("local-stub materialize progress copy", () => {
     expect(ses.steps.map((s) => s.id)).toEqual(["local-stub:start"]);
     expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
     expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    expect(ses.steps.some(isCodexProgressStep)).toBe(false);
   });
 
   it("abort clears running local-stub chips so idle is not a visual zombie", () => {
@@ -194,5 +197,84 @@ describe("local-stub materialize progress copy", () => {
     progress.abort();
     expect(ses.steps).toEqual([keep]);
     expect(ses.steps.every((s) => s.status !== "running" || !isLocalStubProgressStep(s))).toBe(true);
+  });
+});
+
+describe("Codex startup progress copy", () => {
+  it("uses distinct Chinese titles from W/X/AD and never embeds secrets", () => {
+    const dumped = JSON.stringify(CODEX_PROGRESS);
+    expect(dumped).toMatch(/[\u4e00-\u9fff]/);
+    expect(CODEX_PROGRESS.env.title).toBe("准备 Codex 环境");
+    expect(CODEX_PROGRESS.spawn.title).toBe("启动 Codex 进程");
+    expect(CODEX_PROGRESS.env.title).not.toBe(CREATE_RUN_PROGRESS.snapshot.title);
+    expect(CODEX_PROGRESS.env.title).not.toBe(LOCAL_STUB_PROGRESS.materialize.title);
+    expect(CODEX_PROGRESS.spawn.title).not.toBe(CREATE_RUN_PROGRESS.create.title);
+    expect(CODEX_PROGRESS.spawn.title).not.toBe(FOLLOW_UP_PROGRESS.followup.title);
+    expect(CODEX_PROGRESS.spawn.title).not.toBe(LOCAL_STUB_PROGRESS.start.title);
+    expect(dumped).not.toMatch(/sk-[A-Za-z0-9]{8,}/);
+    expect(dumped).not.toMatch(/Bearer\s+\S+/);
+    expect(dumped).not.toContain("DEEPSEEK_API_KEY");
+    expect(dumped).not.toContain("PIG_CLOUD_TOKEN");
+    expect(dumped).not.toContain("CODEX_API_KEY");
+  });
+
+  it("emits Codex steps then hands off without W/X/AD chips", () => {
+    const ses = session();
+    const events: AgentEvent[] = [];
+    const progress = new CreateRunProgress(ses, (e) => events.push(e));
+    progress.begin("env");
+    progress.begin("spawn");
+    expect(ses.steps.map((s) => s.id)).toEqual(["codex:env", "codex:spawn"]);
+    expect(ses.steps[0]?.status).toBe("done");
+    expect(ses.steps[1]?.status).toBe("running");
+    expect(ses.steps[1]?.title).toBe("启动 Codex 进程");
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    expect(ses.steps.some(isLocalStubProgressStep)).toBe(false);
+    expect(events.every((e) => e.type === "steps")).toBe(true);
+
+    progress.fail();
+    expect(ses.steps.find((s) => s.id === "codex:spawn")?.status).toBe("error");
+    expect(ses.status).toBe("running");
+
+    progress.handoffToStream();
+    expect(ses.steps).toEqual([]);
+    expect(ses.steps.some(isCodexProgressStep)).toBe(false);
+  });
+
+  it("drops W/X/AD chips when entering Codex (no mixed catalogs)", () => {
+    const ses = session();
+    const progress = new CreateRunProgress(ses, () => undefined);
+    progress.begin("snapshot");
+    progress.begin("create");
+    expect(ses.steps.map((s) => s.id)).toEqual(["create-run:snapshot", "create-run:post"]);
+    progress.begin("env");
+    expect(ses.steps.map((s) => s.id)).toEqual(["codex:env"]);
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    expect(ses.steps.some(isLocalStubProgressStep)).toBe(false);
+    progress.begin("materialize");
+    expect(ses.steps.map((s) => s.id)).toEqual(["local-stub:materialize"]);
+    expect(ses.steps.some(isCodexProgressStep)).toBe(false);
+    progress.begin("followup");
+    expect(ses.steps.map((s) => s.id)).toEqual(["follow-up:post"]);
+    expect(ses.steps.some(isCodexProgressStep)).toBe(false);
+    progress.begin("spawn");
+    expect(ses.steps.map((s) => s.id)).toEqual(["codex:spawn"]);
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    expect(ses.steps.some(isLocalStubProgressStep)).toBe(false);
+  });
+
+  it("abort clears running Codex chips so idle is not a visual zombie", () => {
+    const ses = session();
+    const keep: PlanStep = { id: "plan_1", title: "写报告", status: "pending" };
+    ses.steps = [keep];
+    const progress = new CreateRunProgress(ses, () => undefined);
+    progress.begin("env");
+    progress.begin("spawn");
+    progress.abort();
+    expect(ses.steps).toEqual([keep]);
+    expect(ses.steps.every((s) => s.status !== "running" || !isCodexProgressStep(s))).toBe(true);
   });
 });

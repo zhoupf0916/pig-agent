@@ -59,10 +59,29 @@ export const LOCAL_STUB_PROGRESS = {
 } as const;
 
 export type LocalStubProgressPhase = keyof typeof LOCAL_STUB_PROGRESS;
+
+/** Host-emitted chips while local Codex env sync / process spawn is in flight (Milestone AE). */
+export const CODEX_PROGRESS_ID_PREFIX = "codex:";
+
+export const CODEX_PROGRESS = {
+  env: {
+    id: `${CODEX_PROGRESS_ID_PREFIX}env`,
+    title: "准备 Codex 环境",
+    detail: "正在同步隔离 Codex 配置与工作区信任",
+  },
+  spawn: {
+    id: `${CODEX_PROGRESS_ID_PREFIX}spawn`,
+    title: "启动 Codex 进程",
+    detail: "即将启动 Codex 执行进程",
+  },
+} as const;
+
+export type CodexProgressPhase = keyof typeof CODEX_PROGRESS;
 export type RemoteWaitProgressPhase =
   | CreateRunProgressPhase
   | FollowUpProgressPhase
-  | LocalStubProgressPhase;
+  | LocalStubProgressPhase
+  | CodexProgressPhase;
 
 export function isCreateRunProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(CREATE_RUN_PROGRESS_ID_PREFIX);
@@ -76,22 +95,31 @@ export function isLocalStubProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(LOCAL_STUB_PROGRESS_ID_PREFIX);
 }
 
+export function isCodexProgressStep(step: PlanStep): boolean {
+  return step.id.startsWith(CODEX_PROGRESS_ID_PREFIX);
+}
+
 export function isRemoteWaitProgressStep(step: PlanStep): boolean {
   return (
-    isCreateRunProgressStep(step) || isFollowUpProgressStep(step) || isLocalStubProgressStep(step)
+    isCreateRunProgressStep(step) ||
+    isFollowUpProgressStep(step) ||
+    isLocalStubProgressStep(step) ||
+    isCodexProgressStep(step)
   );
 }
 
 function specFor(phase: RemoteWaitProgressPhase): { id: string; title: string; detail: string } {
   if (phase in CREATE_RUN_PROGRESS) return CREATE_RUN_PROGRESS[phase as CreateRunProgressPhase];
   if (phase in FOLLOW_UP_PROGRESS) return FOLLOW_UP_PROGRESS[phase as FollowUpProgressPhase];
-  return LOCAL_STUB_PROGRESS[phase as LocalStubProgressPhase];
+  if (phase in LOCAL_STUB_PROGRESS) return LOCAL_STUB_PROGRESS[phase as LocalStubProgressPhase];
+  return CODEX_PROGRESS[phase as CodexProgressPhase];
 }
 
 function catalogKeep(phase: RemoteWaitProgressPhase): (step: PlanStep) => boolean {
   if (phase in CREATE_RUN_PROGRESS) return isCreateRunProgressStep;
   if (phase in FOLLOW_UP_PROGRESS) return isFollowUpProgressStep;
-  return isLocalStubProgressStep;
+  if (phase in LOCAL_STUB_PROGRESS) return isLocalStubProgressStep;
+  return isCodexProgressStep;
 }
 
 /** Progress titles/details are static Chinese; still redact if a caller interpolates. */
@@ -100,8 +128,8 @@ export function sanitizeCreateRunProgressCopy(text: string): string {
 }
 
 /**
- * Surfaces create-run / follow-up / local-stub wait via the existing `steps` channel (StepStrip).
- * Same state machine as Milestone W — three catalogs, never mixed. No new SSE types,
+ * Surfaces create-run / follow-up / local-stub / Codex-startup wait via the existing `steps` channel (StepStrip).
+ * Same state machine as Milestone W — four catalogs, never mixed. No new SSE types,
  * no webhook, no secrets in copy.
  */
 export class CreateRunProgress {

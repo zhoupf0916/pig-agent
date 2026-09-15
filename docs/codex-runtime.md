@@ -50,6 +50,10 @@ Each run builds one prompt from the last N **user/assistant text** messages, plu
 
 Tool calls are stored as pig `session.messages`: an assistant message with `toolCalls` plus a synthetic `role: "tool"` result. Reloading the session rebuilds tool cards the same way as the pig runtime.
 
+## Startup progress (Milestone AE)
+
+While isolated `CODEX_HOME` sync / `codex exec` spawn is in flight, the host emits Chinese `steps` chips (准备 Codex 环境 → 启动 Codex 进程) on the existing Milestone W `CreateRunProgress` machine (`codex:` catalog). These chips are mutually exclusive with W `create-run:` / X `follow-up:` / AD `local-stub:` copy. The first tool card or assistant message clears them so the UI is the live turn. Secrets never appear in that copy. No new SSE types or webhooks.
+
 ## Recoverability (Milestone N)
 
 Missing binary, unwritable `CODEX_HOME`, missing env key, spawn/start failure, or a Codex session error (`turn.failed` / non-zero exit) surface as a readable **Chinese** `session.lastError` plus **重试本轮**. The session returns to **idle** (not stuck `running` / `error`). Retry rewinds to the last user goal and does not insert a second copy of that message. Secrets (`sk-…`, `Bearer`, `DEEPSEEK_API_KEY` / `CODEX_API_KEY` assignments) are redacted. Default runtime stays **pig**.
