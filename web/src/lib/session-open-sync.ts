@@ -1,4 +1,5 @@
 import type { SessionStatus, SessionSummary } from "../types";
+import { sessionHash, workstationHash } from "./hash";
 import { sessionStatusLabel } from "./session-list-sync";
 
 /** Fields the already-open session exposes for title / running↔idle. */
@@ -54,6 +55,32 @@ export function nextOpenSessionId(
   if (!openId) return null;
   if (list.some((item) => item.id === openId)) return openId;
   return list[0]?.id ?? null;
+}
+
+/**
+ * After GET /api/sessions says `id` is gone, do not GET /api/sessions/:id.
+ * Hash / route-sync must use this before any per-id load (AN-02 / DEF-AN-02-1).
+ */
+export function shouldFetchSessionDetail(
+  id: string | null | undefined,
+  list: Array<{ id: string }>,
+): boolean {
+  if (!id) return false;
+  return list.some((item) => item.id === id);
+}
+
+/**
+ * Workstation hash to write when the open id left the list.
+ * Null when the open id is still listed (or nothing was open).
+ * Caller must apply this BEFORE any GET /api/sessions/:id.
+ */
+export function nextOpenSessionHash(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): string | null {
+  const nextId = nextOpenSessionId(openId, list);
+  if (!openId || nextId === openId) return null;
+  return nextId ? sessionHash(nextId) : workstationHash();
 }
 
 /**
