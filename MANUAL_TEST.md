@@ -125,6 +125,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab open Settings form (Milestone AH)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/settings` refresh of an already-open Settings modal's non-secret fields (complement to Milestone R's chip). No new write path, no settings dual-write, no public webhook. Save still uses the existing PUT. Not a credentials vault / connector / multi-agent change.
+
+- [ ] Two workstation tabs on the same host. Tab B already has Settings open. Tab A saves non-secret fields (llm / workspace / cloud / codex, etc.) — Tab B's form catches up without a full page refresh (focus the tab or wait one short poll)
+- [ ] Secrets the user is typing on Tab B (`API Key` / 控制面 Token) are **not** overwritten. Chip still follows runtime saves as in Milestone R
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AG / L·M·N / W·X / Y–AC / R unchanged
+- [ ] Settings form / JSON / logs never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab inbox menu (Milestone AF)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/inbox` refresh of the header unread badge + list. No new write path, no dual-write of inbox / sessions / events, no public webhook. Accept / decline / read stay the existing POSTs. Not a credentials vault / connector / multi-agent / sandbox change.
