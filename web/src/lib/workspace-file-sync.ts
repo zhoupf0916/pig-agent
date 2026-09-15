@@ -36,14 +36,28 @@ export function workspaceFileSyncKey(file: WorkspaceFilePreview | null): string 
 }
 
 /**
+ * Existing GET /api/workspace/file signals a deleted / moved path as
+ * `Path not found` (HTTP 400 today) or 404. Transient errors are not gone.
+ */
+export function isWorkspaceFileGoneError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err) {
+    if (Number((err as { status: unknown }).status) === 404) return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /path not found/i.test(msg);
+}
+
+/**
  * Replace the open preview with a GET /api/workspace/file snapshot.
  * Same reference when nothing visible changed (avoids remounting the preview pane).
+ * `next === null` means the open path was deleted or moved (confirmed 404 / gone).
  * Read-only: never writes workspace files, session JSON, or events.jsonl.
  */
 export function applyWorkspaceFileSnapshot(
   prev: WorkspaceFilePreview | null,
-  next: WorkspaceFilePreview,
-): WorkspaceFilePreview {
+  next: WorkspaceFilePreview | null,
+): WorkspaceFilePreview | null {
+  if (next === null) return null;
   const clean = sanitizeWorkspaceFilePreview(next);
   if (prev && workspaceFileSyncKey(prev) === workspaceFileSyncKey(clean)) {
     return prev;
@@ -55,11 +69,13 @@ export function applyWorkspaceFileSnapshot(
  * Periodically GET the already-open workspace file (and on tab focus / visible).
  * Hidden tabs skip interval ticks; becoming visible fetches immediately.
  * No path → no fetch (preview closed).
+ * `fetchFile` returning null, or throwing Path not found / 404, clears the
+ * preview (deleted or moved). Other errors keep the last good preview.
  */
 export function startWorkspaceFileSync(opts: {
   path: string;
-  fetchFile: (path: string) => Promise<WorkspaceFilePreview>;
-  onFile: (next: WorkspaceFilePreview) => void;
+  fetchFile: (path: string) => Promise<WorkspaceFilePreview | null>;
+  onFile: (next: WorkspaceFilePreview | null) => void;
   intervalMs?: number;
   clock?: SessionListSyncClock;
 }): () => void {
@@ -75,8 +91,9 @@ export function startWorkspaceFileSync(opts: {
     try {
       const next = await opts.fetchFile(path);
       if (!stopped) opts.onFile(next);
-    } catch {
-      // keep the last good preview
+    } catch (err) {
+      if (!stopped && isWorkspaceFileGoneError(err)) opts.onFile(null);
+      // else keep the last good preview
     } finally {
       inFlight = false;
     }
