@@ -1,6 +1,12 @@
 import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import {
+  applyExpertDetailSnapshot,
+  applyExpertTeamsListSnapshot,
+  applyExpertsListSnapshot,
+  startExpertsSync,
+} from "../lib/experts-sync";
 import type { Expert, ExpertKind, ExpertTeam, SkillMeta } from "../types";
 
 const KIND_LABEL: Record<ExpertKind, string> = {
@@ -63,6 +69,39 @@ export function ExpertsPanel({
       }
     })();
   }, [selectedId]);
+
+  useEffect(() => {
+    return startExpertsSync({
+      fetchList: async () => {
+        const { experts: next } = await api.experts();
+        return next;
+      },
+      onList: (next) => setExperts((prev) => applyExpertsListSnapshot(prev, next)),
+      fetchTeams: async () => {
+        const { teams: next } = await api.expertTeams();
+        return next;
+      },
+      onTeams: (next) => setTeams((prev) => applyExpertTeamsListSnapshot(prev, next)),
+      selectedId,
+      fetchSelected: selectedId
+        ? async (id) => {
+            try {
+              return await api.expert(id);
+            } catch {
+              return null;
+            }
+          }
+        : undefined,
+      onSelected: (next) => setDetail((prev) => applyExpertDetailSnapshot(prev, next)),
+    });
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!detail) return;
+    setDraftName(detail.name);
+    setDraftDescription(detail.description);
+    setDraftInstruction(detail.instruction);
+  }, [detail]);
 
   const selectedTeam = useMemo(
     () => teams.find((t) => t.expertIds.includes(detail?.id ?? "")),
