@@ -138,6 +138,10 @@ When Tab B is already on `#/memory`, the note list is a **read-only** refresh of
 
 When Tab B is already on `#/experts`, the expert list (and team list) is a **read-only** refresh of the existing `GET /api/experts` plus `GET /api/expert-teams`. Another same-host tab that creates, edits, or deletes an expert — or changes the expert-team list — updates Tab B on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/experts/:id`; that body is **not** force-fetched when the expert is not open. Apply list / team / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Session pin / sequential expert-team run stay the existing paths. Default runtime stays **pig**.
 
+## Search results (Milestone AI)
+
+When Tab B is already on `#/search` **with a query**, the hit list is a **read-only** refresh of the existing `GET /api/search?q=`. Another same-host tab that changes a session title, project fields, or memory note updates Tab B's same-query hits on focus, visibility, or a short poll — no full page reload. No query → do not force-fetch. Apply the hit list in place (no remount). This does **not** add a write path, a public webhook, or dual-write search / sessions / `events.jsonl`. Header box / Enter / `#/search` navigation stay the existing paths. Default runtime stays **pig**. Hit list / snapshot JSON never carry provider-key plaintext.
+
 ## Inbox menu (Milestone AF)
 
 The header inbox (unread badge + list) is a **read-only** refresh of the existing `GET /api/inbox`. Another same-host tab that creates an invite / transfer, or marks read / accept / ignore, updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches to the badge count and list rows in place (no remount). Accept / decline / read stay the existing POSTs. This does **not** add a write path, a public webhook, or dual-write inbox / sessions / `events.jsonl`. Default runtime stays **pig**. Menu / badge / snapshot JSON never carry invite tokens or provider-key plaintext.

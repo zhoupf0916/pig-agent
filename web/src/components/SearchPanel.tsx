@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
+import { applySearchHitsSnapshot, startSearchSync } from "../lib/search-sync";
 import type { SearchHit, SearchHitType } from "../types";
 
 const GROUPS: SearchHitType[] = ["session", "project", "todo", "asset", "project_message", "memory"];
@@ -36,7 +37,7 @@ export function SearchPanel({
         .search(trimmed, 40)
         .then((res) => {
           if (cancelled) return;
-          setHits(res.hits);
+          setHits((prev) => applySearchHitsSnapshot(prev, res.hits));
           setError(null);
         })
         .catch((err) => {
@@ -52,6 +53,19 @@ export function SearchPanel({
       cancelled = true;
       window.clearTimeout(timer);
     };
+  }, [q]);
+
+  useEffect(() => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    return startSearchSync({
+      query: trimmed,
+      fetchHits: async (query) => {
+        const res = await api.search(query, 40);
+        return res.hits;
+      },
+      onHits: (next) => setHits((prev) => applySearchHitsSnapshot(prev, next)),
+    });
   }, [q]);
 
   const grouped = useMemo(() => {
