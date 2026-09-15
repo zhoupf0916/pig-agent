@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { describeExecutionSurface } from "../lib/runtime-surface";
+import { applyOpenSettingsFormSnapshot } from "../lib/settings-surface-sync";
 import type { AgentRuntime, CloudMode, Settings, SkillMeta } from "../types";
 
 const emptyForm: Settings = {
@@ -34,9 +35,21 @@ export function SettingsModal({
   const [form, setForm] = useState<Settings>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const primedOpen = useRef(false);
 
   useEffect(() => {
-    if (open && settings) setForm({ ...emptyForm, ...settings });
+    if (!open) {
+      primedOpen.current = false;
+      setError(null);
+      return;
+    }
+    if (!settings) return;
+    if (!primedOpen.current) {
+      primedOpen.current = true;
+      setForm({ ...emptyForm, ...settings });
+    } else {
+      setForm((prev) => applyOpenSettingsFormSnapshot(prev, settings));
+    }
     setError(null);
   }, [open, settings]);
 
