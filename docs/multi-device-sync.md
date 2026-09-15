@@ -114,6 +114,10 @@ Light / dark stays in the existing client-only `localStorage` key `pig-agent.the
 
 When Tab B is already showing a session, the chat-header pin row (项目 / 专家 / 小队) is a **read-only** refresh of those fields from `GET /api/sessions`. Another same-host tab that binds or unbinds (「未绑定」) updates Tab B's dropdowns / hints on focus, visibility, or a short poll — no full page reload. Apply patches only the pin fields on the open session (transcript / steps stay put). This does **not** add a write path, a second pin store, or dual-write `events.jsonl`. Default runtime stays **pig**.
 
+## Automations list last-run (Milestone Z)
+
+When Tab B is already on `#/automations`, the directory list is a **read-only** refresh of last-run fields from `GET /api/automations` (`lastRunAt` / `lastSessionId` / `lastError`). Another same-host tab or the in-process cron that finishes a run updates Tab B's 上次运行 / session entry / error on focus, visibility, or a short poll — no full page reload. Apply patches only those last-run fields onto existing list rows (and the open detail, which may also `GET /api/automations/:id`). List-visible last-run updates even when detail is not open. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. 「立即运行」 / `409` in-flight stays the existing run path. Default runtime stays **pig**.
+
 ## What this is not
 
 - No Redis / MySQL bus

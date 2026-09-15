@@ -1,7 +1,14 @@
 import { Play, Plus, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { formatTime } from "../lib/format";
+import {
+  applyAutomationLastRunSnapshot,
+  applyAutomationsListLastRun,
+  automationLastErrorLabel,
+  automationLastRunLabel,
+  automationLastSessionLabel,
+  startAutomationsListSync,
+} from "../lib/automations-list-sync";
 import type { Automation, Expert, ExpertTeam, ProjectSummary } from "../types";
 
 export function AutomationsPanel({
@@ -63,6 +70,19 @@ export function AutomationsPanel({
         setError(err instanceof Error ? err.message : String(err));
       }
     })();
+  }, [selectedId]);
+
+  useEffect(() => {
+    return startAutomationsListSync({
+      fetchList: async () => {
+        const { automations } = await api.automations();
+        return automations;
+      },
+      onList: (next) => setItems((prev) => applyAutomationsListLastRun(prev, next)),
+      selectedId,
+      fetchSelected: selectedId ? (id) => api.automation(id) : undefined,
+      onSelected: (next) => setDetail((prev) => applyAutomationLastRunSnapshot(prev, next)),
+    });
   }, [selectedId]);
 
   const expertName = useMemo(
@@ -136,6 +156,7 @@ export function AutomationsPanel({
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
           {items.map((item) => {
             const active = item.id === selectedId;
+            const listError = automationLastErrorLabel(item.lastError);
             return (
               <button
                 key={item.id}
@@ -150,6 +171,17 @@ export function AutomationsPanel({
                   {item.enabled ? "已启用" : "已停用"}
                   {item.schedule ? ` · ${item.schedule}` : " · 仅手动"}
                 </div>
+                <div className="mt-0.5 truncate text-meta text-ink-500">
+                  {automationLastRunLabel(item.lastRunAt)}
+                </div>
+                {automationLastSessionLabel(item.lastSessionId) && (
+                  <div className="mt-0.5 truncate text-meta text-ink-500">
+                    {automationLastSessionLabel(item.lastSessionId)}
+                  </div>
+                )}
+                {listError && (
+                  <div className="mt-0.5 truncate text-meta text-danger">{listError}</div>
+                )}
               </button>
             );
           })}
@@ -351,9 +383,7 @@ export function AutomationsPanel({
 
             <div className="rounded-card border border-ink-300 bg-panel px-3 py-3 text-xs text-ink-600">
               <div>运行时：{detail.runtime}（默认 pig，不改全局设置）</div>
-              <div className="mt-1">
-                上次运行：{detail.lastRunAt ? formatTime(detail.lastRunAt) : "尚未运行"}
-              </div>
+              <div className="mt-1">{automationLastRunLabel(detail.lastRunAt)}</div>
               {detail.lastSessionId && (
                 <button
                   type="button"
@@ -363,7 +393,9 @@ export function AutomationsPanel({
                   打开上次会话
                 </button>
               )}
-              {detail.lastError && <div className="mt-2 text-danger">{detail.lastError}</div>}
+              {detail.lastError ? (
+                <div className="mt-2 text-danger">{automationLastErrorLabel(detail.lastError)}</div>
+              ) : null}
             </div>
           </div>
         )}

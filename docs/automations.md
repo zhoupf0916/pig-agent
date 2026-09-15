@@ -49,6 +49,8 @@ This is not Slack/Telegram ingress, Desk Remote, Firecracker, or a marketplace.
 
 `#/automations` directory: list, create, edit, enable, **立即运行**. Light Codex styling, Chinese labels.
 
+Another same-host tab already on the page refreshes **上次运行** / `lastSessionId` / `lastError` from the existing `GET /api/automations` (focus / visibility / short poll). The selected item may also `GET /api/automations/:id`. List-visible last-run updates even when detail is not open. No new write path and no public webhook.
+
 ## Out of scope
 
 Public webhooks, Slack/Telegram, remote worker images, Desk Remote, Firecracker, marketplace, MySQL/Redis.
