@@ -14,7 +14,9 @@ import {
   automationLastRunSyncKey,
   automationLastSessionLabel,
   automationSyncKey,
+  nextOpenAutomationId,
   sanitizeAutomation,
+  shouldFetchAutomationDetail,
   startAutomationsListSync,
   type AutomationLastRunFields,
 } from "./automations-list-sync";
@@ -645,10 +647,11 @@ describe("automations directory full-list sync (Milestone AG)", () => {
     stop();
   });
 
-  it("clears the open detail when Tab A deletes that automation", async () => {
+  it("clears the open detail when Tab A deletes that automation without GET :id", async () => {
     let server: Automation[] = [automation({ id: "atm_a", name: "每日整理" })];
     let tabBList = server.map((row) => ({ ...row }));
     let tabBDetail: Automation | null = automation({ id: "atm_a", name: "每日整理" });
+    const selectedFetches: string[] = [];
     const { clock, tickInterval } = fakeClock(true);
 
     const stop = startAutomationsListSync({
@@ -657,7 +660,8 @@ describe("automations directory full-list sync (Milestone AG)", () => {
         tabBList = applyAutomationsListSnapshot(tabBList, next);
       },
       selectedId: "atm_a",
-      fetchSelected: async () => {
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
         const found = server.find((row) => row.id === "atm_a");
         return found ? { ...found } : null;
       },
@@ -670,12 +674,14 @@ describe("automations directory full-list sync (Milestone AG)", () => {
 
     await flush();
     expect(tabBDetail?.id).toBe("atm_a");
+    expect(selectedFetches).toEqual(["atm_a"]);
 
     server = [];
     tickInterval();
     await flush();
     expect(tabBList).toEqual([]);
     expect(tabBDetail).toBeNull();
+    expect(selectedFetches).toEqual(["atm_a"]);
     stop();
   });
 
@@ -780,5 +786,196 @@ describe("automations directory full-list sync (Milestone AG)", () => {
     expect(tabB[0]?.name).toBe("每日整理");
     expect(tabBDetail?.enabled).toBe(true);
     stop();
+  });
+});
+
+describe("open automation detail deleted-elsewhere cleanup (Milestone AS)", () => {
+  it("reuses the 2s list poll and stays on default runtime pig", () => {
+    expect(AUTOMATIONS_LIST_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("keeps the open id when it is still in GET /api/automations", () => {
+    const list = [automation({ id: "atm_a" }), automation({ id: "atm_b" })];
+    expect(nextOpenAutomationId("atm_a", list)).toBe("atm_a");
+    expect(shouldFetchAutomationDetail("atm_a", list)).toBe(true);
+    const prev = automation({ id: "atm_a" });
+    expect(applyAutomationDetailSnapshot(prev, prev)).toBe(prev);
+  });
+
+  it("clears the open automation when the list no longer contains that id", () => {
+    const prev = automation({ id: "atm_a", name: "幽灵详情", prompt: "幽灵提示词" });
+    const remaining = [automation({ id: "atm_b", name: "其他自动化" })];
+    expect(applyAutomationDetailSnapshot(prev, null)).toBeNull();
+    expect(shouldFetchAutomationDetail("atm_a", remaining)).toBe(false);
+    expect(shouldFetchAutomationDetail("atm_a", [])).toBe(false);
+    expect(shouldFetchAutomationDetail(undefined, remaining)).toBe(false);
+    expect(nextOpenAutomationId("atm_a", remaining)).toBe("atm_b");
+    expect(nextOpenAutomationId("atm_a", [])).toBeNull();
+    expect(nextOpenAutomationId(null, remaining)).toBeNull();
+  });
+
+  it("does not GET /api/automations/:id after the list confirms the open id is gone", async () => {
+    let listServer = [automation({ id: "atm_a" }), automation({ id: "atm_b" })];
+    const selectedFetches: string[] = [];
+    const openIds: Array<string | null> = [];
+    let tabBDetail: Automation | null = automation({ id: "atm_a" });
+    let tabBOpenId: string | null = "atm_a";
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => listServer.map((row) => ({ ...row })),
+      onList: () => undefined,
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return automation({ id });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        openIds.push(nextId);
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toEqual(["atm_a"]);
+    expect(tabBDetail?.id).toBe("atm_a");
+
+    listServer = [automation({ id: "atm_b", name: "其他自动化" })];
+    tickInterval();
+    await flush();
+
+    expect(selectedFetches).toEqual(["atm_a"]);
+    expect(selectedFetches).not.toContain("atm_b");
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("atm_b");
+    expect(openIds).toEqual(["atm_b"]);
+    stop();
+  });
+
+  it("Tab B leaves an automation Tab A deleted on poll / focus / visibility", async () => {
+    const server = [
+      automation({ id: "atm_a", name: "打开中" }),
+      automation({ id: "atm_b", name: "其他自动化" }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Automation | null = automation({ id: "atm_a", name: "打开中" });
+    let tabBOpenId: string | null = "atm_a";
+    const selectedFetches: string[] = [];
+    const listFetches: Automation[][] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        const snap = server.map((row) => ({ ...row }));
+        listFetches.push(snap);
+        return snap;
+      },
+      onList: (next) => {
+        tabBList = applyAutomationsListSnapshot(tabBList, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return automation({ id, name: "打开中" });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBDetail?.id).toBe("atm_a");
+    expect(tabBList.map((row) => row.id)).toEqual(["atm_a", "atm_b"]);
+
+    server.splice(0, 1);
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("atm_b");
+    expect(selectedFetches.every((id) => id === "atm_a")).toBe(true);
+    expect(selectedFetches).not.toContain("atm_b");
+
+    const afterPoll = listFetches.length;
+    setVisible(false);
+    server.length = 0;
+    tickInterval();
+    await flush();
+    expect(listFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+
+    const beforeFocus = listFetches.length;
+    focus();
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+    stop();
+  });
+
+  it("does not treat a failed list refresh as a delete", async () => {
+    let fail = false;
+    let tabBDetail: Automation | null = automation({ id: "atm_a" });
+    let left = false;
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [automation({ id: "atm_a", name: "每日整理" })];
+      },
+      onList: () => undefined,
+      selectedId: "atm_a",
+      fetchSelected: async () => automation({ id: "atm_a", name: "每日整理" }),
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: () => {
+        left = true;
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(left).toBe(false);
+    expect(tabBDetail?.id).toBe("atm_a");
+    expect(tabBDetail?.name).toBe("每日整理");
+    stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const snap = [automation({ id: "atm_b", name: "其他自动化" })];
+    const applied = applyAutomationDetailSnapshot(automation({ id: "atm_a", name: "已删" }), null);
+    const raw = JSON.stringify({
+      applied,
+      snap,
+      nextId: nextOpenAutomationId("atm_a", snap),
+      fetch: shouldFetchAutomationDetail("atm_a", snap),
+    });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });

@@ -7,6 +7,8 @@ import {
   automationLastErrorLabel,
   automationLastRunLabel,
   automationLastSessionLabel,
+  nextOpenAutomationId,
+  shouldFetchAutomationDetail,
   startAutomationsListSync,
 } from "../lib/automations-list-sync";
 import type { Automation, Expert, ExpertTeam, ProjectSummary } from "../types";
@@ -64,6 +66,13 @@ export function AutomationsPanel({
     void (async () => {
       try {
         const list = await refreshList();
+        // AN-02 nail: list absence first — rewrite hash / open state, never GET :id
+        if (selectedId && !shouldFetchAutomationDetail(selectedId, list)) {
+          const nextId = nextOpenAutomationId(selectedId, list);
+          onSelect(nextId ?? undefined);
+          setDetail(null);
+          return;
+        }
         if (selectedId) await loadDetail(selectedId);
         else if (list[0]) onSelect(list[0].id);
       } catch (err) {
@@ -80,16 +89,12 @@ export function AutomationsPanel({
       },
       onList: (next) => setItems((prev) => applyAutomationsListSnapshot(prev, next)),
       selectedId,
-      fetchSelected: selectedId
-        ? async (id) => {
-            try {
-              return await api.automation(id);
-            } catch {
-              return null;
-            }
-          }
-        : undefined,
+      fetchSelected: selectedId ? (id) => api.automation(id) : undefined,
       onSelected: (next) => setDetail((prev) => applyAutomationDetailSnapshot(prev, next)),
+      onOpenId: (nextId) => {
+        onSelect(nextId ?? undefined);
+        setDetail(null);
+      },
     });
   }, [selectedId]);
 

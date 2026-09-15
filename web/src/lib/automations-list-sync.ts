@@ -201,7 +201,7 @@ export function applyAutomationsListSnapshot(prev: Automation[], next: Automatio
  * Replace the already-open automation with a GET /api/automations/:id snapshot.
  * Same reference when nothing visible changed (avoids remounting the page).
  * Ignores another automation's body and a missing open detail.
- * `next === null` means the open automation was deleted (confirmed 404 / gone from list).
+ * `next === null` means the open automation was deleted (gone from GET /api/automations).
  */
 export function applyAutomationDetailSnapshot(
   prev: Automation | null,
@@ -216,9 +216,36 @@ export function applyAutomationDetailSnapshot(
 }
 
 /**
+ * When the open id is still in GET /api/automations, keep it.
+ * When it is gone, pick the next list row (or null to clear).
+ * Does not load automation detail bodies.
+ */
+export function nextOpenAutomationId(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): string | null {
+  if (!openId) return null;
+  if (list.some((item) => item.id === openId)) return openId;
+  return list[0]?.id ?? null;
+}
+
+/**
+ * AN-02 nail: GET /api/automations/:id only while the list still contains that id.
+ * Once the list snapshot says the open id is gone, callers must rewrite hash /
+ * open state first and must not request `:id`.
+ */
+export function shouldFetchAutomationDetail(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): boolean {
+  return Boolean(openId && list.some((item) => item.id === openId));
+}
+
+/**
  * Periodically GET the existing automations list (and on tab focus / visible).
  * Hidden tabs skip interval ticks; becoming visible fetches immediately.
  * Selected item may also GET /api/automations/:id for the open detail.
+ * If the list snapshot lacks the open id, rewrite open state first and do not GET `:id`.
  */
 export function startAutomationsListSync(opts: {
   fetchList: () => Promise<Automation[]>;
@@ -226,6 +253,7 @@ export function startAutomationsListSync(opts: {
   selectedId?: string;
   fetchSelected?: (id: string) => Promise<Automation | null>;
   onSelected?: (next: Automation | null) => void;
+  onOpenId?: (nextId: string | null) => void;
   intervalMs?: number;
   clock?: SessionListSyncClock;
 }): () => void {
@@ -242,6 +270,12 @@ export function startAutomationsListSync(opts: {
       if (stopped) return;
       opts.onList(list);
       const selectedId = opts.selectedId;
+      if (selectedId && !shouldFetchAutomationDetail(selectedId, list)) {
+        // list confirms gone — update hash / open state first; never GET :id
+        opts.onOpenId?.(nextOpenAutomationId(selectedId, list));
+        if (!opts.onOpenId) opts.onSelected?.(null);
+        return;
+      }
       if (selectedId && opts.onSelected) {
         const fromList = list.find((item) => item.id === selectedId);
         if (fromList) opts.onSelected(fromList);
@@ -251,9 +285,6 @@ export function startAutomationsListSync(opts: {
             if (stopped) return;
             if (selected && selected.id === selectedId) {
               opts.onSelected(selected);
-            } else if (!selected) {
-              const stillListed = list.some((item) => item.id === selectedId);
-              if (!stillListed) opts.onSelected(null);
             }
           } catch {
             // keep the last good selected (list already applied)
