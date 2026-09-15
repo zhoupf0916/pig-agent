@@ -125,6 +125,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab Settings skills list (Milestone AJ)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/skills` refresh of the Settings `skills/` list. No new write path, no dual-write, no public webhook. `list_skills` / `load_skill` semantics unchanged. Does **not** expand the Codex skills bridge. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already has Settings open. Tab A adds / edits / deletes `skills/*.md` — Tab B’s skills list catches up without a full page refresh (focus the tab, become visible, or wait one short poll)
+- [ ] Tab B reuses the existing `GET /api/skills` only. No new write path, dual-write, or public webhook
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AI / L·M·N / W·X / Y–AC unchanged. Codex MVP still does not bridge Pig skills
+- [ ] Settings skills list / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab search results (Milestone AI)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/search?q=` refresh of `#/search` when a query is already present. No new write path, no dual-write, no public webhook. Search / navigation semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.

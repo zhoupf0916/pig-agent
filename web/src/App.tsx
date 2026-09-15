@@ -47,6 +47,10 @@ import {
   startSettingsSurfaceSync,
 } from "./lib/settings-surface-sync";
 import {
+  applySkillsListSnapshot,
+  startSkillsListSync,
+} from "./lib/skills-list-sync";
+import {
   applySyncPhase,
   CATCH_UP_STATUS,
   rememberEventSeq,
@@ -260,6 +264,16 @@ export function App() {
     return startSettingsSurfaceSync({
       fetchSettings: () => api.settings(),
       onSettings: (next) => setSettings((prev) => applySettingsSnapshot(prev, next)),
+    });
+  }, []);
+
+  useEffect(() => {
+    return startSkillsListSync({
+      fetchList: async () => {
+        const { skills: next } = await api.skills();
+        return next;
+      },
+      onList: (next) => setSkills((prev) => applySkillsListSnapshot(prev, next)),
     });
   }, []);
 
