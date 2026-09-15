@@ -7,7 +7,9 @@ import {
   applyMemoryListSnapshot,
   MEMORY_SYNC_POLL_MS,
   memorySyncKey,
+  nextOpenMemoryId,
   sanitizeMemoryNote,
+  shouldFetchMemoryDetail,
   startMemorySync,
 } from "./memory-sync";
 
@@ -269,6 +271,7 @@ describe("memory cross-tab sync (Milestone AB)", () => {
     let server: MemoryNote[] = [note({ id: "mem_a", text: "默认用 DeepSeek" })];
     let tabBList = server.map((row) => ({ ...row }));
     let tabBDetail: MemoryNote | null = note({ id: "mem_a", text: "默认用 DeepSeek" });
+    const selectedFetches: string[] = [];
     const { clock, tickInterval } = fakeClock(true);
 
     const stop = startMemorySync({
@@ -277,12 +280,17 @@ describe("memory cross-tab sync (Milestone AB)", () => {
         tabBList = applyMemoryListSnapshot(tabBList, next);
       },
       selectedId: "mem_a",
-      fetchSelected: async () => {
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
         const found = server.find((row) => row.id === "mem_a");
         return found ? { ...found } : null;
       },
       onSelected: (next) => {
         tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, null);
+        expect(nextId).toBeNull();
       },
       intervalMs: 50,
       clock,
@@ -290,12 +298,14 @@ describe("memory cross-tab sync (Milestone AB)", () => {
 
     await flush();
     expect(tabBDetail?.id).toBe("mem_a");
+    expect(selectedFetches).toEqual(["mem_a"]);
 
     server = [];
     tickInterval();
     await flush();
     expect(tabBList).toEqual([]);
     expect(tabBDetail).toBeNull();
+    expect(selectedFetches).toEqual(["mem_a"]);
     stop();
   });
 
@@ -400,5 +410,193 @@ describe("memory cross-tab sync (Milestone AB)", () => {
     expect(tabB[0]?.text).toBe("默认用 DeepSeek");
     expect(tabBDetail?.text).toBe("默认用 DeepSeek");
     stop();
+  });
+});
+
+describe("open memory note deleted-elsewhere cleanup (Milestone AQ)", () => {
+  it("reuses the 2s list poll and stays on default runtime pig", () => {
+    expect(MEMORY_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("keeps the open id when it is still in GET /api/memory", () => {
+    const list = [note({ id: "mem_a" }), note({ id: "mem_b" })];
+    expect(nextOpenMemoryId("mem_a", list)).toBe("mem_a");
+    expect(shouldFetchMemoryDetail("mem_a", list)).toBe(true);
+    const prev = note({ id: "mem_a" });
+    expect(applyMemoryDetailSnapshot(prev, prev)).toBe(prev);
+  });
+
+  it("clears the open note when the list no longer contains that id", () => {
+    const prev = note({ id: "mem_a", text: "幽灵详情" });
+    const remaining = [note({ id: "mem_b", text: "其他笔记" })];
+    expect(applyMemoryDetailSnapshot(prev, null)).toBeNull();
+    expect(shouldFetchMemoryDetail("mem_a", remaining)).toBe(false);
+    expect(shouldFetchMemoryDetail("mem_a", [])).toBe(false);
+    expect(shouldFetchMemoryDetail(undefined, remaining)).toBe(false);
+    expect(nextOpenMemoryId("mem_a", remaining)).toBe("mem_b");
+    expect(nextOpenMemoryId("mem_a", [])).toBeNull();
+    expect(nextOpenMemoryId(null, remaining)).toBeNull();
+  });
+
+  it("does not GET /api/memory/:id after the list confirms the open id is gone", async () => {
+    let listServer = [note({ id: "mem_a" }), note({ id: "mem_b" })];
+    const selectedFetches: string[] = [];
+    const openIds: Array<string | null> = [];
+    let tabBDetail: MemoryNote | null = note({ id: "mem_a" });
+    let tabBOpenId: string | null = "mem_a";
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startMemorySync({
+      fetchList: async () => listServer.map((row) => ({ ...row })),
+      onList: () => undefined,
+      selectedId: "mem_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return note({ id });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        openIds.push(nextId);
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toEqual(["mem_a"]);
+    expect(tabBDetail?.id).toBe("mem_a");
+
+    listServer = [note({ id: "mem_b", text: "其他笔记" })];
+    tickInterval();
+    await flush();
+
+    expect(selectedFetches).toEqual(["mem_a"]);
+    expect(selectedFetches).not.toContain("mem_b");
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("mem_b");
+    expect(openIds).toEqual(["mem_b"]);
+    stop();
+  });
+
+  it("Tab B leaves a note Tab A deleted on poll / focus / visibility", async () => {
+    const server = [note({ id: "mem_a", text: "打开中" }), note({ id: "mem_b", text: "其他笔记" })];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: MemoryNote | null = note({ id: "mem_a", text: "打开中" });
+    let tabBOpenId: string | null = "mem_a";
+    const selectedFetches: string[] = [];
+    const listFetches: MemoryNote[][] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startMemorySync({
+      fetchList: async () => {
+        const snap = server.map((row) => ({ ...row }));
+        listFetches.push(snap);
+        return snap;
+      },
+      onList: (next) => {
+        tabBList = applyMemoryListSnapshot(tabBList, next);
+      },
+      selectedId: "mem_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return note({ id, text: "打开中" });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBDetail?.id).toBe("mem_a");
+    expect(tabBList.map((row) => row.id)).toEqual(["mem_a", "mem_b"]);
+
+    server.splice(0, 1);
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("mem_b");
+    expect(selectedFetches.every((id) => id === "mem_a")).toBe(true);
+    expect(selectedFetches).not.toContain("mem_b");
+
+    const afterPoll = listFetches.length;
+    setVisible(false);
+    server.length = 0;
+    tickInterval();
+    await flush();
+    expect(listFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+
+    const beforeFocus = listFetches.length;
+    focus();
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+    stop();
+  });
+
+  it("does not treat a failed list refresh as a delete", async () => {
+    let fail = false;
+    let tabBDetail: MemoryNote | null = note({ id: "mem_a" });
+    let left = false;
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startMemorySync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [note({ id: "mem_a", text: "默认用 DeepSeek" })];
+      },
+      onList: () => undefined,
+      selectedId: "mem_a",
+      fetchSelected: async () => note({ id: "mem_a", text: "默认用 DeepSeek" }),
+      onSelected: (next) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: () => {
+        left = true;
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(left).toBe(false);
+    expect(tabBDetail?.id).toBe("mem_a");
+    expect(tabBDetail?.text).toBe("默认用 DeepSeek");
+    stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const snap = [note({ id: "mem_b", text: "其他笔记" })];
+    const applied = applyMemoryDetailSnapshot(note({ id: "mem_a", text: "已删" }), null);
+    const raw = JSON.stringify({
+      applied,
+      snap,
+      nextId: nextOpenMemoryId("mem_a", snap),
+      fetch: shouldFetchMemoryDetail("mem_a", snap),
+    });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });

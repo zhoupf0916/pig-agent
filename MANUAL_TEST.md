@@ -202,6 +202,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab open memory note deleted elsewhere (Milestone AQ)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/memory` detects that the already-open note id is gone (complement to Milestone AB list / detail). Clear the open detail or switch away. No new write path, no dual-write of memory / sessions / events, no public webhook, no full page reload. Once the list says the id is gone, do **not** `GET /api/memory/:id`. Delete still uses existing `DELETE`. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AQ-01** Two workstation tabs on the same host. Tab B has a note open on `#/memory/:id`. Tab A deletes that note — Tab B on focus, visibility, or one short poll clears or navigates away without a full page refresh. Do not stay on a ghost detail
+- [ ] **AQ-02** Tab B only reuses existing `GET /api/memory`. After the list lacks that id, do **not** request `:id`. Delete still uses existing `DELETE`. No new write path, no dual-write, no public webhook
+- [ ] **AQ-03** Header chip still defaults to **本机 Pig**. Milestone O–AP / L·M·N / W·X / AB unchanged
+- [ ] **AQ-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab memory directory (Milestone AB)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/memory` refresh of `#/memory`; already-open detail also `GET /api/memory/:id`. No new write path, no dual-write of memory / sessions / events, no public webhook. Pin / write-summary / search semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.

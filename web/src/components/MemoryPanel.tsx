@@ -5,6 +5,8 @@ import { formatTime } from "../lib/format";
 import {
   applyMemoryDetailSnapshot,
   applyMemoryListSnapshot,
+  nextOpenMemoryId,
+  shouldFetchMemoryDetail,
   startMemorySync,
 } from "../lib/memory-sync";
 import type { MemoryKind, MemoryNote } from "../types";
@@ -52,6 +54,13 @@ export function MemoryPanel({
     void (async () => {
       try {
         const list = await refreshList();
+        // AN-02 nail: list absence first — rewrite hash / open state, never GET :id
+        if (selectedId && !shouldFetchMemoryDetail(selectedId, list)) {
+          const nextId = nextOpenMemoryId(selectedId, list);
+          onSelect(nextId ?? undefined);
+          setDetail(null);
+          return;
+        }
         if (selectedId) await loadDetail(selectedId);
         else if (list[0]) onSelect(list[0].id);
       } catch (err) {
@@ -68,16 +77,12 @@ export function MemoryPanel({
       },
       onList: (next) => setNotes((prev) => applyMemoryListSnapshot(prev, next)),
       selectedId,
-      fetchSelected: selectedId
-        ? async (id) => {
-            try {
-              return await api.memoryNote(id);
-            } catch {
-              return null;
-            }
-          }
-        : undefined,
+      fetchSelected: selectedId ? (id) => api.memoryNote(id) : undefined,
       onSelected: (next) => setDetail((prev) => applyMemoryDetailSnapshot(prev, next)),
+      onOpenId: (nextId) => {
+        onSelect(nextId ?? undefined);
+        setDetail(null);
+      },
     });
   }, [selectedId]);
 

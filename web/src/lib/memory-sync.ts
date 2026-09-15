@@ -78,7 +78,7 @@ export function applyMemoryListSnapshot(prev: MemoryNote[], next: MemoryNote[]):
  * Replace the already-open note with a GET /api/memory/:id snapshot.
  * Same reference when nothing visible changed (avoids remounting the page).
  * Ignores another note's body and a missing open detail.
- * `next === null` means the open note was deleted (confirmed 404 / gone from list).
+ * `next === null` means the open note was deleted (gone from GET /api/memory).
  */
 export function applyMemoryDetailSnapshot(
   prev: MemoryNote | null,
@@ -93,9 +93,36 @@ export function applyMemoryDetailSnapshot(
 }
 
 /**
+ * When the open id is still in GET /api/memory, keep it.
+ * When it is gone, pick the next list row (or null to clear).
+ * Does not load note detail bodies.
+ */
+export function nextOpenMemoryId(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): string | null {
+  if (!openId) return null;
+  if (list.some((item) => item.id === openId)) return openId;
+  return list[0]?.id ?? null;
+}
+
+/**
+ * AN-02 nail: GET /api/memory/:id only while the list still contains that id.
+ * Once the list snapshot says the open id is gone, callers must rewrite hash /
+ * open state first and must not request `:id`.
+ */
+export function shouldFetchMemoryDetail(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): boolean {
+  return Boolean(openId && list.some((item) => item.id === openId));
+}
+
+/**
  * Periodically GET the existing memory list (and on tab focus / visible).
  * Hidden tabs skip interval ticks; becoming visible fetches immediately.
  * Open detail also GET /api/memory/:id — never force-fetch when that detail is not open.
+ * If the list snapshot lacks the open id, rewrite open state first and do not GET `:id`.
  */
 export function startMemorySync(opts: {
   fetchList: () => Promise<MemoryNote[]>;
@@ -103,6 +130,7 @@ export function startMemorySync(opts: {
   selectedId?: string;
   fetchSelected?: (id: string) => Promise<MemoryNote | null>;
   onSelected?: (next: MemoryNote | null) => void;
+  onOpenId?: (nextId: string | null) => void;
   intervalMs?: number;
   clock?: SessionListSyncClock;
 }): () => void {
@@ -119,15 +147,17 @@ export function startMemorySync(opts: {
       if (stopped) return;
       opts.onList(list);
       const selectedId = opts.selectedId;
+      if (selectedId && !shouldFetchMemoryDetail(selectedId, list)) {
+        // list confirms gone — update hash / open state first; never GET :id
+        opts.onOpenId?.(nextOpenMemoryId(selectedId, list));
+        return;
+      }
       if (selectedId && opts.fetchSelected && opts.onSelected) {
         try {
           const selected = await opts.fetchSelected(selectedId);
           if (stopped) return;
           if (selected && selected.id === selectedId) {
             opts.onSelected(selected);
-          } else if (!selected) {
-            const stillListed = list.some((note) => note.id === selectedId);
-            if (!stillListed) opts.onSelected(null);
           }
         } catch {
           // keep the last good open note (list already applied)
