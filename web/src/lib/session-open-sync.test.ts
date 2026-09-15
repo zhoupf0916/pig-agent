@@ -10,6 +10,7 @@ import {
 import {
   applyOpenSessionFromList,
   applySessionOpenMetaSnapshot,
+  nextOpenSessionId,
   sessionOpenMetaSyncKey,
   sessionOpenStatusLabel,
 } from "./session-open-sync";
@@ -146,15 +147,12 @@ describe("open session title/status sync (Milestone AM)", () => {
     expect(painted(next).statusLabel).toBe("运行中");
   });
 
-  it("ignores a snapshot for another session and a missing open session", () => {
+  it("ignores a snapshot for another session (title/status patch stays on the open id)", () => {
     const prev = session({ id: "ses_a", title: "新任务" });
     expect(applySessionOpenMetaSnapshot(prev, row({ id: "ses_b", title: "其他会话", status: "running" }))).toBe(
       prev,
     );
     expect(applySessionOpenMetaSnapshot(null, row({ id: "ses_a", title: "搜索笔记", status: "running" }))).toBeNull();
-    expect(applyOpenSessionFromList(prev, [row({ id: "ses_b", title: "其他会话", status: "running" })])).toBe(
-      prev,
-    );
   });
 
   it("Tab B open session follows Tab A rename and running ↔ idle from list snapshots", async () => {
@@ -329,15 +327,13 @@ describe("open session title/status sync (Milestone AM)", () => {
     stop();
   });
 
-  it("keeps the last good title / status when a refresh fails or the row is missing", async () => {
+  it("keeps the last good title / status when a refresh fails", async () => {
     let fail = false;
-    let missing = false;
     let tabB: Session | null = session({ id: "ses_a", title: "整理工作区", status: "running" });
     const { clock, tickInterval } = fakeClock(true);
     const stop = startSessionListSync({
       fetchList: async () => {
         if (fail) throw new Error("gone");
-        if (missing) return [row({ id: "ses_b", title: "其他会话" })];
         return [row({ id: "ses_a", title: "整理工作区", status: "running" })];
       },
       onList: (next) => {
@@ -355,14 +351,160 @@ describe("open session title/status sync (Milestone AM)", () => {
     await flush();
     expect(tabB?.title).toBe("整理工作区");
     expect(tabB?.status).toBe("running");
-
-    fail = false;
-    missing = true;
-    tickInterval();
-    await flush();
-    expect(tabB?.title).toBe("整理工作区");
-    expect(tabB?.status).toBe("running");
     expect(tabB?.messages[0]?.content).toBe("整理工作区");
     stop();
+  });
+});
+
+describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
+  it("reuses the 2s list poll and stays on default runtime pig", () => {
+    expect(SESSION_LIST_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+  });
+
+  it("keeps the open id when it is still in GET /api/sessions", () => {
+    const list = [row({ id: "ses_a" }), row({ id: "ses_b" })];
+    expect(nextOpenSessionId("ses_a", list)).toBe("ses_a");
+    const prev = session({ id: "ses_a", title: "整理工作区", status: "idle" });
+    expect(applyOpenSessionFromList(prev, list)).toBe(prev);
+  });
+
+  it("clears the open session when the list no longer contains that id", () => {
+    const prev = session({
+      id: "ses_a",
+      title: "已删会话",
+      messages: [message("msg_ghost")],
+    });
+    const remaining = [row({ id: "ses_b", title: "其他会话" })];
+    expect(applyOpenSessionFromList(prev, remaining)).toBeNull();
+    expect(applyOpenSessionFromList(prev, [])).toBeNull();
+    expect(nextOpenSessionId("ses_a", remaining)).toBe("ses_b");
+    expect(nextOpenSessionId("ses_a", [])).toBeNull();
+    expect(nextOpenSessionId(null, remaining)).toBeNull();
+  });
+
+  it("does not pull a transcript or touch another session's messages when leaving", () => {
+    const deleted = session({
+      id: "ses_a",
+      title: "幽灵会话",
+      messages: [message("msg_deleted")],
+      steps: [{ id: "step_gone", title: "旧步骤", status: "done" }],
+    });
+    const other = session({
+      id: "ses_b",
+      title: "其他会话",
+      messages: [message("msg_keep")],
+    });
+    const list = [row({ id: "ses_b", title: "其他会话" })];
+    expect(applyOpenSessionFromList(deleted, list)).toBeNull();
+    expect(applyOpenSessionFromList(other, list)?.messages).toBe(other.messages);
+    expect(other.messages[0]?.id).toBe("msg_keep");
+    expect(JSON.stringify(list)).not.toMatch(/msg_deleted|step_gone/);
+  });
+
+  it("Tab B leaves a session Tab A deleted on poll / focus / visibility", async () => {
+    const server = [
+      row({ id: "ses_a", title: "打开中", status: "idle" }),
+      row({ id: "ses_b", title: "其他会话", status: "idle" }),
+    ];
+    let tabBList = server.map((s) => ({ ...s }));
+    let tabB: Session | null = session({ id: "ses_a", title: "打开中", status: "idle" });
+    let tabBOpenId: string | null = "ses_a";
+    const fetches: SessionSummary[][] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const applyList = (next: SessionSummary[]) => {
+      tabBList = applySessionListSnapshot(tabBList, next);
+      const nextId = nextOpenSessionId(tabBOpenId, next);
+      if (tabBOpenId && nextId !== tabBOpenId) {
+        tabB = applyOpenSessionFromList(tabB, next);
+        tabBOpenId = nextId;
+        return;
+      }
+      tabB = applyOpenSessionFromList(tabB, next);
+    };
+
+    const stop = startSessionListSync({
+      fetchList: async () => {
+        const snap = server.map((s) => ({ ...s }));
+        fetches.push(snap);
+        return snap;
+      },
+      onList: applyList,
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabB?.id).toBe("ses_a");
+    expect(tabBList.map((s) => s.id)).toEqual(["ses_a", "ses_b"]);
+
+    server.splice(0, 1);
+    tickInterval();
+    await flush();
+
+    expect(tabB).toBeNull();
+    expect(tabBOpenId).toBe("ses_b");
+    expect(tabBList.map((s) => s.id)).toEqual(["ses_b"]);
+    expect(fetches.every((list) => list.every((item) => "id" in item && "title" in item))).toBe(true);
+
+    const afterPoll = fetches.length;
+    setVisible(false);
+    server.length = 0;
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(fetches.length).toBeGreaterThan(afterPoll);
+    expect(tabB).toBeNull();
+    expect(tabBOpenId).toBeNull();
+    expect(tabBList).toEqual([]);
+
+    const beforeFocus = fetches.length;
+    focus();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(beforeFocus);
+    stop();
+  });
+
+  it("does not treat a failed list refresh as a delete", async () => {
+    let fail = false;
+    let tabB: Session | null = session({ id: "ses_a", title: "整理工作区" });
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSessionListSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [row({ id: "ses_a", title: "整理工作区" })];
+      },
+      onList: (next) => {
+        const nextId = nextOpenSessionId(tabB?.id, next);
+        if (tabB?.id && nextId !== tabB.id) {
+          tabB = applyOpenSessionFromList(tabB, next);
+          return;
+        }
+        tabB = applyOpenSessionFromList(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(tabB?.id).toBe("ses_a");
+    expect(tabB?.title).toBe("整理工作区");
+    expect(tabB?.messages[0]?.content).toBe("整理工作区");
+    stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const snap = [row({ id: "ses_b", title: "其他会话", status: "idle" })];
+    const applied = applyOpenSessionFromList(session({ id: "ses_a", title: "已删" }), snap);
+    const raw = JSON.stringify({ applied, snap, nextId: nextOpenSessionId("ses_a", snap) });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
