@@ -170,15 +170,12 @@ describe("Milestone AD local-stub materialize progress", () => {
       expect(firstProgress).toBeGreaterThanOrEqual(0);
       expect(firstLive).toBeGreaterThan(firstProgress);
 
-      const lastBootstrap = [...events]
-        .map((e, i) => ({ e, i }))
-        .reverse()
-        .find(
-          ({ e }) =>
-            e.type === "steps" && e.steps.some((s) => s.id.startsWith("local-stub:")),
-        );
-      expect(lastBootstrap).toBeDefined();
-      expect(lastBootstrap!.i).toBeLessThan(firstLive);
+      const afterLive = events.slice(firstLive);
+      expect(
+        afterLive.some(
+          (e) => e.type === "steps" && e.steps.some((s) => s.id.startsWith("local-stub:")),
+        ),
+      ).toBe(false);
 
       expect(next.status).toBe("idle");
       expect(next.lastError).toBeUndefined();

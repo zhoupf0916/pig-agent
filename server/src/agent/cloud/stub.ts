@@ -67,7 +67,10 @@ export async function runStubCloudAgent(options: {
 
   try {
     const result = await runAgent({
-      session,
+      session: {
+        ...session,
+        steps: session.steps.filter((step) => !isLocalStubProgressStep(step)),
+      },
       settings: stubSettings,
       signal: inner.signal,
       projectInstruction: options.projectInstruction,
