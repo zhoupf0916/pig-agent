@@ -191,6 +191,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab open expert detail deleted elsewhere (Milestone AR)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/experts` detects that the already-open expert id is gone (complement to Milestone AC list / detail). Teams list GET still allowed. Clear the open detail or switch away. No new write path, no dual-write of experts / sessions / events, no public webhook, no full page reload. Once the list says the id is gone, do **not** `GET /api/experts/:id`. Delete still uses existing `DELETE`. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AR-01** Two workstation tabs on the same host. Tab B has an expert open on `#/experts/:id`. Tab A deletes that expert — Tab B on focus, visibility, or one short poll clears or navigates away without a full page refresh. Do not stay on a ghost detail
+- [ ] **AR-02** Tab B only reuses existing `GET /api/experts` (teams list GET still allowed). After the list lacks that id, do **not** request `:id`. Delete still uses existing `DELETE`. No new write path, no dual-write, no public webhook
+- [ ] **AR-03** Header chip still defaults to **本机 Pig**. Milestone O–AQ / L·M·N / W·X / AC / AK unchanged
+- [ ] **AR-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab experts directory (Milestone AC)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/experts` (+ `GET /api/expert-teams`) refresh of `#/experts`; already-open detail also `GET /api/experts/:id`. No new write path, no dual-write of sessions / events, no public webhook. Session pin / sequential expert-team run semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
