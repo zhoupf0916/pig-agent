@@ -49,7 +49,7 @@ This is not Slack/Telegram ingress, Desk Remote, Firecracker, or a marketplace.
 
 `#/automations` directory: list, create, edit, enable, **立即运行**. Light Codex styling, Chinese labels.
 
-Another same-host tab already on the page refreshes the **full list snapshot** (row add/remove, enable / cron / name, plus **上次运行** / `lastSessionId` / `lastError`) from the existing `GET /api/automations` (focus / visibility / short poll). The selected item may also `GET /api/automations/:id`. List-visible updates even when detail is not open. No new write path and no public webhook.
+Another same-host tab already on the page refreshes the **full list snapshot** (row add/remove, enable / cron / name, plus **上次运行** / `lastSessionId` / `lastError`) from the existing `GET /api/automations` (focus / visibility / short poll). An already-open automation also `GET /api/automations/:id` **only while that id is still in the list**. Once the list lacks the open id, rewrite `#/automations/:id` (or `#/automations`) and clear or switch away — do **not** `GET /api/automations/:id`. List-visible updates even when detail is not open. 「立即运行」 / cron / pin stay the existing write paths. No new write path and no public webhook.
 
 ## Out of scope
 
