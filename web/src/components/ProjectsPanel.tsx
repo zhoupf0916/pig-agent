@@ -5,6 +5,8 @@ import { formatBytes, isImage, isTextLike } from "../lib/format";
 import {
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
+  nextOpenProjectId,
+  shouldFetchProjectDetail,
   startProjectsSync,
 } from "../lib/projects-sync";
 import type { Project, ProjectAsset, ProjectSummary, Session, SessionSummary, TodoStatus } from "../types";
@@ -73,6 +75,13 @@ export function ProjectsPanel({
     void (async () => {
       try {
         const list = await refreshList();
+        // AN-02 nail: list absence first — rewrite hash / open state, never GET :id
+        if (selectedId && !shouldFetchProjectDetail(selectedId, list)) {
+          const nextId = nextOpenProjectId(selectedId, list);
+          onSelectProject(nextId ?? undefined);
+          setDetail(null);
+          return;
+        }
         if (selectedId) await loadDetail(selectedId);
         else if (list[0]) onSelectProject(list[0].id);
       } catch (err) {
@@ -91,6 +100,10 @@ export function ProjectsPanel({
       selectedId,
       fetchSelected: selectedId ? (id) => api.project(id) : undefined,
       onSelected: (next) => setDetail((prev) => applyProjectDetailSnapshot(prev, next)),
+      onOpenId: (nextId) => {
+        onSelectProject(nextId ?? undefined);
+        setDetail(null);
+      },
     });
   }, [selectedId]);
 
