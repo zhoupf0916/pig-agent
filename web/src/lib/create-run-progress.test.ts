@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCreateRunProgressStep,
   isFollowUpProgressStep,
+  isLocalStubProgressStep,
   streamingStatusLabel,
 } from "./create-run-progress";
 
@@ -46,6 +47,37 @@ describe("follow-up / reconnect progress UI labels", () => {
       false,
     );
     expect(isFollowUpProgressStep({ id: "create-run:post", title: "创建远程运行", status: "running" })).toBe(
+      false,
+    );
+  });
+});
+
+describe("local-stub materialize progress UI labels", () => {
+  it("shows the running Chinese local-stub chip instead of 正在思考…", () => {
+    expect(
+      streamingStatusLabel([
+        { id: "local-stub:materialize", title: "准备隔离工作区", status: "running" },
+      ]),
+    ).toBe("准备隔离工作区");
+    expect(
+      streamingStatusLabel([{ id: "local-stub:start", title: "启动本机循环", status: "running" }]),
+    ).toBe("启动本机循环");
+  });
+
+  it("does not treat local-stub ids as W/X chips", () => {
+    expect(
+      isLocalStubProgressStep({ id: "local-stub:materialize", title: "准备隔离工作区", status: "running" }),
+    ).toBe(true);
+    expect(
+      isCreateRunProgressStep({ id: "local-stub:materialize", title: "准备隔离工作区", status: "running" }),
+    ).toBe(false);
+    expect(
+      isFollowUpProgressStep({ id: "local-stub:start", title: "启动本机循环", status: "running" }),
+    ).toBe(false);
+    expect(isLocalStubProgressStep({ id: "create-run:snapshot", title: "准备沙箱快照", status: "done" })).toBe(
+      false,
+    );
+    expect(isLocalStubProgressStep({ id: "follow-up:post", title: "继续跟进", status: "running" })).toBe(
       false,
     );
   });

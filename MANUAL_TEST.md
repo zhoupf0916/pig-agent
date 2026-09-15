@@ -65,7 +65,7 @@ Default runtime stays **本机 Pig**. Cloud is opt-in, like Codex. See [docs/clo
 - [ ] Switch to **云端**：mode defaults to `local-stub`; Base URL / token optional
 - [ ] Topbar chip + Settings「当前执行面」read `云端 · local-stub` (or `云端 · remote · <生效 URL>` when remote)
 - [ ] `pnpm mock:llm`, Settings Pig Base URL `http://127.0.0.1:8788/v1`, runtime **云端** / local-stub
-- [ ] New session: `请写一个 hello-cloud.md，内容为 ok` — step chips + tool cards + **产物** list the file (stub copies into `data/cloud-runs/<id>/workspace/` then syncs back)
+- [ ] New session: `请写一个 hello-cloud.md，内容为 ok` — while isolate copy is in flight the step strip shows 准备隔离工作区 → 启动本机循环 (not create-run / follow-up chips); then first pig token/tool clears them. Step chips + tool cards + **产物** list the file (stub copies into `data/cloud-runs/<id>/workspace/` then syncs back)
 - [ ] `data/cloud-runs/<id>/run.json` has no API keys; isolated copy has no `.env`
 - [ ] **停止** while the stub is running returns idle (same control as Pig)
 - [ ] Remote mode without a URL refuses to save（中文：未配置控制面 URL）
@@ -449,6 +449,18 @@ Does **not** change the default runtime (still **本机 Pig**). No new backends 
 - [ ] Expire / delete the remote run (or `404` the events route) — banner reads 远程运行已过期; retry allocates a new create-run
 - [ ] **停止** while remote SSE is open → session idle; send again works (no 409 zombie)
 - [ ] Banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+
+## Local-stub materialize progress (Milestone AD)
+
+Does **not** change the default runtime (still **本机 Pig**). Reuses the existing `steps` SSE channel and the Milestone W `CreateRunProgress` machine (third catalog `local-stub:`, not a fourth SM). Mutually exclusive with W `create-run:` and X `follow-up:` copy. No public webhooks. Failures stay on existing Chinese banner / retry; abort → idle.
+
+- [ ] Header chip still defaults to **本机 Pig**. Settings runtime left on Pig — local golden path unchanged
+- [ ] `pnpm mock:llm`, Settings → 云端 / local-stub. New session, send a turn — while isolate materialize is in flight the step strip (and the 正在思考 line) shows Chinese progress: 准备隔离工作区 → 启动本机循环 — **not** create-run / follow-up chips
+- [ ] After the first pig token / tool event, bootstrap chips clear and the UI is the live turn (tokens / tool cards / idle)
+- [ ] Deliberate Pig failure (bad key / closed LLM port) — yellow banner + existing **重试本轮**; session is `idle` after abort, never stuck `running`
+- [ ] **停止** during hung local-stub turn → idle; next send works (no 409 zombie)
+- [ ] Progress copy / banner / session JSON never show `sk-…` / `PIG_CLOUD_TOKEN` / Bearer tokens
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
 ## Remote follow-up / reconnect progress (Milestone X)
