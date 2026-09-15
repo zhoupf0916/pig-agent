@@ -125,6 +125,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab workbench pin-dropdown catalogs (Milestone AK)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` refresh of the workbench 项目 / 专家 / 小队 pin **option lists**. No new write path, no dual-write, no public webhook. Pin binding still uses the existing paths (Milestone Y). Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already on the workbench. Tab A creates / renames / deletes a project or expert / team — Tab B’s pin dropdown catalogs catch up without a full page refresh (focus the tab, become visible, or wait one short poll)
+- [ ] Tab B reuses those three existing GETs only. Pin bind / unbind still use the existing session PATCH paths. No new write path, dual-write, or public webhook
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AJ / L·M·N / W·X / Y / AA / AC unchanged
+- [ ] Dropdown / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab Settings skills list (Milestone AJ)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/skills` refresh of the Settings `skills/` list. No new write path, no dual-write, no public webhook. `list_skills` / `load_skill` semantics unchanged. Does **not** expand the Codex skills bridge. Not a credentials vault / connector / multi-agent / sandbox change.

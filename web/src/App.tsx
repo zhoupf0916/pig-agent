@@ -39,6 +39,12 @@ import {
   startSessionPinSync,
 } from "./lib/session-pin-sync";
 import {
+  applyPinExpertCatalogSnapshot,
+  applyPinProjectCatalogSnapshot,
+  applyPinTeamCatalogSnapshot,
+  startPinCatalogSync,
+} from "./lib/pin-catalog-sync";
+import {
   applyWorkspaceTreeSnapshot,
   startWorkspaceTreeSync,
 } from "./lib/workspace-tree-sync";
@@ -259,6 +265,26 @@ export function App() {
       onPins: (next) => setSession((prev) => applySessionPinSnapshot(prev, next)),
     });
   }, [activeId]);
+
+  useEffect(() => {
+    return startPinCatalogSync({
+      fetchProjects: async () => {
+        const { projects: next } = await api.projects();
+        return next;
+      },
+      onProjects: (next) => setProjects((prev) => applyPinProjectCatalogSnapshot(prev, next)),
+      fetchExperts: async () => {
+        const { experts: next } = await api.experts();
+        return next;
+      },
+      onExperts: (next) => setExperts((prev) => applyPinExpertCatalogSnapshot(prev, next)),
+      fetchTeams: async () => {
+        const { teams: next } = await api.expertTeams();
+        return next;
+      },
+      onTeams: (next) => setExpertTeams((prev) => applyPinTeamCatalogSnapshot(prev, next)),
+    });
+  }, []);
 
   useEffect(() => {
     return startSettingsSurfaceSync({

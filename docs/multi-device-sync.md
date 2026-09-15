@@ -116,7 +116,11 @@ Light / dark stays in the existing client-only `localStorage` key `pig-agent.the
 
 ## Session pins (Milestone Y)
 
-When Tab B is already showing a session, the chat-header pin row (项目 / 专家 / 小队) is a **read-only** refresh of those fields from `GET /api/sessions`. Another same-host tab that binds or unbinds (「未绑定」) updates Tab B's dropdowns / hints on focus, visibility, or a short poll — no full page reload. Apply patches only the pin fields on the open session (transcript / steps stay put). This does **not** add a write path, a second pin store, or dual-write `events.jsonl`. Default runtime stays **pig**.
+When Tab B is already showing a session, the chat-header pin row (项目 / 专家 / 小队) is a **read-only** refresh of those fields from `GET /api/sessions`. Another same-host tab that binds or unbinds (「未绑定」) updates Tab B's dropdowns / hints on focus, visibility, or a short poll — no full page reload. Apply patches only the pin fields on the open session (transcript / steps stay put). This does **not** add a write path, a second pin store, or dual-write `events.jsonl`. Default runtime stays **pig**. Catalog option lists (create / rename / delete) are Milestone AK.
+
+## Workbench pin-dropdown catalogs (Milestone AK)
+
+When Tab B is already on the workbench, the chat-header 项目 / 专家 / 小队 **option lists** are a **read-only** refresh of the existing `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams`. Another same-host tab that creates, renames, or deletes a project / expert / team updates Tab B's dropdown catalogs on focus, visibility, or a short poll — no full page reload. Pin binding still uses the existing session PATCH paths (Milestone Y). This does **not** add a write path, a public webhook, or dual-write projects / experts / sessions / `events.jsonl`. Default runtime stays **pig**. Dropdown / snapshot JSON never carry provider-key plaintext.
 
 ## Automations list last-run (Milestone Z)
 

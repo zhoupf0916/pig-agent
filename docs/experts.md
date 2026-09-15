@@ -110,7 +110,7 @@ A regular `POST /api/sessions/:id/messages` on a chain-team session (no `expertI
 ## Web
 
 - `#/experts` directory: list, create custom, edit instruction, pin to the current session. Another same-host tab already on this page refreshes the list from `GET /api/experts` and `GET /api/expert-teams` (focus / visibility / short poll). An already-open expert also `GET /api/experts/:id`. Session pin / sequential team-run stay the existing write paths.
-- Workstation header: 项目 / 专家 / 小队 selects. Light Codex styling, Chinese labels.
+- Workstation header: 项目 / 专家 / 小队 selects. Catalog options refresh from `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` (focus / visibility / short poll) when another same-host tab creates / renames / deletes. Session pin binding / sequential team-run stay the existing write paths. Light Codex styling, Chinese labels.
 - Team pin shows **小队流水线** chips (`pending` / `running` / `done` / `error`).
 - Button **顺序执行小队** (or **继续小队** after a stop). Transcript `[team]` lines render as step markers.
 
