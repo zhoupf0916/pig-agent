@@ -7,6 +7,8 @@ import {
   BUNDLED_SCOUT_ID,
 } from "./bundled-experts.ts";
 import { resolveExpertPlaybook, resolveTeamMemberPlaybook } from "./experts.ts";
+import { getSession, saveSession } from "./sessions.ts";
+import type { TeamRun } from "../types.ts";
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
@@ -180,5 +182,173 @@ describe("local experts registry", () => {
 
     const deleted = await app.request(`/api/expert-teams/${team.id}`, { method: "DELETE" });
     expect(deleted.status).toBe(200);
+  });
+
+  it("clears session expertId after deleting that custom expert (Milestone AT)", async () => {
+    const custom = await json<{ id: string; name: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AT 文档专家",
+          instruction: "只写说明，不要改代码。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AT 保留专家",
+          instruction: "保留钉选。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const pinned = await json<{ id: string; expertId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertId: custom.id }),
+      }),
+    );
+    const other = await json<{ id: string; expertId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertId: keep.id }),
+      }),
+    );
+    const bundled = await json<{ id: string; expertId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertId: BUNDLED_SCOUT_ID }),
+      }),
+    );
+    expect(pinned.expertId).toBe(custom.id);
+
+    const deleted = await app.request(`/api/experts/${custom.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{ expertId?: string; expertTeamId?: string }>(
+      await app.request(`/api/sessions/${pinned.id}`),
+    );
+    expect(after.expertId).toBeUndefined();
+
+    const listed = await json<{ sessions: Array<{ id: string; expertId?: string }> }>(
+      await app.request("/api/sessions"),
+    );
+    expect(listed.sessions.find((s) => s.id === pinned.id)?.expertId).toBeUndefined();
+    expect((await json<{ expertId?: string }>(await app.request(`/api/sessions/${other.id}`))).expertId).toBe(
+      keep.id,
+    );
+    expect((await json<{ expertId?: string }>(await app.request(`/api/sessions/${bundled.id}`))).expertId).toBe(
+      BUNDLED_SCOUT_ID,
+    );
+
+    const refuse = await app.request(`/api/experts/${BUNDLED_SCOUT_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    expect((await json<{ expertId?: string }>(await app.request(`/api/sessions/${bundled.id}`))).expertId).toBe(
+      BUNDLED_SCOUT_ID,
+    );
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("clears session expertTeamId and teamRun after deleting that custom team (Milestone AT)", async () => {
+    const team = await json<{ id: string; name: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AT 文档小队",
+          mode: "chain",
+          expertIds: [BUNDLED_SCOUT_ID, "exp_plan"],
+        }),
+      }),
+    );
+    const keepTeam = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AT 保留小队",
+          mode: "parallel",
+          expertIds: [BUNDLED_IMPLEMENT_ID],
+        }),
+      }),
+    );
+    const pinned = await json<{ id: string; expertId?: string; expertTeamId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertId: BUNDLED_SCOUT_ID, expertTeamId: team.id }),
+      }),
+    );
+    const other = await json<{ id: string; expertTeamId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertTeamId: keepTeam.id }),
+      }),
+    );
+    const bundled = await json<{ id: string; expertTeamId?: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expertTeamId: BUNDLED_CODING_TEAM_ID }),
+      }),
+    );
+
+    const now = "2026-09-15T07:00:00.000Z";
+    const teamRun: TeamRun = {
+      teamId: team.id,
+      teamName: team.name,
+      strategy: "same-session",
+      status: "done",
+      currentIndex: 1,
+      members: [
+        { expertId: BUNDLED_SCOUT_ID, name: "侦察 Scout", kind: "scout", status: "done" },
+        { expertId: "exp_plan", name: "规划 Plan", kind: "plan", status: "done" },
+      ],
+      startedAt: now,
+      updatedAt: now,
+    };
+    const full = await getSession(pinned.id);
+    expect(full).toBeTruthy();
+    full!.teamRun = teamRun;
+    await saveSession(full!);
+
+    const deleted = await app.request(`/api/expert-teams/${team.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{
+      expertId?: string;
+      expertTeamId?: string;
+      teamRun?: TeamRun;
+    }>(await app.request(`/api/sessions/${pinned.id}`));
+    expect(after.expertTeamId).toBeUndefined();
+    expect(after.teamRun).toBeUndefined();
+    expect(after.expertId).toBe(BUNDLED_SCOUT_ID);
+
+    const listed = await json<{ sessions: Array<{ id: string; expertTeamId?: string }> }>(
+      await app.request("/api/sessions"),
+    );
+    expect(listed.sessions.find((s) => s.id === pinned.id)?.expertTeamId).toBeUndefined();
+    expect((await json<{ expertTeamId?: string }>(await app.request(`/api/sessions/${other.id}`))).expertTeamId).toBe(
+      keepTeam.id,
+    );
+    expect(
+      (await json<{ expertTeamId?: string }>(await app.request(`/api/sessions/${bundled.id}`))).expertTeamId,
+    ).toBe(BUNDLED_CODING_TEAM_ID);
+
+    const refuse = await app.request(`/api/expert-teams/${BUNDLED_CODING_TEAM_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    expect(
+      (await json<{ expertTeamId?: string }>(await app.request(`/api/sessions/${bundled.id}`))).expertTeamId,
+    ).toBe(BUNDLED_CODING_TEAM_ID);
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 });

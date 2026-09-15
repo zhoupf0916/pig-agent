@@ -64,6 +64,8 @@ SSE event `team_run` carries the same object so the workstation pipeline chips u
 
 `POST /api/sessions` and `PATCH /api/sessions/:id` accept `expertId` and `expertTeamId` (nullable to unbind). Unbinding a team clears `teamRun`.
 
+Deleting a **custom** expert (existing `DELETE /api/experts/:id`) clears `expertId` on sessions that pinned it. Deleting a **custom** team (`DELETE /api/expert-teams/:id`) clears `expertTeamId` and `teamRun`. Built-in experts / teams cannot be deleted (400). An already-open workbench pin row catches up via the existing Milestone Y `GET /api/sessions` list sync (focus / visibility / short poll) — no ghost name, no new poller. Automations that still name the id are not rewritten.
+
 Injection rules:
 
 1. If `expertId` is set, that expert’s instruction is injected (the active role). Single turn.
@@ -110,7 +112,7 @@ A regular `POST /api/sessions/:id/messages` on a chain-team session (no `expertI
 ## Web
 
 - `#/experts` directory: list, create custom, edit instruction, pin to the current session. Another same-host tab already on this page refreshes the list from `GET /api/experts` and `GET /api/expert-teams` (focus / visibility / short poll). An already-open expert also `GET /api/experts/:id` **only while that id is still in the list**. Once the list lacks the open id, rewrite `#/experts/:id` (or `#/experts`) and clear or switch away — do **not** `GET /api/experts/:id`. Session pin / sequential team-run stay the existing write paths.
-- Workstation header: 项目 / 专家 / 小队 selects. Catalog options refresh from `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` (focus / visibility / short poll) when another same-host tab creates / renames / deletes. Session pin binding / sequential team-run stay the existing write paths. Light Codex styling, Chinese labels.
+- Workstation header: 项目 / 专家 / 小队 selects. Catalog options refresh from `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` (focus / visibility / short poll) when another same-host tab creates / renames / deletes. If that delete is a custom expert / team, sessions that pinned it unbind on the server; the open pin row follows via `GET /api/sessions` (Milestone Y / AT). Session pin binding / sequential team-run stay the existing write paths. Light Codex styling, Chinese labels.
 - Team pin shows **小队流水线** chips (`pending` / `running` / `done` / `error`).
 - Button **顺序执行小队** (or **继续小队** after a stop). Transcript `[team]` lines render as step markers.
 

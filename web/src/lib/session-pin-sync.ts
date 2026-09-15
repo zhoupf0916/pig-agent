@@ -41,16 +41,21 @@ export function sessionPinBindingLabel(
 }
 
 function assignSessionPins<T extends SessionPinFields>(base: T, pins: SessionPinFields): T {
-  const next = { ...base };
+  const next = { ...base } as T & { teamRun?: unknown };
   const projectId = normalizeSessionPinId(pins.projectId);
   const expertId = normalizeSessionPinId(pins.expertId);
   const expertTeamId = normalizeSessionPinId(pins.expertTeamId);
+  const prevTeamId = normalizeSessionPinId(base.expertTeamId);
   if (projectId) next.projectId = projectId;
   else delete next.projectId;
   if (expertId) next.expertId = expertId;
   else delete next.expertId;
   if (expertTeamId) next.expertTeamId = expertTeamId;
-  else delete next.expertTeamId;
+  else {
+    delete next.expertTeamId;
+    // Same as PATCH expertTeamId: null — drop leftover pipeline state.
+    if (prevTeamId) delete next.teamRun;
+  }
   return next;
 }
 
