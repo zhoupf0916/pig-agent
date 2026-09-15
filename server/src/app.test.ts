@@ -122,11 +122,21 @@ describe("HTTP API", () => {
   });
 
   it("lists shipped skills", async () => {
+    const before = await loadSettings();
     const res = await app.request("/api/skills");
-    const body = (await res.json()) as { skills: Array<{ name: string }> };
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      skills: Array<{ name: string; description?: string; filename?: string; keywords?: string[]; body?: string }>;
+    };
     const names = body.skills.map((s) => s.name);
     expect(names).toContain("organize-workspace");
     expect(names).toContain("research-report");
     expect(names).toContain("coding-helper");
+    expect(body.skills.every((s) => typeof s.filename === "string" && s.filename.endsWith(".md"))).toBe(true);
+    expect(body.skills.some((s) => typeof s.body === "string")).toBe(false);
+    expect(JSON.stringify(body)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    const after = await loadSettings();
+    expect(after).toEqual(before);
+    expect(after.runtime).toBe("pig");
   });
 });
