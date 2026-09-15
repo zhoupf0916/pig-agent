@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { AgentEvent, Artifact, ChatMessage, Session, Settings } from "../../types.ts";
 import { capText, newId, nowIso } from "../../util.ts";
+import { CreateRunProgress } from "../cloud/create-run-progress.ts";
 import { deliverableSummary } from "../runtime.ts";
 import { isInsideWorkspace, toRel } from "../sandbox.ts";
 import { CodexSessionError, decideCodexRetry, formatCodexTurnError } from "./errors.ts";
@@ -33,7 +34,17 @@ export async function runCodexAgent(options: {
   };
   emit({ type: "status", status: "running" });
 
+  const progress = new CreateRunProgress(session, emit);
+  let handedOff = false;
+  const releaseBootstrap = () => {
+    if (handedOff) return;
+    handedOff = true;
+    if (signal.aborted) progress.abort();
+    else progress.handoffToStream();
+  };
+
   try {
+    progress.begin("env");
     const { binary, home } = assertCodexReady(settings);
     const synced = await syncCodexHome(settings, { home });
     const workspaceReal = synced.workspaceRealPath ?? resolveTrustedWorkspace(settings.workspaceRoot);
@@ -61,6 +72,7 @@ export async function runCodexAgent(options: {
         return;
       }
       if (mapped.kind === "assistant") {
+        releaseBootstrap();
         const message: ChatMessage = {
           id: newId("msg"),
           role: "assistant",
@@ -72,6 +84,7 @@ export async function runCodexAgent(options: {
         return;
       }
       if (mapped.kind === "tool_start") {
+        releaseBootstrap();
         const startedAt = nowIso();
         const assistant: ChatMessage = {
           id: newId("msg"),
@@ -106,6 +119,7 @@ export async function runCodexAgent(options: {
       if (mapped.kind === "tool_end") {
         const start = pending.get(mapped.id);
         if (!start) {
+          releaseBootstrap();
           const assistant: ChatMessage = {
             id: newId("msg"),
             role: "assistant",
@@ -161,6 +175,7 @@ export async function runCodexAgent(options: {
 
     if (signal.aborted) throw new Error("Aborted");
 
+    progress.begin("spawn");
     const result = await runCodexExec({
       binary,
       prompt,
@@ -182,15 +197,16 @@ export async function runCodexAgent(options: {
     }
 
     if (fatal) {
-      return failCodexTurn(session, new CodexSessionError(fatal), emit);
+      return failCodexTurn(session, new CodexSessionError(fatal), emit, releaseBootstrap);
     }
 
     if (result.code !== 0 && result.code !== null) {
       const detail = result.stderr.trim() || `codex exec exited ${result.code}`;
-      return failCodexTurn(session, new CodexSessionError(detail), emit);
+      return failCodexTurn(session, new CodexSessionError(detail), emit, releaseBootstrap);
     }
 
     if (!session.messages.some((m) => m.role === "assistant" && m.content.trim())) {
+      releaseBootstrap();
       const fallback: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
@@ -203,6 +219,7 @@ export async function runCodexAgent(options: {
 
     session.status = "idle";
     session.updatedAt = nowIso();
+    releaseBootstrap();
     emit({ type: "status", status: "idle" });
     emit({ type: "done", session });
     return session;
@@ -210,6 +227,7 @@ export async function runCodexAgent(options: {
     const raw = err instanceof Error ? err.message : String(err);
     const aborted = raw === "Aborted" || signal.aborted;
     if (aborted) {
+      releaseBootstrap();
       const stop: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
@@ -226,7 +244,7 @@ export async function runCodexAgent(options: {
       emit({ type: "done", session });
       return session;
     }
-    return failCodexTurn(session, err, emit);
+    return failCodexTurn(session, err, emit, releaseBootstrap);
   }
 }
 
@@ -234,7 +252,9 @@ function failCodexTurn(
   session: Session,
   err: unknown,
   emit: (event: AgentEvent) => void,
+  releaseBootstrap?: () => void,
 ): Session {
+  releaseBootstrap?.();
   session.status = "idle";
   session.lastError = formatCodexTurnError(err);
   session.localRetry = decideCodexRetry(session);

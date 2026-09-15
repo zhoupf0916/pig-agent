@@ -9,6 +9,9 @@ export const FOLLOW_UP_PROGRESS_ID_PREFIX = "follow-up:";
 /** Must match server `LOCAL_STUB_PROGRESS_ID_PREFIX`. */
 export const LOCAL_STUB_PROGRESS_ID_PREFIX = "local-stub:";
 
+/** Must match server `CODEX_PROGRESS_ID_PREFIX`. */
+export const CODEX_PROGRESS_ID_PREFIX = "codex:";
+
 export function isCreateRunProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(CREATE_RUN_PROGRESS_ID_PREFIX);
 }
@@ -21,9 +24,16 @@ export function isLocalStubProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(LOCAL_STUB_PROGRESS_ID_PREFIX);
 }
 
+export function isCodexProgressStep(step: PlanStep): boolean {
+  return step.id.startsWith(CODEX_PROGRESS_ID_PREFIX);
+}
+
 export function isRemoteWaitProgressStep(step: PlanStep): boolean {
   return (
-    isCreateRunProgressStep(step) || isFollowUpProgressStep(step) || isLocalStubProgressStep(step)
+    isCreateRunProgressStep(step) ||
+    isFollowUpProgressStep(step) ||
+    isLocalStubProgressStep(step) ||
+    isCodexProgressStep(step)
   );
 }
 
