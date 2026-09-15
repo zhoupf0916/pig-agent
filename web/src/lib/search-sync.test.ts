@@ -5,9 +5,12 @@ import { describeExecutionSurface } from "./runtime-surface";
 import type { SessionListSyncClock } from "./session-list-sync";
 import {
   applySearchHitsSnapshot,
+  SEARCH_BOX_DROPDOWN_LIMIT,
   SEARCH_SYNC_POLL_MS,
   sanitizeSearchHit,
+  searchBoxCanSoftRefetch,
   searchHitSyncKey,
+  startSearchBoxSync,
   startSearchSync,
 } from "./search-sync";
 
@@ -322,6 +325,186 @@ describe("search same-query cross-tab sync (Milestone AI)", () => {
     tickInterval();
     await flush();
     expect(tabB[0]?.title).toBe("调研报告");
+    stop();
+  });
+});
+
+describe("top-bar SearchBox same-query sync (Milestone AL)", () => {
+  it("soft-refetches only when a query is present and the dropdown is open", () => {
+    expect(SEARCH_BOX_DROPDOWN_LIMIT).toBe(8);
+    expect(SEARCH_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(searchBoxCanSoftRefetch({ query: "调研", dropdownOpen: true })).toBe(true);
+    expect(searchBoxCanSoftRefetch({ query: "调研", dropdownOpen: false })).toBe(false);
+    expect(searchBoxCanSoftRefetch({ query: "   ", dropdownOpen: true })).toBe(false);
+    expect(searchBoxCanSoftRefetch({ query: "", dropdownOpen: true })).toBe(false);
+    expect(searchBoxCanSoftRefetch({ query: "调研", dropdownOpen: false })).toBe(false);
+  });
+
+  it("Tab B open-dropdown same-query hits follow Tab A title / project / memory edits", async () => {
+    let server = [hit({ id: "ses_a", title: "旧标题", snippet: "近讯", sessionId: "ses_a" })];
+    let tabB = server.map((row) => ({ ...row }));
+    const queries: string[] = [];
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startSearchBoxSync({
+      query: "调研",
+      dropdownOpen: true,
+      fetchHits: async (q) => {
+        queries.push(q);
+        return server.map((row) => ({ ...row }));
+      },
+      onHits: (next) => {
+        tabB = applySearchHitsSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(queries.every((q) => q === "调研")).toBe(true);
+    expect(painted(tabB[0])).toEqual({
+      type: "session",
+      id: "ses_a",
+      title: "旧标题",
+      snippet: "近讯",
+      href: "#/sessions/ses_a",
+      sessionId: "ses_a",
+      projectId: undefined,
+    });
+
+    server = [
+      hit({
+        id: "mem_a",
+        type: "memory",
+        title: "调研备忘",
+        snippet: "Tab A 新钉住",
+        href: "#/memory/mem_a",
+      }),
+      hit({
+        id: "ses_a",
+        title: "Tab A 改过的标题",
+        snippet: "请写一份调研报告",
+        sessionId: "ses_a",
+      }),
+      hit({
+        id: "prj_a",
+        type: "project",
+        title: "调研项目",
+        snippet: "Tab A 改过的指令",
+        href: "#/projects/prj_a",
+        projectId: "prj_a",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabB.map((row) => row.id)).toEqual(["mem_a", "ses_a", "prj_a"]);
+    expect(painted(tabB.find((row) => row.id === "ses_a"))).toEqual({
+      type: "session",
+      id: "ses_a",
+      title: "Tab A 改过的标题",
+      snippet: "请写一份调研报告",
+      href: "#/sessions/ses_a",
+      sessionId: "ses_a",
+      projectId: undefined,
+    });
+    expect(painted(tabB.find((row) => row.id === "prj_a"))).toEqual({
+      type: "project",
+      id: "prj_a",
+      title: "调研项目",
+      snippet: "Tab A 改过的指令",
+      href: "#/projects/prj_a",
+      sessionId: undefined,
+      projectId: "prj_a",
+    });
+    expect(painted(tabB.find((row) => row.id === "mem_a"))).toEqual({
+      type: "memory",
+      id: "mem_a",
+      title: "调研备忘",
+      snippet: "Tab A 新钉住",
+      href: "#/memory/mem_a",
+      sessionId: undefined,
+      projectId: undefined,
+    });
+    stop();
+  });
+
+  it("does not force-fetch when the dropdown is closed or there is no query", async () => {
+    const queries: string[] = [];
+    const fetchHits = async (q: string) => {
+      queries.push(q);
+      return [];
+    };
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stopClosed = startSearchBoxSync({
+      query: "调研",
+      dropdownOpen: false,
+      fetchHits,
+      onHits: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    const stopEmpty = startSearchBoxSync({
+      query: "   ",
+      dropdownOpen: true,
+      fetchHits,
+      onHits: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    tickInterval();
+    setVisible(true);
+    focus();
+    await flush();
+    expect(queries).toEqual([]);
+    stopClosed();
+    stopEmpty();
+  });
+
+  it("never treats SearchBox snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...hit({
+        id: "ses_a",
+        title: "调研 sk-abcdefghijklmnop",
+        snippet: "Bearer tok-secret DEEPSEEK_API_KEY=sk-zzzzzzzz",
+        sessionId: "ses_a",
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+      PIG_CLOUD_TOKEN: "tok-secret",
+    } as SearchHit & { llmApiKey: string; cloudToken: string; PIG_CLOUD_TOKEN: string };
+    const applied = applySearchHitsSnapshot([], [dirty]);
+    const raw = JSON.stringify({
+      list: applied,
+      painted: painted(applied[0]),
+    });
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
+    expect(applied[0]?.title).toBe(redactSecretsForDisplay(dirty.title));
+    expect(applied[0]?.snippet).toBe(redactSecretsForDisplay(dirty.snippet));
+
+    const fetches: string[] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSearchBoxSync({
+      query: "调研",
+      dropdownOpen: true,
+      fetchHits: async (q) => {
+        fetches.push(q);
+        return [hit({ id: "ses_a", title: "调研报告", sessionId: "ses_a" })];
+      },
+      onHits: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((q) => q === "调研")).toBe(true);
     stop();
   });
 });

@@ -125,6 +125,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab top-bar SearchBox (Milestone AL)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/search?q=` refresh of the header `SearchBox` when a query is already present **and** the dropdown is open (complement to Milestone AI's `#/search`). No new write path, no dual-write, no public webhook. Search / navigation / `#/search` semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B top bar already has a query and the dropdown open. Tab A changes session title / project / memory etc. — Tab B’s same-query hits catch up without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** GET `/api/search` when the top bar has no query, or the dropdown is closed
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AK / L·M·N / W·X / Y–AC / AI unchanged. Header search box / Enter / `#/search` navigation stay the existing paths
+- [ ] Hit list / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab workbench pin-dropdown catalogs (Milestone AK)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` refresh of the workbench 项目 / 专家 / 小队 pin **option lists**. No new write path, no dual-write, no public webhook. Pin binding still uses the existing paths (Milestone Y). Not a credentials vault / connector / multi-agent / sandbox change.

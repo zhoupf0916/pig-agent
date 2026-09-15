@@ -2,6 +2,11 @@ import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
+import {
+  applySearchHitsSnapshot,
+  SEARCH_BOX_DROPDOWN_LIMIT,
+  startSearchBoxSync,
+} from "../lib/search-sync";
 import type { SearchHit } from "../types";
 
 export function SearchBox({
@@ -35,9 +40,9 @@ export function SearchBox({
     setBusy(true);
     const timer = window.setTimeout(() => {
       void api
-        .search(trimmed, 8)
+        .search(trimmed, SEARCH_BOX_DROPDOWN_LIMIT)
         .then((res) => {
-          if (!cancelled) setHits(res.hits);
+          if (!cancelled) setHits((prev) => applySearchHitsSnapshot(prev, res.hits));
         })
         .catch(() => {
           if (!cancelled) setHits([]);
@@ -51,6 +56,18 @@ export function SearchBox({
       window.clearTimeout(timer);
     };
   }, [q]);
+
+  useEffect(() => {
+    return startSearchBoxSync({
+      query: q,
+      dropdownOpen: open,
+      fetchHits: async (query) => {
+        const res = await api.search(query, SEARCH_BOX_DROPDOWN_LIMIT);
+        return res.hits;
+      },
+      onHits: (next) => setHits((prev) => applySearchHitsSnapshot(prev, next)),
+    });
+  }, [q, open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
