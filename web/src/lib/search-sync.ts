@@ -5,8 +5,11 @@ import {
   type SessionListSyncClock,
 } from "./session-list-sync";
 
-/** Read-only `#/search` refresh. Same-host tabs pick up same-query hits from GET /api/search. */
+/** Read-only `#/search` / SearchBox refresh. Same-host tabs pick up same-query hits from GET /api/search. */
 export const SEARCH_SYNC_POLL_MS = 2_000;
+
+/** Top-bar dropdown uses the existing GET /api/search with the same short limit as live typeahead. */
+export const SEARCH_BOX_DROPDOWN_LIMIT = 8;
 
 const HIT_TYPES = new Set<SearchHitType>([
   "session",
@@ -31,7 +34,7 @@ function normalizeType(type: SearchHit["type"] | string | undefined): SearchHitT
 }
 
 /**
- * Fields the `#/search` hit list actually paints.
+ * Fields the `#/search` / SearchBox hit list actually paints.
  * Drops unknown keys so snapshots never become a secret store.
  * Title / snippet / href never keep provider-key plaintext.
  */
@@ -75,8 +78,8 @@ export function searchHitSyncKey(hit: SearchHit): string {
 }
 
 /**
- * Replace the `#/search` hit list with a GET /api/search?q= snapshot.
- * Same array reference when nothing visible changed (avoids remounting the page).
+ * Replace the `#/search` or SearchBox hit list with a GET /api/search?q= snapshot.
+ * Same array reference when nothing visible changed (avoids remounting the page / dropdown).
  * Adds / updates / removes rows so Tab A title / project / memory edits catch up.
  * Read-only: never POSTs / PATCHes / DELETEs search, sessions, or events.
  */
@@ -142,4 +145,39 @@ export function startSearchSync(opts: {
     clock.removeListener("visibilitychange", tick);
     clock.removeListener("focus", tick);
   };
+}
+
+/**
+ * Top-bar SearchBox (Milestone AL): soft-refetch only when a query is
+ * present **and** the dropdown is open. Closed or blank → do not force-fetch.
+ */
+export function searchBoxCanSoftRefetch(opts: {
+  query: string;
+  dropdownOpen: boolean;
+}): boolean {
+  return opts.dropdownOpen && Boolean(opts.query.trim());
+}
+
+/**
+ * Same GET /api/search poll as `#/search`, gated on the open dropdown.
+ * No new write path or state machine — just AI's startSearchSync when active.
+ */
+export function startSearchBoxSync(opts: {
+  query: string;
+  dropdownOpen: boolean;
+  fetchHits: (q: string) => Promise<SearchHit[]>;
+  onHits: (next: SearchHit[]) => void;
+  intervalMs?: number;
+  clock?: SessionListSyncClock;
+}): () => void {
+  if (!searchBoxCanSoftRefetch({ query: opts.query, dropdownOpen: opts.dropdownOpen })) {
+    return () => {};
+  }
+  return startSearchSync({
+    query: opts.query,
+    fetchHits: opts.fetchHits,
+    onHits: opts.onHits,
+    intervalMs: opts.intervalMs,
+    clock: opts.clock,
+  });
 }

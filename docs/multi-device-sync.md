@@ -150,6 +150,10 @@ When Tab B already has Settings open, the `skills/` list is a **read-only** refr
 
 When Tab B is already on `#/search` **with a query**, the hit list is a **read-only** refresh of the existing `GET /api/search?q=`. Another same-host tab that changes a session title, project fields, or memory note updates Tab B's same-query hits on focus, visibility, or a short poll — no full page reload. No query → do not force-fetch. Apply the hit list in place (no remount). This does **not** add a write path, a public webhook, or dual-write search / sessions / `events.jsonl`. Header box / Enter / `#/search` navigation stay the existing paths. Default runtime stays **pig**. Hit list / snapshot JSON never carry provider-key plaintext.
 
+## Top-bar SearchBox (Milestone AL)
+
+When Tab B's header `SearchBox` already has a query **and** the dropdown is open, the hit list is a **read-only** refresh of the same `GET /api/search?q=` used by Milestone AI's `#/search`. Another same-host tab that changes a session title, project fields, or memory note updates Tab B's same-query dropdown hits on focus, visibility, or a short poll — no full page reload. No query, or dropdown closed → do not force-fetch. Apply the hit list in place (no remount). This does **not** add a write path, a public webhook, or dual-write search / sessions / `events.jsonl`. Header box / Enter / `#/search` navigation stay the existing paths. Default runtime stays **pig**. Hit list / snapshot JSON never carry provider-key plaintext.
+
 ## Inbox menu (Milestone AF)
 
 The header inbox (unread badge + list) is a **read-only** refresh of the existing `GET /api/inbox`. Another same-host tab that creates an invite / transfer, or marks read / accept / ignore, updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches to the badge count and list rows in place (no remount). Accept / decline / read stay the existing POSTs. This does **not** add a write path, a public webhook, or dual-write inbox / sessions / `events.jsonl`. Default runtime stays **pig**. Menu / badge / snapshot JSON never carry invite tokens or provider-key plaintext.
