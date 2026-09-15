@@ -43,8 +43,22 @@ export function applySessionOpenMetaSnapshot<T extends SessionOpenMeta>(
 }
 
 /**
+ * When the open id is still in GET /api/sessions, keep it.
+ * When it is gone, pick the next sidebar row (or null to clear).
+ * Does not load transcripts.
+ */
+export function nextOpenSessionId(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): string | null {
+  if (!openId) return null;
+  if (list.some((item) => item.id === openId)) return openId;
+  return list[0]?.id ?? null;
+}
+
+/**
  * Find the open session's list row and patch title / status.
- * Missing row → keep the last good open session (do not remount).
+ * Missing row → null so the caller can clear or switch (no ghost open session).
  */
 export function applyOpenSessionFromList<T extends SessionOpenMeta>(
   prev: T | null,
@@ -52,7 +66,8 @@ export function applyOpenSessionFromList<T extends SessionOpenMeta>(
 ): T | null {
   if (!prev) return prev;
   const row = list.find((item) => item.id === prev.id);
-  return applySessionOpenMetaSnapshot(prev, row ?? null);
+  if (!row) return null;
+  return applySessionOpenMetaSnapshot(prev, row);
 }
 
 /** Existing sidebar / list labels — not a third status string. */

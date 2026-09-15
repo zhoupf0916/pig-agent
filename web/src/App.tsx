@@ -37,6 +37,7 @@ import {
 import {
   applyOpenSessionFromList,
   applySessionOpenMetaSnapshot,
+  nextOpenSessionId,
 } from "./lib/session-open-sync";
 import {
   applySessionPinSnapshot,
@@ -129,13 +130,8 @@ export function App() {
   const abortRef = useRef<AbortController | null>(null);
   const seenSeqRef = useRef<Set<number>>(new Set());
   const lastSeqRef = useRef(0);
-
-  const refreshSessions = useCallback(async () => {
-    const { sessions: next } = await api.sessions();
-    setSessions((prev) => applySessionListSnapshot(prev, next));
-    setSession((prev) => applyOpenSessionFromList(prev, next));
-    return next;
-  }, []);
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
 
   const refreshTree = useCallback(async () => {
     try {
@@ -168,6 +164,40 @@ export function App() {
   const goWorkstation = useCallback((sessionId?: string) => {
     window.location.hash = sessionId ? sessionHash(sessionId) : workstationHash();
   }, []);
+
+  const applySessionListAndOpen = useCallback(
+    async (next: SessionSummary[]) => {
+      setSessions((prev) => applySessionListSnapshot(prev, next));
+      const openId = activeIdRef.current;
+      const nextId = nextOpenSessionId(openId, next);
+      if (openId && nextId !== openId) {
+        abortRef.current?.abort();
+        setStreaming(false);
+        clearComposerDraft(openId, browserDraftStorage());
+        const routeNow = parseHash();
+        const onDeletedHash = routeNow.name === "workstation" && routeNow.sessionId === openId;
+        if (nextId) {
+          await loadSession(nextId);
+          if (onDeletedHash) goWorkstation(nextId);
+        } else {
+          setSession(null);
+          setActiveId(null);
+          setDraft("");
+          setLiveTools([]);
+          if (onDeletedHash) goWorkstation();
+        }
+        return;
+      }
+      setSession((prev) => applyOpenSessionFromList(prev, next));
+    },
+    [goWorkstation, loadSession],
+  );
+
+  const refreshSessions = useCallback(async () => {
+    const { sessions: next } = await api.sessions();
+    await applySessionListAndOpen(next);
+    return next;
+  }, [applySessionListAndOpen]);
 
   const goProjects = useCallback((projectId?: string, extra?: { assetId?: string; todoId?: string }) => {
     window.location.hash = projectsHash(projectId, extra);
@@ -256,11 +286,10 @@ export function App() {
         return next;
       },
       onList: (next) => {
-        setSessions((prev) => applySessionListSnapshot(prev, next));
-        setSession((prev) => applyOpenSessionFromList(prev, next));
+        void applySessionListAndOpen(next);
       },
     });
-  }, []);
+  }, [applySessionListAndOpen]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -381,17 +410,9 @@ export function App() {
     async (id: string) => {
       clearComposerDraft(id, browserDraftStorage());
       await api.deleteSession(id);
-      const list = await refreshSessions();
-      if (activeId === id) {
-        if (list[0]) await loadSession(list[0].id);
-        else {
-          setSession(null);
-          setActiveId(null);
-          setDraft("");
-        }
-      }
+      await refreshSessions();
     },
-    [activeId, loadSession, refreshSessions],
+    [refreshSessions],
   );
 
   const onDraftChange = useCallback((text: string) => {
