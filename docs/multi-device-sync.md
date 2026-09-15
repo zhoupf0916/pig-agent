@@ -126,6 +126,10 @@ When Tab B is already on `#/projects` with a project open, the board / assets / 
 
 When Tab B is already on `#/memory`, the note list is a **read-only** refresh of the existing `GET /api/memory`. Another same-host tab (or the workstation **钉住笔记** / **写摘要** write) that pins, edits, or deletes a note updates Tab B's list on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/memory/:id`; that body is **not** force-fetched when the note is not open. Apply list / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Pin / write-summary / search stay the existing paths. Default runtime stays **pig**.
 
+## Experts directory (Milestone AC)
+
+When Tab B is already on `#/experts`, the expert list (and team list) is a **read-only** refresh of the existing `GET /api/experts` plus `GET /api/expert-teams`. Another same-host tab that creates, edits, or deletes an expert — or changes the expert-team list — updates Tab B on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/experts/:id`; that body is **not** force-fetched when the expert is not open. Apply list / team / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Session pin / sequential expert-team run stay the existing paths. Default runtime stays **pig**.
+
 ## What this is not
 
 - No Redis / MySQL bus
