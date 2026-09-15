@@ -1,6 +1,7 @@
 import { Inbox } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { applyInboxSnapshot, startInboxSync, type InboxSnapshot } from "../lib/inbox-sync";
 import type { InboxItem, ProjectInviteStatus } from "../types";
 
 const INVITE_STATUS: Record<ProjectInviteStatus, string> = {
@@ -24,22 +25,23 @@ export function InboxMenu({
   onOpenSession?: (sessionId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<InboxItem[]>([]);
-  const [unread, setUnread] = useState(0);
+  const [inbox, setInbox] = useState<InboxSnapshot>({ items: [], unread: 0 });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const items = inbox.items;
+  const unread = inbox.unread;
 
   const refresh = async () => {
     const next = await api.inbox();
-    setItems(next.items);
-    setUnread(next.unread);
+    setInbox((prev) => applyInboxSnapshot(prev, next));
   };
 
   useEffect(() => {
-    void refresh().catch(() => undefined);
-    const timer = window.setInterval(() => void refresh().catch(() => undefined), 8_000);
-    return () => window.clearInterval(timer);
+    return startInboxSync({
+      fetchInbox: () => api.inbox(),
+      onInbox: (next) => setInbox((prev) => applyInboxSnapshot(prev, next)),
+    });
   }, []);
 
   useEffect(() => {

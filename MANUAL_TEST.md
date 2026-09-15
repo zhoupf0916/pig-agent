@@ -125,6 +125,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab inbox menu (Milestone AF)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/inbox` refresh of the header unread badge + list. No new write path, no dual-write of inbox / sessions / events, no public webhook. Accept / decline / read stay the existing POSTs. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host. Tab A creates an invite / transfer, or marks read / **接受** / **忽略** — Tab B badge + list update without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B reuses the existing `GET /api/inbox` only. Accept / reject / read still use the existing POSTs. No new write path, dual-write, or public webhook
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AE / L·M·N / W·X / Y–AC unchanged
+- [ ] Menu / badge / inbox JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` / invite token plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab experts directory (Milestone AC)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/experts` (+ `GET /api/expert-teams`) refresh of `#/experts`; already-open detail also `GET /api/experts/:id`. No new write path, no dual-write of sessions / events, no public webhook. Session pin / sequential expert-team run semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
