@@ -363,7 +363,7 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
   });
 
   it("keeps the open id when it is still in GET /api/sessions", () => {
-    const list = [row({ id: "ses_a" }), row({ id: "ses_b" })];
+    const list = [row({ id: "ses_a", title: "整理工作区" }), row({ id: "ses_b" })];
     expect(nextOpenSessionId("ses_a", list)).toBe("ses_a");
     const prev = session({ id: "ses_a", title: "整理工作区", status: "idle" });
     expect(applyOpenSessionFromList(prev, list)).toBe(prev);
