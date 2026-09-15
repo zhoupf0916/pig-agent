@@ -979,3 +979,271 @@ describe("open automation detail deleted-elsewhere cleanup (Milestone AS)", () =
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
+
+describe("automation pins after expert / team / project delete (Milestone AU)", () => {
+  const catalogs = {
+    experts: [
+      { id: "exp_custom", name: "AU 文档专家" },
+      { id: "exp_scout", name: "侦察 Scout" },
+    ],
+    teams: [
+      { id: "team_docs", name: "AU 文档小队" },
+      { id: "team_coding", name: "编码流水线" },
+    ],
+    projects: [
+      { id: "prj_gone", name: "AU 已删项目" },
+      { id: "prj_keep", name: "AU 保留项目" },
+    ],
+  };
+
+  function paintedPins(item: Automation | null) {
+    const expertName = catalogs.experts.find((e) => e.id === item?.expertId)?.name;
+    const teamName = catalogs.teams.find((t) => t.id === item?.expertTeamId)?.name;
+    const projectName = catalogs.projects.find((p) => p.id === item?.projectId)?.name;
+    return {
+      expertId: item?.expertId ?? "",
+      expertTeamId: item?.expertTeamId ?? "",
+      projectId: item?.projectId ?? "",
+      expertHint: expertName ? `专家 ${expertName}` : "",
+      teamHint: teamName ? `小队 ${teamName}` : "",
+      projectHint: projectName ? `项目 ${projectName}` : "",
+    };
+  }
+
+  it("reuses the existing 2s AG list poll and stays on default runtime pig", () => {
+    expect(AUTOMATIONS_LIST_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("list / open detail snapshots drop a cleared expertId without remounting other pins", () => {
+    const prev = automation({
+      id: "atm_a",
+      expertId: "exp_custom",
+      expertTeamId: "team_coding",
+      projectId: "prj_keep",
+      name: "每日整理",
+    });
+    const list = applyAutomationsListSnapshot(
+      [prev],
+      [automation({ id: "atm_a", expertTeamId: "team_coding", projectId: "prj_keep", name: "每日整理" })],
+    );
+    const detail = applyAutomationDetailSnapshot(
+      prev,
+      automation({ id: "atm_a", expertTeamId: "team_coding", projectId: "prj_keep", name: "每日整理" }),
+    );
+    expect(list[0]?.expertId).toBeUndefined();
+    expect(list[0]?.expertTeamId).toBe("team_coding");
+    expect(list[0]?.projectId).toBe("prj_keep");
+    expect(detail?.expertId).toBeUndefined();
+    expect(detail?.expertTeamId).toBe("team_coding");
+    expect(paintedPins(detail)).toEqual({
+      expertId: "",
+      expertTeamId: "team_coding",
+      projectId: "prj_keep",
+      expertHint: "",
+      teamHint: "小队 编码流水线",
+      projectHint: "项目 AU 保留项目",
+    });
+    expect(JSON.stringify({ list, detail })).not.toMatch(/exp_custom|AU 文档专家|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B list and open detail unbind after Tab A deletes the pinned custom expert", async () => {
+    let server = [
+      automation({
+        id: "atm_a",
+        name: "打开中",
+        expertId: "exp_custom",
+        expertTeamId: "team_coding",
+        projectId: "prj_keep",
+      }),
+      automation({ id: "atm_b", name: "其他自动化", expertId: "exp_scout" }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Automation | null = automation({
+      id: "atm_a",
+      name: "打开中",
+      expertId: "exp_custom",
+      expertTeamId: "team_coding",
+      projectId: "prj_keep",
+    });
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyAutomationsListSnapshot(tabBList, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        const found = server.find((row) => row.id === id);
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedPins(tabBDetail).expertHint).toBe("专家 AU 文档专家");
+    expect(tabBList.find((row) => row.id === "atm_a")?.expertId).toBe("exp_custom");
+
+    // Tab A DELETE /api/experts/:id cleared expertId on the GET snapshot (no new poller).
+    server = [
+      automation({
+        id: "atm_a",
+        name: "打开中",
+        expertTeamId: "team_coding",
+        projectId: "prj_keep",
+        updatedAt: "2026-09-15T07:20:00.000Z",
+      }),
+      automation({ id: "atm_b", name: "其他自动化", expertId: "exp_scout" }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail?.expertId).toBeUndefined();
+    expect(tabBDetail?.expertTeamId).toBe("team_coding");
+    expect(tabBDetail?.projectId).toBe("prj_keep");
+    expect(tabBDetail?.id).toBe("atm_a");
+    expect(paintedPins(tabBDetail).expertHint).toBe("");
+    expect(tabBList.find((row) => row.id === "atm_a")?.expertId).toBeUndefined();
+    expect(tabBList.find((row) => row.id === "atm_b")?.expertId).toBe("exp_scout");
+    expect(JSON.stringify({ list: tabBList, detail: tabBDetail })).not.toMatch(
+      /exp_custom|AU 文档专家|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+
+    const afterPoll = server[0]!;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.expertTeamId).toBe("team_coding");
+
+    setVisible(true);
+    await flush();
+    expect(tabBDetail?.expertId).toBeUndefined();
+    focus();
+    await flush();
+    expect(tabBDetail?.name).toBe(afterPoll.name);
+    expect(tabBDetail?.runtime).toBe("pig");
+    stop();
+  });
+
+  it("Tab B unbinds expertTeamId after a custom team delete and projectId after a project delete", async () => {
+    let server = [
+      automation({
+        id: "atm_a",
+        expertId: "exp_scout",
+        expertTeamId: "team_docs",
+        projectId: "prj_gone",
+      }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Automation | null = automation({
+      id: "atm_a",
+      expertId: "exp_scout",
+      expertTeamId: "team_docs",
+      projectId: "prj_gone",
+    });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyAutomationsListSnapshot(tabBList, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        const found = server.find((row) => row.id === id);
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedPins(tabBDetail)).toMatchObject({
+      teamHint: "小队 AU 文档小队",
+      projectHint: "项目 AU 已删项目",
+    });
+
+    server = [
+      automation({
+        id: "atm_a",
+        expertId: "exp_scout",
+        projectId: "prj_gone",
+        updatedAt: "2026-09-15T07:21:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.expertTeamId).toBeUndefined();
+    expect(tabBDetail?.expertId).toBe("exp_scout");
+    expect(tabBDetail?.projectId).toBe("prj_gone");
+    expect(paintedPins(tabBDetail).teamHint).toBe("");
+    expect(tabBList[0]?.expertTeamId).toBeUndefined();
+
+    server = [
+      automation({
+        id: "atm_a",
+        expertId: "exp_scout",
+        updatedAt: "2026-09-15T07:22:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.projectId).toBeUndefined();
+    expect(tabBDetail?.expertId).toBe("exp_scout");
+    expect(paintedPins(tabBDetail).projectHint).toBe("");
+    expect(tabBList[0]?.projectId).toBeUndefined();
+    expect(JSON.stringify({ list: tabBList, detail: tabBDetail })).not.toMatch(
+      /team_docs|AU 文档小队|prj_gone|AU 已删项目|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+    stop();
+  });
+
+  it("never treats cleared-pin snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...automation({
+        id: "atm_a",
+        lastError: "失败 sk-abcdefghijklmnop 与 Bearer tok-abc",
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+    } as Automation & { llmApiKey: string; cloudToken: string };
+    const applied = applyAutomationsListSnapshot(
+      [automation({ id: "atm_a", expertId: "exp_custom" })],
+      [dirty],
+    );
+    const detail = applyAutomationDetailSnapshot(automation({ id: "atm_a", expertId: "exp_custom" }), dirty);
+    const raw = JSON.stringify({ list: applied, detail, painted: paintedPins(detail) });
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
+    expect(applied[0]?.expertId).toBeUndefined();
+    expect(detail?.expertId).toBeUndefined();
+
+    const fetches: Automation[][] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        const next = [automation({ id: "atm_a" })];
+        fetches.push(next);
+        return next;
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((list) => list[0]?.id === "atm_a")).toBe(true);
+    stop();
+  });
+});

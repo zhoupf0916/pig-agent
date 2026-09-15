@@ -124,7 +124,7 @@ When Tab B is already showing a session, the chat-header pin row (项目 / 专�
 
 ## Session pins after expert / team delete (Milestone AT)
 
-Deleting a **custom** expert or custom expert-team clears matching session pins on the existing `DELETE` — `expertId` for the expert, `expertTeamId` plus `teamRun` (if any) for the team — the same unbind as PATCH null. Built-in experts / teams stay undeletable (existing 400). Automations that still name the id are not rewritten.
+Deleting a **custom** expert or custom expert-team clears matching session pins on the existing `DELETE` — `expertId` for the expert, `expertTeamId` plus `teamRun` (if any) for the team — the same unbind as PATCH null. Built-in experts / teams stay undeletable (existing 400). Automation records that named the id are Milestone AU.
 
 When Tab B is already showing a session, the chat-header pin row is the existing Milestone Y **read-only** refresh of those fields from `GET /api/sessions`. Another same-host tab that deletes the pinned custom expert / team updates Tab B's dropdowns / hints to 「未绑定」 on focus, visibility, or a short poll — no ghost name, no full page reload, no new sync stack. Catalog option lists still follow Milestone AK. Pin writes still use the existing session PATCH. This does **not** add a write path, a public webhook, or dual-write sessions / `events.jsonl`. Default runtime stays **pig**.
 
@@ -151,6 +151,12 @@ When Tab B is already on `#/automations`, the directory is a **read-only** refre
 ## Open automation detail deleted elsewhere (Milestone AS)
 
 When Tab B is already on `#/automations` with an automation open, the same read-only `GET /api/automations` used by Milestone AG is also the source of truth for whether that open id still exists. Another same-host tab that **deletes** the automation updates Tab B on focus, visibility, or a short poll — no full page reload. If the list snapshot lacks the open id, rewrite hash / open state first (clear the detail, or switch to the next list row). Do **not** `GET /api/automations/:id` after the list confirms the id is gone (AN-02 nail). Delete still uses the existing `DELETE /api/automations/:id`. List / last-run / open-detail catch-up while the automation still exists still follow Milestone AG / Z. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. 「立即运行」 / `409` in-flight stays the existing run path. Default runtime stays **pig**.
+
+## Automation pins after expert / team / project delete (Milestone AU)
+
+Deleting a **custom** expert, custom expert-team, or a project clears the matching field on automation records — `expertId` / `expertTeamId` / `projectId` — the same unbind as PATCH null. Built-in experts / teams stay undeletable (existing 400). Session pin cleanup stays Milestone AT / existing project-delete logic.
+
+When Tab B is already on `#/automations`, the directory (and already-open detail) is the existing Milestone AG **read-only** refresh of `GET /api/automations`. Another same-host tab that deletes the pinned custom expert / team / project updates Tab B on focus, visibility, or a short poll — no ghost name, no full page reload, no new sync stack. Last-run still follows Milestone Z. Open-detail-deleted-elsewhere still follows Milestone AS. 「立即运行」 / cron / enabled stay the existing run path. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. Default runtime stays **pig**.
 
 ## Projects board / assets / members (Milestone AA)
 
