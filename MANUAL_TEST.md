@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab memory directory (Milestone AB)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/memory` refresh of `#/memory`; already-open detail also `GET /api/memory/:id`. No new write path, no dual-write of memory / sessions / events, no public webhook. Pin / write-summary / search semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already on `#/memory`. Tab A (or workbench **钉住笔记** / **写摘要**) pins / edits / deletes a note — Tab B list (and the already-open detail, if that note is open) update without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** GET `/api/memory/:id` when that note's detail is not open. List still catches up from `GET /api/memory`
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, V theme, Y pins, Z automations last-run, AA projects, and L/M/N / W·X cloud progress unchanged. Pin / write-summary / search stay the existing paths
+- [ ] Panel / banner / memory JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab projects board / assets / members (Milestone AA)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` refresh of `#/projects`; open detail also `GET /api/projects/:id`. No new write path, no dual-write of projects / sessions / events, no public webhook. Invite / transfer semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.

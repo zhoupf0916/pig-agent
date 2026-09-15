@@ -2,6 +2,11 @@ import { Pin, Plus, StickyNote, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { formatTime } from "../lib/format";
+import {
+  applyMemoryDetailSnapshot,
+  applyMemoryListSnapshot,
+  startMemorySync,
+} from "../lib/memory-sync";
 import type { MemoryKind, MemoryNote } from "../types";
 
 const KIND_LABEL: Record<MemoryKind, string> = {
@@ -54,6 +59,33 @@ export function MemoryPanel({
       }
     })();
   }, [selectedId]);
+
+  useEffect(() => {
+    return startMemorySync({
+      fetchList: async () => {
+        const { notes: next } = await api.memory();
+        return next;
+      },
+      onList: (next) => setNotes((prev) => applyMemoryListSnapshot(prev, next)),
+      selectedId,
+      fetchSelected: selectedId
+        ? async (id) => {
+            try {
+              return await api.memoryNote(id);
+            } catch {
+              return null;
+            }
+          }
+        : undefined,
+      onSelected: (next) => setDetail((prev) => applyMemoryDetailSnapshot(prev, next)),
+    });
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!detail) return;
+    setDraftText(detail.text);
+    setDraftTags((detail.tags ?? []).join(", "));
+  }, [detail]);
 
   const visible = useMemo(
     () => (filter === "all" ? notes : notes.filter((n) => n.kind === filter)),

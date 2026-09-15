@@ -122,6 +122,10 @@ When Tab B is already on `#/automations`, the directory list is a **read-only** 
 
 When Tab B is already on `#/projects` with a project open, the board / assets / members sections are a **read-only** refresh of the existing `GET /api/projects` plus `GET /api/projects/:id`. Another same-host tab that changes a todo status, uploads an asset, or invite·accepts a member updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches only those collections (and list-side name / `updatedAt`) onto the open project; instruction draft / invite token stay put. Detail GET runs only when that project is open. This does **not** add a write path, a public webhook, or dual-write projects / sessions / `events.jsonl`. Invite / transfer stay the existing paths. Default runtime stays **pig**.
 
+## Memory directory (Milestone AB)
+
+When Tab B is already on `#/memory`, the note list is a **read-only** refresh of the existing `GET /api/memory`. Another same-host tab (or the workstation **钉住笔记** / **写摘要** write) that pins, edits, or deletes a note updates Tab B's list on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/memory/:id`; that body is **not** force-fetched when the note is not open. Apply list / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Pin / write-summary / search stay the existing paths. Default runtime stays **pig**.
+
 ## What this is not
 
 - No Redis / MySQL bus

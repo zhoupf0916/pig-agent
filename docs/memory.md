@@ -62,6 +62,7 @@ Treat pins as user-curated facts, not a license to leave the workspace.
 - `#/memory` directory: list / add pin / edit / delete. Filter 全部 / 钉住 / 摘要.
 - `#/memory/<id>` selects a note. Search hits navigate here.
 - Workstation header: **钉住笔记** (dialog, binds `sessionId` / `projectId`) and **写摘要** (heuristic recap).
+- Another same-host tab already on `#/memory` refreshes the list from `GET /api/memory` (focus / visibility / short poll). An already-open note also `GET /api/memory/:id`. Pin / recap / search stay the existing write and index paths.
 
 ## Out of scope
 
