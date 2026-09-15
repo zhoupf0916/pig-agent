@@ -66,6 +66,7 @@ Route hints (in addition to `href`):
 
 - Single header search box (no separate **搜索** tab, no second box on `#/search`) with a live dropdown. **Enter** or **查看全部结果** opens `#/search?q=`.
 - `#/search` is the full result page, grouped by type. The header box stays the only query field.
+- Another same-host tab already on `#/search` with a query refreshes hits from `GET /api/search?q=` (focus / visibility / short poll). No query → no force-fetch. Search / navigation stay the existing paths.
 - Clicking a hit opens the session workstation, the project, a highlighted todo, the existing asset preview modal, or `#/memory/<id>`.
 - Shortcuts: `Ctrl+K` / `⌘K`, or `/` when not typing in another field.
 
