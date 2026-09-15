@@ -356,7 +356,10 @@ export function App() {
     return startWorkspaceFileSync({
       path: previewPath,
       fetchFile: (path) => api.file(path),
-      onFile: (next) => setPreview((prev) => applyWorkspaceFileSnapshot(prev, next)),
+      onFile: (next) => {
+        setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
+        if (next === null) setPreviewPath(null);
+      },
     });
   }, [previewPath]);
 

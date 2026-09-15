@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { redactSecretsForDisplay } from "./remote-retry";
 import type { SessionListSyncClock } from "./session-list-sync";
+import { describeExecutionSurface } from "./runtime-surface";
 import {
   applyWorkspaceFileSnapshot,
+  isWorkspaceFileGoneError,
   sanitizeWorkspaceFilePreview,
   startWorkspaceFileSync,
   WORKSPACE_FILE_POLL_MS,
@@ -175,9 +177,9 @@ describe("workspace file preview sync (Milestone U)", () => {
       80,
     );
     const applied = applyWorkspaceFileSnapshot(null, dirty);
-    expect(applied.content).not.toMatch(/llmApiKey=sk-|cloudToken=Bearer |DEEPSEEK_API_KEY=sk-/);
-    expect(applied.content).not.toMatch(/sk-abcdefghijklmnop|tok-secret|sk-zzzzzzzz/);
-    expect(applied.content).toBe(redactSecretsForDisplay(dirty.content));
+    expect(applied?.content).not.toMatch(/llmApiKey=sk-|cloudToken=Bearer |DEEPSEEK_API_KEY=sk-/);
+    expect(applied?.content).not.toMatch(/sk-abcdefghijklmnop|tok-secret|sk-zzzzzzzz/);
+    expect(applied?.content).toBe(redactSecretsForDisplay(dirty.content));
     expect(sanitizeWorkspaceFilePreview({ ...dirty, binary: true }).content).toBe("");
 
     const fetches: string[] = [];
@@ -227,5 +229,148 @@ describe("workspace file preview sync (Milestone U)", () => {
     await flush();
     expect(tabB?.content).toBe("good");
     stop();
+  });
+});
+
+describe("open workspace preview deleted-elsewhere cleanup (Milestone AO)", () => {
+  it("reuses the 2s file poll and stays on default runtime pig", () => {
+    expect(WORKSPACE_FILE_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+  });
+
+  it("treats Path not found / 404 as gone, not a generic refresh failure", () => {
+    expect(isWorkspaceFileGoneError(new Error("Path not found: notes/inbox.md"))).toBe(true);
+    expect(isWorkspaceFileGoneError({ status: 404, message: "not found" })).toBe(true);
+    expect(isWorkspaceFileGoneError(new Error("gone"))).toBe(false);
+    expect(isWorkspaceFileGoneError(new Error("network"))).toBe(false);
+  });
+
+  it("clears the open preview so no ghost body text remains", () => {
+    const prev = applyWorkspaceFileSnapshot(null, preview("notes/inbox.md", "ghost body\n", 11));
+    expect(prev?.content).toBe("ghost body\n");
+    expect(applyWorkspaceFileSnapshot(prev, null)).toBeNull();
+    expect(applyWorkspaceFileSnapshot(prev, null)?.content).toBeUndefined();
+  });
+
+  it("Tab B clears a preview Tab A deleted or moved on poll / focus / visibility", async () => {
+    const path = "notes/inbox.md";
+    let server: WorkspaceFilePreview | null = preview(path, "inbox v1\n", 9);
+    let tabB: WorkspaceFilePreview | null = applyWorkspaceFileSnapshot(null, server);
+    let tabBPath: string | null = path;
+    const fetches: string[] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startWorkspaceFileSync({
+      path,
+      fetchFile: async (requested) => {
+        fetches.push(requested);
+        if (!server) throw new Error(`Path not found: ${requested}`);
+        return structuredClone(server);
+      },
+      onFile: (next) => {
+        tabB = applyWorkspaceFileSnapshot(tabB, next);
+        if (next === null) tabBPath = null;
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabB?.content).toBe("inbox v1\n");
+    expect(tabBPath).toBe(path);
+    expect(fetches.every((p) => p === path)).toBe(true);
+
+    server = null;
+    tickInterval();
+    await flush();
+    expect(tabB).toBeNull();
+    expect(tabBPath).toBeNull();
+
+    const afterPoll = fetches.length;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(fetches.length).toBeGreaterThan(afterPoll);
+    expect(tabB).toBeNull();
+
+    const beforeFocus = fetches.length;
+    focus();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabB).toBeNull();
+    stop();
+  });
+
+  it("also clears when fetchFile returns null (typed gone)", async () => {
+    const path = "drafts/scratch.md";
+    let tabB: WorkspaceFilePreview | null = applyWorkspaceFileSnapshot(
+      null,
+      preview(path, "still here", 10),
+    );
+    const { clock, tickInterval } = fakeClock(true);
+    let gone = false;
+    const stop = startWorkspaceFileSync({
+      path,
+      fetchFile: async () => (gone ? null : preview(path, "still here", 10)),
+      onFile: (next) => {
+        tabB = applyWorkspaceFileSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    expect(tabB?.content).toBe("still here");
+    gone = true;
+    tickInterval();
+    await flush();
+    expect(tabB).toBeNull();
+    stop();
+  });
+
+  it("does not treat a failed file refresh as a delete", async () => {
+    const path = "notes/a.md";
+    let fail = false;
+    let tabB: WorkspaceFilePreview | null = applyWorkspaceFileSnapshot(
+      null,
+      preview(path, "good", 4),
+    );
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startWorkspaceFileSync({
+      path,
+      fetchFile: async () => {
+        if (fail) throw new Error("gone");
+        return preview(path, "good", 4);
+      },
+      onFile: (next) => {
+        tabB = applyWorkspaceFileSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(tabB?.path).toBe(path);
+    expect(tabB?.content).toBe("good");
+    stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const dirty = preview(
+      "notes.md",
+      "llmApiKey=sk-abcdefghijklmnop\ncloudToken=Bearer tok-secret",
+      60,
+    );
+    const applied = applyWorkspaceFileSnapshot(dirty, null);
+    const raw = JSON.stringify({ applied, dirty: sanitizeWorkspaceFilePreview(dirty) });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey=sk-|cloudToken=Bearer /);
+    expect(raw).not.toMatch(/sk-abcdefghijklmnop|tok-secret/);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN|DEEPSEEK_API_KEY/);
   });
 });

@@ -246,6 +246,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab workspace preview deleted elsewhere (Milestone AO)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/file` detects that the already-open preview path is gone (complement to Milestone U content refresh). Clear the preview empty — do not keep ghost body text. No new write path, no dual-write of workspace / sessions / events, no public webhook, no full page reload. Tree listing still follows Milestone T. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AO-01** Two workstation tabs on the same host. Tab B has a workspace path open in **预览**. Tab A deletes or moves that file — Tab B clears the preview (empty, no leftover body text) without a full page refresh (focus the tab or wait one short poll)
+- [ ] **AO-02** Tab B only reuses existing `GET /api/workspace/file` (no new write path, no dual-write, no public webhook). Workspace tree still follows Milestone T independently
+- [ ] **AO-03** Header chip still defaults to **本机 Pig**. Milestone O–AN / L·M·N / W·X / T / U unchanged
+- [ ] **AO-04** Preview / banner / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab open session deleted elsewhere (Milestone AN)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` detects that the already-open session id is gone (complement to Milestone AM title / status). Clear the open state or switch to the next sidebar session. No new write path, no dual-write of sessions / `events.jsonl`, no public webhook, no transcript fetch of the deleted row. Delete still uses existing `DELETE`. Not a credentials vault / connector / multi-agent / sandbox change.
