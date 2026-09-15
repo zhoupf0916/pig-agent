@@ -132,7 +132,7 @@ When Tab B is already showing a session, the open session's `title` / `status` i
 
 ## Open session deleted elsewhere (Milestone AN)
 
-When Tab B is already showing a session, the same read-only `GET /api/sessions` used by the sidebar (Milestone Q) and title / status (Milestone AM) is also the source of truth for whether that open id still exists. Another same-host tab that **deletes** the session updates Tab B on focus, visibility, or a short poll — no full page reload. If the open id is absent, clear the open state or switch to the next sidebar session. Do **not** `GET /api/sessions/:id` for the deleted row and do **not** reload other sessions' transcripts. Delete still uses the existing `DELETE /api/sessions/:id`. This does **not** add a write path, a public webhook, or dual-write `events.jsonl`. Default runtime stays **pig**.
+When Tab B is already showing a session, the same read-only `GET /api/sessions` used by the sidebar (Milestone Q) and title / status (Milestone AM) is also the source of truth for whether that open id still exists. Another same-host tab that **deletes** the session updates Tab B on focus, visibility, or a short poll — no full page reload. If the open id is absent, clear the open state or switch to the next sidebar session. Rewrite `#/sessions/:id` (or `#/`) **before** any per-id load so a stale hash cannot `GET /api/sessions/:deletedId`. Do **not** fetch the deleted row and do **not** reload other sessions' transcripts except the next sidebar row when switching. Delete still uses the existing `DELETE /api/sessions/:id`. This does **not** add a write path, a public webhook, or dual-write `events.jsonl`. Default runtime stays **pig**.
 
 ## Automations list last-run (Milestone Z)
 

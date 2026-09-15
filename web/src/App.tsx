@@ -37,7 +37,9 @@ import {
 import {
   applyOpenSessionFromList,
   applySessionOpenMetaSnapshot,
+  nextOpenSessionHash,
   nextOpenSessionId,
+  shouldFetchSessionDetail,
 } from "./lib/session-open-sync";
 import {
   applySessionPinSnapshot,
@@ -176,21 +178,24 @@ export function App() {
         clearComposerDraft(openId, browserDraftStorage());
         const routeNow = parseHash();
         const onDeletedHash = routeNow.name === "workstation" && routeNow.sessionId === openId;
-        if (nextId) {
+        // AN-02: rewrite hash / open pointer before any per-id load so a stale
+        // #/sessions/:deletedId cannot retrigger GET /api/sessions/:deletedId.
+        const nextHash = nextOpenSessionHash(openId, next);
+        if (onDeletedHash && nextHash) window.location.hash = nextHash;
+        activeIdRef.current = nextId;
+        if (nextId && shouldFetchSessionDetail(nextId, next)) {
           await loadSession(nextId);
-          if (onDeletedHash) goWorkstation(nextId);
         } else {
           setSession(null);
           setActiveId(null);
           setDraft("");
           setLiveTools([]);
-          if (onDeletedHash) goWorkstation();
         }
         return;
       }
       setSession((prev) => applyOpenSessionFromList(prev, next));
     },
-    [goWorkstation, loadSession],
+    [loadSession],
   );
 
   const refreshSessions = useCallback(async () => {
@@ -383,8 +388,9 @@ export function App() {
   useEffect(() => {
     if (route.name !== "workstation" || !route.sessionId) return;
     if (route.sessionId === activeId) return;
+    if (!shouldFetchSessionDetail(route.sessionId, sessions)) return;
     void loadSession(route.sessionId);
-  }, [activeId, loadSession, route]);
+  }, [activeId, loadSession, route, sessions]);
 
   const openFile = useCallback(async (path: string) => {
     setPreviewPath(path);

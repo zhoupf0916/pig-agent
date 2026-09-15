@@ -260,10 +260,10 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` detects that the already-open session id is gone (complement to Milestone AM title / status). Clear the open state or switch to the next sidebar session. No new write path, no dual-write of sessions / `events.jsonl`, no public webhook, no transcript fetch of the deleted row. Delete still uses existing `DELETE`. Not a credentials vault / connector / multi-agent / sandbox change.
 
-- [ ] Two workstation tabs on the same host, Tab B already has a session open. Tab A **deletes** that session — Tab B closes out the open state (clear or switch away) without a full page refresh (focus the tab or wait one short poll). Do not stay on the deleted session
-- [ ] Tab B does **not** GET `/api/sessions/:id` for the deleted row or reload other sessions' transcripts
-- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AM / L·M·N / W·X / Q / Y / AK unchanged
-- [ ] Session list / open / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] **AN-01** Two workstation tabs on the same host, Tab B already has a session open. Tab A **deletes** that session — Tab B closes out the open state (clear or switch away) without a full page refresh (focus the tab or wait one short poll). Do not stay on the deleted session
+- [ ] **AN-02** After `GET /api/sessions` says the open id is gone, Tab B must **not** `GET /api/sessions/:deletedId` (rewrite `#/sessions/:id` / `#/` and open state **before** any per-id load so a stale hash cannot retrigger `loadSession`). Do not reload other sessions' transcripts except the next sidebar row when switching
+- [ ] **AN-03** Header chip still defaults to **本机 Pig**. Milestone O–AM / L·M·N / W·X / Q / Y / AK unchanged
+- [ ] **AN-04** Session list / open / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 

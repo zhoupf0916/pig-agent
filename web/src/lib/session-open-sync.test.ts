@@ -7,12 +7,15 @@ import {
   startSessionListSync,
   type SessionListSyncClock,
 } from "./session-list-sync";
+import { parseHash, sessionHash, workstationHash } from "./hash";
 import {
   applyOpenSessionFromList,
   applySessionOpenMetaSnapshot,
+  nextOpenSessionHash,
   nextOpenSessionId,
   sessionOpenMetaSyncKey,
   sessionOpenStatusLabel,
+  shouldFetchSessionDetail,
 } from "./session-open-sync";
 import { applySessionPinSnapshot, startSessionPinSync } from "./session-pin-sync";
 
@@ -381,6 +384,42 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
     expect(nextOpenSessionId("ses_a", remaining)).toBe("ses_b");
     expect(nextOpenSessionId("ses_a", [])).toBeNull();
     expect(nextOpenSessionId(null, remaining)).toBeNull();
+    expect(nextOpenSessionHash("ses_a", remaining)).toBe(sessionHash("ses_b"));
+    expect(nextOpenSessionHash("ses_a", [])).toBe(workstationHash());
+    expect(nextOpenSessionHash("ses_a", [row({ id: "ses_a" })])).toBeNull();
+    expect(nextOpenSessionHash(null, remaining)).toBeNull();
+  });
+
+  it("does not GET /api/sessions/:deletedId after the list says the id is gone (DEF-AN-02-1)", () => {
+    const remaining = [row({ id: "ses_b", title: "其他会话" })];
+    const deletedId = "ses_a";
+    expect(shouldFetchSessionDetail(deletedId, remaining)).toBe(false);
+    expect(shouldFetchSessionDetail("ses_b", remaining)).toBe(true);
+    expect(shouldFetchSessionDetail(deletedId, [])).toBe(false);
+    expect(shouldFetchSessionDetail(null, remaining)).toBe(false);
+    expect(shouldFetchSessionDetail(deletedId, [row({ id: deletedId })])).toBe(true);
+
+    // Stale #/sessions/:deletedId + activeId already switched (main 1e0de3e race).
+    const detailGets: string[] = [];
+    const routeLoad = (hash: string, currentId: string | null, list: Array<{ id: string }>) => {
+      const route = parseHash(hash);
+      if (route.name !== "workstation" || !route.sessionId) return;
+      if (route.sessionId === currentId) return;
+      if (!shouldFetchSessionDetail(route.sessionId, list)) return;
+      detailGets.push(route.sessionId);
+    };
+
+    routeLoad(sessionHash(deletedId), "ses_b", remaining);
+    routeLoad(sessionHash(deletedId), null, []);
+    routeLoad(workstationHash(), null, []);
+    expect(detailGets).toEqual([]);
+
+    // Hash rewritten first — route sync may load the next listed id only.
+    const nextHash = nextOpenSessionHash(deletedId, remaining);
+    expect(nextHash).toBe(sessionHash("ses_b"));
+    routeLoad(nextHash!, null, remaining);
+    expect(detailGets).toEqual(["ses_b"]);
+    expect(detailGets).not.toContain(deletedId);
   });
 
   it("does not pull a transcript or touch another session's messages when leaving", () => {
@@ -410,15 +449,29 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
     let tabBList = server.map((s) => ({ ...s }));
     let tabB: Session | null = session({ id: "ses_a", title: "打开中", status: "idle" });
     let tabBOpenId: string | null = "ses_a";
+    let tabBHash = sessionHash("ses_a");
     const fetches: SessionSummary[][] = [];
+    const detailGets: string[] = [];
     const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const routeLoad = (hash: string, currentId: string | null, list: SessionSummary[]) => {
+      const route = parseHash(hash);
+      if (route.name !== "workstation" || !route.sessionId) return;
+      if (route.sessionId === currentId) return;
+      if (!shouldFetchSessionDetail(route.sessionId, list)) return;
+      detailGets.push(route.sessionId);
+    };
 
     const applyList = (next: SessionSummary[]) => {
       tabBList = applySessionListSnapshot(tabBList, next);
       const nextId = nextOpenSessionId(tabBOpenId, next);
       if (tabBOpenId && nextId !== tabBOpenId) {
+        const nextHash = nextOpenSessionHash(tabBOpenId, next);
+        if (nextHash) tabBHash = nextHash;
         tabB = applyOpenSessionFromList(tabB, next);
         tabBOpenId = nextId;
+        routeLoad(tabBHash, tabBOpenId, next);
+        if (nextId && shouldFetchSessionDetail(nextId, next)) detailGets.push(nextId);
         return;
       }
       tabB = applyOpenSessionFromList(tabB, next);
@@ -445,7 +498,9 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
 
     expect(tabB).toBeNull();
     expect(tabBOpenId).toBe("ses_b");
+    expect(tabBHash).toBe(sessionHash("ses_b"));
     expect(tabBList.map((s) => s.id)).toEqual(["ses_b"]);
+    expect(detailGets).not.toContain("ses_a");
     expect(fetches.every((list) => list.every((item) => "id" in item && "title" in item))).toBe(true);
 
     const afterPoll = fetches.length;
@@ -460,7 +515,9 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
     expect(fetches.length).toBeGreaterThan(afterPoll);
     expect(tabB).toBeNull();
     expect(tabBOpenId).toBeNull();
+    expect(tabBHash).toBe(workstationHash());
     expect(tabBList).toEqual([]);
+    expect(detailGets).not.toContain("ses_a");
 
     const beforeFocus = fetches.length;
     focus();
@@ -502,8 +559,15 @@ describe("open session deleted-elsewhere cleanup (Milestone AN)", () => {
   it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
     const snap = [row({ id: "ses_b", title: "其他会话", status: "idle" })];
     const applied = applyOpenSessionFromList(session({ id: "ses_a", title: "已删" }), snap);
-    const raw = JSON.stringify({ applied, snap, nextId: nextOpenSessionId("ses_a", snap) });
+    const raw = JSON.stringify({
+      applied,
+      snap,
+      nextId: nextOpenSessionId("ses_a", snap),
+      nextHash: nextOpenSessionHash("ses_a", snap),
+      fetchDeleted: shouldFetchSessionDetail("ses_a", snap),
+    });
     expect(applied).toBeNull();
+    expect(shouldFetchSessionDetail("ses_a", snap)).toBe(false);
     expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
