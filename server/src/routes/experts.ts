@@ -12,6 +12,7 @@ import {
   updateExpert,
   updateExpertTeam,
 } from "../store/experts.ts";
+import { getSession, listSessions, saveSession } from "../store/sessions.ts";
 
 const kindSchema = z.enum(["scout", "plan", "implement", "review", "custom"]);
 const modeSchema = z.enum(["chain", "parallel"]);
@@ -82,9 +83,18 @@ export function registerExpertRoutes(app: Hono): void {
   });
 
   app.delete("/api/experts/:id", async (c) => {
-    const result = await deleteExpert(c.req.param("id"));
+    const id = c.req.param("id");
+    const result = await deleteExpert(id);
     if (result === "missing") return c.json({ error: "Expert not found" }, 404);
     if (result === "bundled") return c.json({ error: "Bundled experts cannot be deleted" }, 400);
+    const sessions = await listSessions();
+    for (const summary of sessions) {
+      if (summary.expertId !== id) continue;
+      const session = await getSession(summary.id);
+      if (!session) continue;
+      delete session.expertId;
+      await saveSession(session);
+    }
     return c.json({ ok: true });
   });
 
@@ -119,9 +129,19 @@ export function registerExpertRoutes(app: Hono): void {
   });
 
   app.delete("/api/expert-teams/:id", async (c) => {
-    const result = await deleteExpertTeam(c.req.param("id"));
+    const id = c.req.param("id");
+    const result = await deleteExpertTeam(id);
     if (result === "missing") return c.json({ error: "Expert team not found" }, 404);
     if (result === "bundled") return c.json({ error: "Bundled expert teams cannot be deleted" }, 400);
+    const sessions = await listSessions();
+    for (const summary of sessions) {
+      if (summary.expertTeamId !== id) continue;
+      const session = await getSession(summary.id);
+      if (!session) continue;
+      delete session.expertTeamId;
+      delete session.teamRun;
+      await saveSession(session);
+    }
     return c.json({ ok: true });
   });
 }

@@ -191,6 +191,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab session pins after expert / team delete (Milestone AT)
+
+Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert / team clears matching session pins (`expertId` / `expertTeamId`, and `teamRun` if the team is gone). Already-open workbench pin row is the existing Milestone Y read-only `GET /api/sessions` catch-up — no ghost name, no full page reload, no new sync stack. Pin writes still use the existing PATCH. Built-in delete stays 400. No new write path, no dual-write of sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AT-01** Two workstation tabs on the same host. Tab B has a session open that is pinned to a **custom** expert. Tab A deletes that expert — Tab B on focus, visibility, or one short poll shows **未绑定** (no leftover name / id). No full page refresh
+- [ ] **AT-02** Same for a **custom** team: `expertTeamId` (and `teamRun` if any) clear; pin row catches up the same way. `DELETE` of a bundled expert / team still 400
+- [ ] **AT-03** Header chip still defaults to **本机 Pig**. Milestone O–AS / Y·AK·AC·AR / L·M·N / W·X unchanged. Pin writes still use existing PATCH. No dual-write events, no public webhook
+- [ ] **AT-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab open automation detail deleted elsewhere (Milestone AS)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/automations` detects that the already-open automation id is gone (complement to Milestone AG directory / Z last-run). Clear the open detail or switch away. No new write path, no dual-write of automations / sessions / events, no public webhook, no full page reload. Once the list says the id is gone, do **not** `GET /api/automations/:id`. Delete still uses existing `DELETE`. 「立即运行」 / cron / pin unchanged. Not a credentials vault / connector / multi-agent / sandbox change.

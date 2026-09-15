@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChatMessage, Session, SessionStatus } from "../types";
+import type { ChatMessage, Session, SessionStatus, TeamRun } from "../types";
 import { describeExecutionSurface } from "./runtime-surface";
 import type { SessionListSyncClock } from "./session-list-sync";
 import {
@@ -37,6 +37,22 @@ function session(
     projectId: overrides.projectId,
     expertId: overrides.expertId,
     expertTeamId: overrides.expertTeamId,
+    teamRun: overrides.teamRun,
+  };
+}
+
+function teamRun(overrides: Partial<TeamRun> & { teamId: string }): TeamRun {
+  return {
+    teamId: overrides.teamId,
+    teamName: overrides.teamName ?? "文档小队",
+    strategy: "same-session",
+    status: overrides.status ?? "done",
+    currentIndex: overrides.currentIndex ?? 0,
+    members: overrides.members ?? [
+      { expertId: "exp_custom", name: "文档专家", kind: "custom", status: "done" },
+    ],
+    startedAt: overrides.startedAt ?? "2026-09-15T07:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-09-15T07:00:00.000Z",
   };
 }
 
@@ -343,5 +359,108 @@ describe("session pin row sync (Milestone Y)", () => {
     await flush();
     expect(tabB?.projectId).toBe("prj_1");
     stop();
+  });
+
+  it("Tab B pin row unbinds after Tab A deletes the pinned custom expert (list snapshot)", async () => {
+    const customCatalog = [{ id: "exp_custom", name: "AT 文档专家" }, ...catalogs.experts];
+    const server = [row({ id: "ses_a", projectId: "prj_1", expertId: "exp_custom" })];
+    let tabB: Session | null = session({ id: "ses_a", projectId: "prj_1", expertId: "exp_custom" });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startSessionPinSync({
+      sessionId: "ses_a",
+      fetchList: async () => server.map((s) => ({ ...s })),
+      onPins: (next) => {
+        tabB = applySessionPinSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(sessionPinBindingLabel(tabB?.expertId, customCatalog)).toBe("AT 文档专家");
+    expect(sessionPinSelectValue(tabB?.expertId)).toBe("exp_custom");
+
+    // Tab A DELETE /api/experts/:id cleared expertId on the list row (no new poller).
+    server[0] = row({ id: "ses_a", projectId: "prj_1" });
+    tickInterval();
+    await flush();
+
+    expect(tabB?.expertId).toBeUndefined();
+    expect(tabB?.projectId).toBe("prj_1");
+    expect(sessionPinSelectValue(tabB?.expertId)).toBe("");
+    expect(sessionPinBindingLabel(tabB?.expertId, catalogs.experts)).toBe("未绑定");
+    expect(JSON.stringify(tabB)).not.toMatch(/exp_custom|AT 文档专家|sk-|Bearer |DEEPSEEK_API_KEY/);
+    expect(tabB?.messages[0]?.content).toBe("整理工作区");
+    stop();
+  });
+
+  it("Tab B pin row unbinds after Tab A deletes the pinned custom team (list snapshot)", async () => {
+    const server = [
+      row({ id: "ses_a", expertId: "exp_scout", expertTeamId: "team_docs" }),
+    ];
+    let tabB: Session | null = session({
+      id: "ses_a",
+      expertId: "exp_scout",
+      expertTeamId: "team_docs",
+      teamRun: teamRun({ teamId: "team_docs" }),
+    });
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSessionPinSync({
+      sessionId: "ses_a",
+      fetchList: async () => server.map((s) => ({ ...s })),
+      onPins: (next) => {
+        tabB = applySessionPinSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(sessionPinSelectValue(tabB?.expertTeamId)).toBe("team_docs");
+    expect(tabB?.teamRun?.teamId).toBe("team_docs");
+
+    server[0] = row({ id: "ses_a", expertId: "exp_scout" });
+    tickInterval();
+    await flush();
+
+    expect(tabB?.expertTeamId).toBeUndefined();
+    expect(tabB?.teamRun).toBeUndefined();
+    expect(tabB?.expertId).toBe("exp_scout");
+    expect(sessionPinBindingLabel(tabB?.expertTeamId, catalogs.teams)).toBe("未绑定");
+    expect(JSON.stringify(tabB)).not.toMatch(/team_docs|文档小队|sk-|Bearer |DEEPSEEK_API_KEY/);
+    expect(tabB?.messages[0]?.content).toBe("整理工作区");
+    stop();
+  });
+
+  it("clears teamRun when list snapshot unbinds a deleted custom team", () => {
+    const prev = session({
+      id: "ses_a",
+      expertId: "exp_scout",
+      expertTeamId: "team_docs",
+      teamRun: teamRun({ teamId: "team_docs" }),
+    });
+    const next = applySessionPinSnapshot(prev, row({ id: "ses_a", expertId: "exp_scout" }));
+    expect(next).not.toBe(prev);
+    expect(next?.expertTeamId).toBeUndefined();
+    expect(next?.teamRun).toBeUndefined();
+    expect(next?.expertId).toBe("exp_scout");
+    expect(next?.messages).toBe(prev.messages);
+    expect(sessionPinBindingLabel(next?.expertTeamId, catalogs.teams)).toBe("未绑定");
+    expect(JSON.stringify(next)).not.toMatch(/team_docs|文档小队|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("does not drop teamRun when only expertId is cleared", () => {
+    const run = teamRun({ teamId: "team_coding" });
+    const prev = session({
+      id: "ses_a",
+      expertId: "exp_custom",
+      expertTeamId: "team_coding",
+      teamRun: run,
+    });
+    const next = applySessionPinSnapshot(prev, row({ id: "ses_a", expertTeamId: "team_coding" }));
+    expect(next?.expertId).toBeUndefined();
+    expect(next?.expertTeamId).toBe("team_coding");
+    expect(next?.teamRun).toEqual(run);
   });
 });
