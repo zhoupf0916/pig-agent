@@ -3,14 +3,18 @@ import type { Automation } from "../types";
 import { describeExecutionSurface } from "./runtime-surface";
 import type { SessionListSyncClock } from "./session-list-sync";
 import {
+  applyAutomationDetailSnapshot,
   applyAutomationLastRunSnapshot,
   applyAutomationsListLastRun,
+  applyAutomationsListSnapshot,
   AUTOMATION_LAST_RUN_NEVER,
   AUTOMATIONS_LIST_POLL_MS,
   automationLastErrorLabel,
   automationLastRunLabel,
   automationLastRunSyncKey,
   automationLastSessionLabel,
+  automationSyncKey,
+  sanitizeAutomation,
   startAutomationsListSync,
   type AutomationLastRunFields,
 } from "./automations-list-sync";
@@ -98,6 +102,18 @@ function painted(item: AutomationLastRunFields | null) {
   };
 }
 
+function paintedDirectory(item: Automation | null) {
+  return {
+    id: item?.id,
+    name: item?.name,
+    enabled: item?.enabled,
+    schedule: item?.schedule ?? null,
+    lastRun: automationLastRunLabel(item?.lastRunAt),
+    session: automationLastSessionLabel(item?.lastSessionId),
+    error: automationLastErrorLabel(item?.lastError),
+  };
+}
+
 describe("automations list last-run sync (Milestone Z)", () => {
   it("keeps a 2s poll cadence, 尚未运行 copy, and default runtime pig", () => {
     expect(AUTOMATIONS_LIST_POLL_MS).toBe(2_000);
@@ -155,14 +171,6 @@ describe("automations list last-run sync (Milestone Z)", () => {
 
   it("Tab B list last-run follows Tab A / cron even when detail is not open", async () => {
     const server = [
-      row({ id: "atm_a" }),
-      row({
-        id: "atm_b",
-        lastRunAt: "2026-09-14T11:00:00.000Z",
-        lastSessionId: "ses_old",
-      }),
-    ];
-    let tabB = [
       automation({ id: "atm_a" }),
       automation({
         id: "atm_b",
@@ -170,6 +178,7 @@ describe("automations list last-run sync (Milestone Z)", () => {
         lastSessionId: "ses_old",
       }),
     ];
+    let tabB = server.map((item) => ({ ...item }));
     const { clock, tickInterval } = fakeClock(true);
 
     const stop = startAutomationsListSync({
@@ -189,7 +198,7 @@ describe("automations list last-run sync (Milestone Z)", () => {
     });
 
     const ranAt = "2026-09-14T12:08:00.000Z";
-    server[0] = row({
+    server[0] = automation({
       id: "atm_a",
       lastRunAt: ranAt,
       lastSessionId: "ses_from_tab_a",
@@ -210,8 +219,8 @@ describe("automations list last-run sync (Milestone Z)", () => {
   });
 
   it("selected detail last-run also follows GET /api/automations/:id without remounting draft fields", async () => {
-    const server = [row({ id: "atm_a" })];
-    let selected: AutomationLastRunFields = row({ id: "atm_a" });
+    const server = [automation({ id: "atm_a" })];
+    let selected: Automation = automation({ id: "atm_a" });
     let tabBDetail: Automation | null = automation({ id: "atm_a", prompt: "本地草稿提示词" });
     const selectedFetches: string[] = [];
     const { clock, tickInterval } = fakeClock(true);
@@ -235,7 +244,7 @@ describe("automations list last-run sync (Milestone Z)", () => {
     expect(selectedFetches).toContain("atm_a");
     expect(tabBDetail?.prompt).toBe("本地草稿提示词");
 
-    selected = row({
+    selected = automation({
       id: "atm_a",
       lastRunAt: "2026-09-14T12:10:00.000Z",
       lastSessionId: "ses_detail",
@@ -274,7 +283,7 @@ describe("automations list last-run sync (Milestone Z)", () => {
   });
 
   it("skips interval ticks while the tab is hidden, then refreshes on visible / focus", async () => {
-    const server = [row({ id: "atm_a" })];
+    const server = [automation({ id: "atm_a" })];
     let calls = 0;
     const { clock, tickInterval, setVisible, focus } = fakeClock(true);
     const stop = startAutomationsListSync({
@@ -294,7 +303,7 @@ describe("automations list last-run sync (Milestone Z)", () => {
     await flush();
     expect(calls).toBe(afterMount);
 
-    server[0] = row({ id: "atm_a", lastSessionId: "ses_a" });
+    server[0] = automation({ id: "atm_a", lastSessionId: "ses_a" });
     setVisible(true);
     await flush();
     expect(calls).toBeGreaterThan(afterMount);
@@ -319,11 +328,11 @@ describe("automations list last-run sync (Milestone Z)", () => {
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
     expect(painted(applied).error).toBe("失败 … 与 …");
 
-    const fetches: AutomationLastRunFields[][] = [];
+    const fetches: Automation[][] = [];
     const { clock, tickInterval } = fakeClock(true);
     const stop = startAutomationsListSync({
       fetchList: async () => {
-        const next = [structuredClone(snap)];
+        const next = [automation({ id: "atm_a" })];
         fetches.push(next);
         return next;
       },
@@ -353,8 +362,8 @@ describe("automations list last-run sync (Milestone Z)", () => {
     const stop = startAutomationsListSync({
       fetchList: async () => {
         if (fail) throw new Error("gone");
-        if (missing) return [row({ id: "atm_b", lastSessionId: "ses_other" })];
-        return [row({ id: "atm_a", lastRunAt: "t1", lastSessionId: "ses_keep" })];
+        if (missing) return [automation({ id: "atm_b", lastSessionId: "ses_other" })];
+        return [automation({ id: "atm_a", lastRunAt: "t1", lastSessionId: "ses_keep" })];
       },
       onList: (next) => {
         tabB = applyAutomationsListLastRun(tabB, next);
@@ -375,6 +384,401 @@ describe("automations list last-run sync (Milestone Z)", () => {
     tickInterval();
     await flush();
     expect(tabB[0]?.lastSessionId).toBe("ses_keep");
+    stop();
+  });
+});
+
+describe("automations directory full-list sync (Milestone AG)", () => {
+  it("keeps a 2s poll cadence and default runtime pig", () => {
+    expect(AUTOMATIONS_LIST_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("returns the previous list / detail reference when the snapshot is unchanged", () => {
+    const prevList = [automation({ id: "atm_a", name: "每日整理", enabled: true, schedule: "@daily" })];
+    const nextList = [automation({ id: "atm_a", name: "每日整理", enabled: true, schedule: "@daily" })];
+    expect(applyAutomationsListSnapshot(prevList, nextList)).toBe(prevList);
+    expect(automationSyncKey(prevList[0]!)).toBe(automationSyncKey(nextList[0]!));
+
+    const prevDetail = automation({ id: "atm_a" });
+    expect(applyAutomationDetailSnapshot(prevDetail, prevDetail)).toBe(prevDetail);
+  });
+
+  it("does not remount create-draft fields when only list / open detail name changes", () => {
+    const createDraft = { name: "本地正在输入的名称", prompt: "本地草稿提示词" };
+    const prev = automation({ id: "atm_a", name: "旧名称", schedule: "@daily" });
+    const next = applyAutomationDetailSnapshot(
+      prev,
+      automation({
+        id: "atm_a",
+        name: "Tab A 改过的名称",
+        schedule: "0 9 * * 1",
+        enabled: false,
+        updatedAt: "2026-09-14T12:08:00.000Z",
+      }),
+    );
+    expect(next).not.toBe(prev);
+    expect(next?.name).toBe("Tab A 改过的名称");
+    expect(next?.schedule).toBe("0 9 * * 1");
+    expect(next?.enabled).toBe(false);
+    expect(next?.runtime).toBe("pig");
+    expect(createDraft).toEqual({ name: "本地正在输入的名称", prompt: "本地草稿提示词" });
+  });
+
+  it("ignores a snapshot for another automation and a missing open detail", () => {
+    const prev = automation({ id: "atm_a" });
+    expect(applyAutomationDetailSnapshot(prev, automation({ id: "atm_b", name: "别的自动化" }))).toBe(
+      prev,
+    );
+    expect(applyAutomationDetailSnapshot(null, automation({ id: "atm_a", name: "每日整理" }))).toBeNull();
+  });
+
+  it("Tab B list follows Tab A create / enable / cron / rename / delete without a full remount", async () => {
+    let server = [automation({ id: "atm_a", name: "每日整理", enabled: true, schedule: "@daily" })];
+    let tabB = server.map((row) => ({ ...row }));
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabB = applyAutomationsListSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedDirectory(tabB[0]!)).toEqual({
+      id: "atm_a",
+      name: "每日整理",
+      enabled: true,
+      schedule: "@daily",
+      lastRun: "上次运行：尚未运行",
+      session: undefined,
+      error: undefined,
+    });
+
+    server = [
+      automation({
+        id: "atm_b",
+        name: "每周简报",
+        enabled: true,
+        schedule: "0 9 * * 1",
+        updatedAt: "2026-09-14T12:09:00.000Z",
+      }),
+      automation({
+        id: "atm_a",
+        name: "每日整理 · 已改名",
+        enabled: false,
+        schedule: "@hourly",
+        updatedAt: "2026-09-14T12:08:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabB.map((row) => row.id)).toEqual(["atm_b", "atm_a"]);
+    expect(paintedDirectory(tabB.find((row) => row.id === "atm_a")!)).toEqual({
+      id: "atm_a",
+      name: "每日整理 · 已改名",
+      enabled: false,
+      schedule: "@hourly",
+      lastRun: "上次运行：尚未运行",
+      session: undefined,
+      error: undefined,
+    });
+    expect(paintedDirectory(tabB.find((row) => row.id === "atm_b")!)).toEqual({
+      id: "atm_b",
+      name: "每周简报",
+      enabled: true,
+      schedule: "0 9 * * 1",
+      lastRun: "上次运行：尚未运行",
+      session: undefined,
+      error: undefined,
+    });
+    expect(tabB.find((row) => row.id === "atm_a")?.runtime).toBe("pig");
+
+    server = [
+      automation({
+        id: "atm_b",
+        name: "每周简报",
+        enabled: true,
+        schedule: "0 9 * * 1",
+        updatedAt: "2026-09-14T12:09:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+    expect(tabB.map((row) => row.id)).toEqual(["atm_b"]);
+    expect(tabB.find((row) => row.id === "atm_a")).toBeUndefined();
+    stop();
+  });
+
+  it("Tab B last-run still follows Tab A / cron via the full list snapshot (Milestone Z)", async () => {
+    let server = [
+      automation({ id: "atm_a" }),
+      automation({
+        id: "atm_b",
+        lastRunAt: "2026-09-14T11:00:00.000Z",
+        lastSessionId: "ses_old",
+      }),
+    ];
+    let tabB = server.map((row) => ({ ...row }));
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabB = applyAutomationsListSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    const ranAt = "2026-09-14T12:08:00.000Z";
+    server = [
+      automation({
+        id: "atm_a",
+        lastRunAt: ranAt,
+        lastSessionId: "ses_from_tab_a",
+        updatedAt: ranAt,
+      }),
+      automation({
+        id: "atm_b",
+        lastRunAt: "2026-09-14T11:00:00.000Z",
+        lastSessionId: "ses_old",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    const during = tabB.find((item) => item.id === "atm_a");
+    expect(during?.lastRunAt).toBe(ranAt);
+    expect(during?.lastSessionId).toBe("ses_from_tab_a");
+    expect(during?.name).toBe("每日整理");
+    expect(painted(during!).lastRun).toMatch(/^上次运行：/);
+    expect(painted(during!).lastRun).not.toMatch(/尚未运行/);
+    expect(tabB.find((item) => item.id === "atm_b")?.lastSessionId).toBe("ses_old");
+    stop();
+  });
+
+  it("open detail also follows GET /api/automations/:id without remounting the page", async () => {
+    const listServer = [automation({ id: "atm_a", name: "每日整理", enabled: true })];
+    let detailServer: Automation = automation({ id: "atm_a", name: "每日整理", enabled: true });
+    let tabBDetail: Automation | null = automation({ id: "atm_a", name: "每日整理", enabled: true });
+    const selectedFetches: string[] = [];
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => listServer.map((row) => ({ ...row })),
+      onList: () => undefined,
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return { ...detailServer };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toContain("atm_a");
+    expect(tabBDetail?.name).toBe("每日整理");
+
+    detailServer = automation({
+      id: "atm_a",
+      name: "Tab A 改过的名称",
+      enabled: false,
+      schedule: "@hourly",
+      prompt: "整理工作区并写一份简报 · 已编辑",
+      updatedAt: "2026-09-14T12:10:00.000Z",
+    });
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail?.name).toBe("Tab A 改过的名称");
+    expect(tabBDetail?.enabled).toBe(false);
+    expect(tabBDetail?.schedule).toBe("@hourly");
+    expect(tabBDetail?.prompt).toBe("整理工作区并写一份简报 · 已编辑");
+    expect(tabBDetail?.runtime).toBe("pig");
+    expect(tabBDetail?.id).toBe("atm_a");
+    stop();
+  });
+
+  it("does not force-fetch detail body when that automation is not open", async () => {
+    const selectedFetches: string[] = [];
+    let tabB = [automation({ id: "atm_a", name: "旧名称", enabled: true })];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => [
+        automation({
+          id: "atm_a",
+          name: "新名称",
+          enabled: false,
+          schedule: "@hourly",
+          updatedAt: "2026-09-14T12:12:00.000Z",
+        }),
+      ],
+      onList: (next) => {
+        tabB = applyAutomationsListSnapshot(tabB, next);
+      },
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return null;
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    tickInterval();
+    await flush();
+    expect(selectedFetches).toEqual([]);
+    expect(tabB[0]?.name).toBe("新名称");
+    expect(tabB[0]?.enabled).toBe(false);
+    expect(tabB[0]?.schedule).toBe("@hourly");
+    stop();
+  });
+
+  it("clears the open detail when Tab A deletes that automation", async () => {
+    let server: Automation[] = [automation({ id: "atm_a", name: "每日整理" })];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Automation | null = automation({ id: "atm_a", name: "每日整理" });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyAutomationsListSnapshot(tabBList, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async () => {
+        const found = server.find((row) => row.id === "atm_a");
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBDetail?.id).toBe("atm_a");
+
+    server = [];
+    tickInterval();
+    await flush();
+    expect(tabBList).toEqual([]);
+    expect(tabBDetail).toBeNull();
+    stop();
+  });
+
+  it("skips interval ticks while the tab is hidden, then refreshes on visible / focus", async () => {
+    const server = [automation({ id: "atm_a" })];
+    let calls = 0;
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        calls += 1;
+        return server.map((row) => ({ ...row }));
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    const afterMount = calls;
+
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(calls).toBe(afterMount);
+
+    server[0] = automation({ id: "atm_a", name: "可见后" });
+    setVisible(true);
+    await flush();
+    expect(calls).toBeGreaterThan(afterMount);
+
+    const beforeFocus = calls;
+    focus();
+    await flush();
+    expect(calls).toBeGreaterThan(beforeFocus);
+    stop();
+  });
+
+  it("never treats automation snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...automation({ id: "atm_a", name: "每日整理", lastError: "失败 sk-abcdefghijklmnop 与 Bearer tok-abc" }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+    } as Automation & { llmApiKey: string; cloudToken: string };
+    const applied = applyAutomationsListSnapshot([], [dirty]);
+    const detail = applyAutomationDetailSnapshot(automation({ id: "atm_a" }), dirty);
+    const raw = JSON.stringify({ list: applied, detail, painted: paintedDirectory(applied[0]!) });
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
+    expect(paintedDirectory(applied[0]!).error).toBe("失败 … 与 …");
+    expect(sanitizeAutomation(dirty)).not.toHaveProperty("llmApiKey");
+
+    const fetches: Automation[][] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        const next = [automation({ id: "atm_a", name: "每日整理" })];
+        fetches.push(next);
+        return next;
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((list) => list[0]?.id === "atm_a")).toBe(true);
+    stop();
+  });
+
+  it("keeps the last good list / detail when a refresh fails", async () => {
+    let fail = false;
+    let tabB = [automation({ id: "atm_a", name: "每日整理", enabled: true })];
+    let tabBDetail: Automation | null = automation({ id: "atm_a", name: "每日整理", enabled: true });
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [automation({ id: "atm_a", name: "每日整理", enabled: true })];
+      },
+      onList: (next) => {
+        tabB = applyAutomationsListSnapshot(tabB, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async () => {
+        if (fail) throw new Error("gone");
+        return automation({ id: "atm_a", name: "每日整理", enabled: true });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    expect(tabB[0]?.name).toBe("每日整理");
+    expect(tabBDetail?.enabled).toBe(true);
+
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(tabB[0]?.name).toBe("每日整理");
+    expect(tabBDetail?.enabled).toBe(true);
     stop();
   });
 });

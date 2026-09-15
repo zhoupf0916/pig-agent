@@ -2,8 +2,8 @@ import { Play, Plus, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import {
-  applyAutomationLastRunSnapshot,
-  applyAutomationsListLastRun,
+  applyAutomationDetailSnapshot,
+  applyAutomationsListSnapshot,
   automationLastErrorLabel,
   automationLastRunLabel,
   automationLastSessionLabel,
@@ -78,12 +78,40 @@ export function AutomationsPanel({
         const { automations } = await api.automations();
         return automations;
       },
-      onList: (next) => setItems((prev) => applyAutomationsListLastRun(prev, next)),
+      onList: (next) => setItems((prev) => applyAutomationsListSnapshot(prev, next)),
       selectedId,
-      fetchSelected: selectedId ? (id) => api.automation(id) : undefined,
-      onSelected: (next) => setDetail((prev) => applyAutomationLastRunSnapshot(prev, next)),
+      fetchSelected: selectedId
+        ? async (id) => {
+            try {
+              return await api.automation(id);
+            } catch {
+              return null;
+            }
+          }
+        : undefined,
+      onSelected: (next) => setDetail((prev) => applyAutomationDetailSnapshot(prev, next)),
     });
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!detail) return;
+    setDraft({
+      name: detail.name,
+      prompt: detail.prompt,
+      schedule: detail.schedule ?? "",
+      expertId: detail.expertId ?? "",
+      expertTeamId: detail.expertTeamId ?? "",
+      projectId: detail.projectId ?? "",
+    });
+  }, [
+    detail?.id,
+    detail?.name,
+    detail?.prompt,
+    detail?.schedule,
+    detail?.expertId,
+    detail?.expertTeamId,
+    detail?.projectId,
+  ]);
 
   const expertName = useMemo(
     () => experts.find((e) => e.id === detail?.expertId)?.name,
