@@ -35,6 +35,10 @@ import {
   startSessionListSync,
 } from "./lib/session-list-sync";
 import {
+  applyOpenSessionFromList,
+  applySessionOpenMetaSnapshot,
+} from "./lib/session-open-sync";
+import {
   applySessionPinSnapshot,
   startSessionPinSync,
 } from "./lib/session-pin-sync";
@@ -129,6 +133,7 @@ export function App() {
   const refreshSessions = useCallback(async () => {
     const { sessions: next } = await api.sessions();
     setSessions((prev) => applySessionListSnapshot(prev, next));
+    setSession((prev) => applyOpenSessionFromList(prev, next));
     return next;
   }, []);
 
@@ -250,7 +255,10 @@ export function App() {
         const { sessions: next } = await api.sessions();
         return next;
       },
-      onList: (next) => setSessions((prev) => applySessionListSnapshot(prev, next)),
+      onList: (next) => {
+        setSessions((prev) => applySessionListSnapshot(prev, next));
+        setSession((prev) => applyOpenSessionFromList(prev, next));
+      },
     });
   }, []);
 
@@ -262,7 +270,8 @@ export function App() {
         const { sessions: next } = await api.sessions();
         return next;
       },
-      onPins: (next) => setSession((prev) => applySessionPinSnapshot(prev, next)),
+      onPins: (next) =>
+        setSession((prev) => applySessionOpenMetaSnapshot(applySessionPinSnapshot(prev, next), next)),
     });
   }, [activeId]);
 

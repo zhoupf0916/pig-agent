@@ -122,6 +122,10 @@ When Tab B is already showing a session, the chat-header pin row (项目 / 专�
 
 When Tab B is already on the workbench, the chat-header 项目 / 专家 / 小队 **option lists** are a **read-only** refresh of the existing `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams`. Another same-host tab that creates, renames, or deletes a project / expert / team updates Tab B's dropdown catalogs on focus, visibility, or a short poll — no full page reload. Pin binding still uses the existing session PATCH paths (Milestone Y). This does **not** add a write path, a public webhook, or dual-write projects / experts / sessions / `events.jsonl`. Default runtime stays **pig**. Dropdown / snapshot JSON never carry provider-key plaintext.
 
+## Open session title / status (Milestone AM)
+
+When Tab B is already showing a session, the open session's `title` / `status` is a **read-only** refresh of those fields from the same `GET /api/sessions` used by the sidebar (Milestone Q) and pin row (Milestone Y). Another same-host tab that renames or flips running↔idle updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches only title / status on the open session (transcript / steps stay put). Pins still follow Milestone Y. This does **not** add a write path, a public webhook, or dual-write `events.jsonl`. Default runtime stays **pig**.
+
 ## Automations list last-run (Milestone Z)
 
 When Tab B is already on `#/automations`, the directory list is a **read-only** refresh of last-run fields from `GET /api/automations` (`lastRunAt` / `lastSessionId` / `lastError`). Another same-host tab or the in-process cron that finishes a run updates Tab B's 上次运行 / session entry / error on focus, visibility, or a short poll — no full page reload. Apply patches only those last-run fields onto existing list rows (and the open detail, which may also `GET /api/automations/:id`). List-visible last-run updates even when detail is not open. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. 「立即运行」 / `409` in-flight stays the existing run path. Default runtime stays **pig**.

@@ -1,0 +1,368 @@
+import { describe, expect, it } from "vitest";
+import type { ChatMessage, Session, SessionStatus, SessionSummary } from "../types";
+import { describeExecutionSurface } from "./runtime-surface";
+import {
+  applySessionListSnapshot,
+  SESSION_LIST_POLL_MS,
+  startSessionListSync,
+  type SessionListSyncClock,
+} from "./session-list-sync";
+import {
+  applyOpenSessionFromList,
+  applySessionOpenMetaSnapshot,
+  sessionOpenMetaSyncKey,
+  sessionOpenStatusLabel,
+} from "./session-open-sync";
+import { applySessionPinSnapshot, startSessionPinSync } from "./session-pin-sync";
+
+function message(id = "msg_a"): ChatMessage {
+  return {
+    id,
+    role: "user",
+    content: "整理工作区",
+    createdAt: "2026-09-14T12:00:00.000Z",
+  };
+}
+
+function session(
+  overrides: Partial<Session> & { id: string; status?: SessionStatus } = { id: "ses_a" },
+): Session {
+  return {
+    id: overrides.id,
+    title: overrides.title ?? "新任务",
+    createdAt: overrides.createdAt ?? "2026-09-14T12:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-09-14T12:00:00.000Z",
+    status: overrides.status ?? "idle",
+    messages: overrides.messages ?? [message()],
+    steps: overrides.steps ?? [],
+    artifacts: overrides.artifacts ?? [],
+    projectId: overrides.projectId,
+    expertId: overrides.expertId,
+    expertTeamId: overrides.expertTeamId,
+  };
+}
+
+function row(
+  overrides: Partial<SessionSummary> & { id: string; status?: SessionStatus } = { id: "ses_a" },
+): SessionSummary {
+  return {
+    id: overrides.id,
+    title: overrides.title ?? "新任务",
+    createdAt: overrides.createdAt ?? "2026-09-14T12:00:00.000Z",
+    updatedAt: overrides.updatedAt ?? "2026-09-14T12:00:00.000Z",
+    status: overrides.status ?? "idle",
+    projectId: overrides.projectId,
+    expertId: overrides.expertId,
+    expertTeamId: overrides.expertTeamId,
+  };
+}
+
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function fakeClock(visible = true) {
+  const intervals: Array<{ fn: () => void }> = [];
+  const listeners = new Map<string, Set<() => void>>();
+  let vis = visible;
+  const clock: SessionListSyncClock = {
+    setInterval: (fn) => {
+      intervals.push({ fn });
+      return intervals.length;
+    },
+    clearInterval: () => {
+      intervals.length = 0;
+    },
+    addListener: (type, handler) => {
+      let set = listeners.get(type);
+      if (!set) {
+        set = new Set();
+        listeners.set(type, set);
+      }
+      set.add(handler);
+    },
+    removeListener: (type, handler) => {
+      listeners.get(type)?.delete(handler);
+    },
+    isVisible: () => vis,
+  };
+  return {
+    clock,
+    tickInterval() {
+      for (const item of [...intervals]) item.fn();
+    },
+    setVisible(next: boolean) {
+      vis = next;
+      for (const fn of listeners.get("visibilitychange") ?? []) fn();
+    },
+    focus() {
+      for (const fn of listeners.get("focus") ?? []) fn();
+    },
+  };
+}
+
+function painted(open: Session | null) {
+  return {
+    title: open?.title ?? "",
+    status: open?.status ?? "idle",
+    statusLabel: sessionOpenStatusLabel(open?.status ?? "idle"),
+  };
+}
+
+describe("open session title/status sync (Milestone AM)", () => {
+  it("reuses the 2s list poll and existing Chinese status labels (default runtime pig)", () => {
+    expect(SESSION_LIST_POLL_MS).toBe(2_000);
+    expect(sessionOpenStatusLabel("running")).toBe("运行中");
+    expect(sessionOpenStatusLabel("idle")).toBe("空闲");
+    expect(sessionOpenStatusLabel("error")).toBe("出错");
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+  });
+
+  it("returns the previous session reference when title and status are unchanged", () => {
+    const prev = session({ id: "ses_a", title: "整理工作区", status: "idle" });
+    const next = row({ id: "ses_a", title: "整理工作区", status: "idle" });
+    expect(applySessionOpenMetaSnapshot(prev, next)).toBe(prev);
+    expect(sessionOpenMetaSyncKey(prev)).toBe(sessionOpenMetaSyncKey(next));
+  });
+
+  it("does not remount the transcript when only title / status change", () => {
+    const prev = session({
+      id: "ses_a",
+      title: "新任务",
+      status: "idle",
+      messages: [message("msg_keep")],
+      steps: [{ id: "step_1", title: "查看目录", status: "done" }],
+    });
+    const next = applySessionOpenMetaSnapshot(
+      prev,
+      row({ id: "ses_a", title: "搜索笔记并整理工作区", status: "running" }),
+    );
+    expect(next).not.toBe(prev);
+    expect(next?.messages).toBe(prev.messages);
+    expect(next?.messages[0]?.id).toBe("msg_keep");
+    expect(next?.steps).toBe(prev.steps);
+    expect(next?.title).toBe("搜索笔记并整理工作区");
+    expect(next?.status).toBe("running");
+    expect(painted(next).statusLabel).toBe("运行中");
+  });
+
+  it("ignores a snapshot for another session and a missing open session", () => {
+    const prev = session({ id: "ses_a", title: "新任务" });
+    expect(applySessionOpenMetaSnapshot(prev, row({ id: "ses_b", title: "其他会话", status: "running" }))).toBe(
+      prev,
+    );
+    expect(applySessionOpenMetaSnapshot(null, row({ id: "ses_a", title: "搜索笔记", status: "running" }))).toBeNull();
+    expect(applyOpenSessionFromList(prev, [row({ id: "ses_b", title: "其他会话", status: "running" })])).toBe(
+      prev,
+    );
+  });
+
+  it("Tab B open session follows Tab A rename and running ↔ idle from list snapshots", async () => {
+    const server = [
+      row({ id: "ses_a", title: "新任务", status: "idle" }),
+      row({ id: "ses_b", title: "其他会话", status: "idle" }),
+    ];
+    let tabBList = server.map((s) => ({ ...s }));
+    let tabB: Session | null = session({ id: "ses_a", title: "新任务", status: "idle" });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startSessionListSync({
+      fetchList: async () => server.map((s) => ({ ...s })),
+      onList: (next) => {
+        tabBList = applySessionListSnapshot(tabBList, next);
+        tabB = applyOpenSessionFromList(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(painted(tabB)).toEqual({ title: "新任务", status: "idle", statusLabel: "空闲" });
+    expect(tabBList.find((s) => s.id === "ses_a")?.status).toBe("idle");
+
+    server[0] = row({
+      id: "ses_a",
+      title: "搜索笔记并整理工作区",
+      status: "running",
+      updatedAt: "2026-09-14T12:00:05.000Z",
+    });
+    tickInterval();
+    await flush();
+
+    expect(painted(tabB)).toEqual({
+      title: "搜索笔记并整理工作区",
+      status: "running",
+      statusLabel: "运行中",
+    });
+    expect(tabB?.messages[0]?.content).toBe("整理工作区");
+    expect(tabBList.find((s) => s.id === "ses_a")?.title).toBe("搜索笔记并整理工作区");
+
+    server[0] = row({
+      id: "ses_a",
+      title: "搜索笔记并整理工作区",
+      status: "idle",
+      updatedAt: "2026-09-14T12:00:20.000Z",
+    });
+    tickInterval();
+    await flush();
+
+    expect(painted(tabB).status).toBe("idle");
+    expect(painted(tabB).statusLabel).toBe("空闲");
+    expect(tabB?.title).toBe("搜索笔记并整理工作区");
+    stop();
+  });
+
+  it("also flips error as a terminal open-session status without touching pins", () => {
+    const prev = session({
+      id: "ses_a",
+      title: "远程任务",
+      status: "running",
+      projectId: "prj_1",
+    });
+    const next = applySessionOpenMetaSnapshot(
+      prev,
+      row({ id: "ses_a", title: "远程任务", status: "error" }),
+    );
+    expect(next?.status).toBe("error");
+    expect(sessionOpenStatusLabel(next!.status)).toBe("出错");
+    expect(next?.projectId).toBe("prj_1");
+    expect(next?.messages).toBe(prev.messages);
+  });
+
+  it("pin-row snapshots can also patch title / status (same GET /api/sessions row)", async () => {
+    const server = [row({ id: "ses_a", title: "新任务", status: "idle", projectId: "prj_1" })];
+    let tabB: Session | null = session({ id: "ses_a", title: "新任务", status: "idle", projectId: "prj_1" });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startSessionPinSync({
+      sessionId: "ses_a",
+      fetchList: async () => server.map((s) => ({ ...s })),
+      onPins: (next) => {
+        tabB = applySessionOpenMetaSnapshot(applySessionPinSnapshot(tabB, next), next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    server[0] = row({
+      id: "ses_a",
+      title: "改过的标题",
+      status: "running",
+      projectId: "prj_1",
+    });
+    tickInterval();
+    await flush();
+
+    expect(tabB?.title).toBe("改过的标题");
+    expect(tabB?.status).toBe("running");
+    expect(tabB?.projectId).toBe("prj_1");
+    expect(tabB?.messages[0]?.id).toBe("msg_a");
+    stop();
+  });
+
+  it("skips interval ticks while the tab is hidden, then refreshes on visible / focus", async () => {
+    const server = [row({ id: "ses_a", title: "新任务", status: "idle" })];
+    let calls = 0;
+    let tabB: Session | null = session({ id: "ses_a" });
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+    const stop = startSessionListSync({
+      fetchList: async () => {
+        calls += 1;
+        return server.map((s) => ({ ...s }));
+      },
+      onList: (next) => {
+        tabB = applyOpenSessionFromList(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    const afterMount = calls;
+
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(calls).toBe(afterMount);
+
+    server[0] = row({ id: "ses_a", title: "可见后", status: "running" });
+    setVisible(true);
+    await flush();
+    expect(calls).toBeGreaterThan(afterMount);
+    expect(tabB?.title).toBe("可见后");
+    expect(tabB?.status).toBe("running");
+
+    const beforeFocus = calls;
+    focus();
+    await flush();
+    expect(calls).toBeGreaterThan(beforeFocus);
+    stop();
+  });
+
+  it("never treats title / status snapshots as a place to store secrets and stays GET-only", async () => {
+    const snap = row({ id: "ses_a", title: "整理工作区", status: "running" });
+    const applied = applySessionOpenMetaSnapshot(session({ id: "ses_a" }), snap);
+    const raw = JSON.stringify(applied);
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
+    expect(painted(applied).title).toBe("整理工作区");
+    expect(painted(applied).statusLabel).toBe("运行中");
+
+    const fetches: SessionSummary[][] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSessionListSync({
+      fetchList: async () => {
+        const next = [structuredClone(snap)];
+        fetches.push(next);
+        return next;
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((list) => list[0]?.id === "ses_a")).toBe(true);
+    expect(JSON.stringify(fetches)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    stop();
+  });
+
+  it("keeps the last good title / status when a refresh fails or the row is missing", async () => {
+    let fail = false;
+    let missing = false;
+    let tabB: Session | null = session({ id: "ses_a", title: "整理工作区", status: "running" });
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSessionListSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        if (missing) return [row({ id: "ses_b", title: "其他会话" })];
+        return [row({ id: "ses_a", title: "整理工作区", status: "running" })];
+      },
+      onList: (next) => {
+        tabB = applyOpenSessionFromList(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    expect(tabB?.title).toBe("整理工作区");
+    expect(tabB?.status).toBe("running");
+
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(tabB?.title).toBe("整理工作区");
+    expect(tabB?.status).toBe("running");
+
+    fail = false;
+    missing = true;
+    tickInterval();
+    await flush();
+    expect(tabB?.title).toBe("整理工作区");
+    expect(tabB?.status).toBe("running");
+    expect(tabB?.messages[0]?.content).toBe("整理工作区");
+    stop();
+  });
+});

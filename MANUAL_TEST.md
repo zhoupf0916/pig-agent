@@ -246,6 +246,17 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab open session title / status (Milestone AM)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh of the already-open session's `title` / `status` (complement to Milestone Y pins). No new write path, no dual-write of sessions / `events.jsonl`, no public webhook, no transcript reload. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already has a session open. Tab A **renames** or flips **运行中** ↔ idle — Tab B's open session title / status catch up without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** GET `/api/sessions/:id` or reload transcript / steps for this catch-up. Pins still follow Milestone Y
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AL / L·M·N / W·X / Y / AK unchanged
+- [ ] Title / status / session JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab session pins (Milestone Y)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/sessions` refresh of the open session's 项目 / 专家 / 小队 pins. No new write path, no dual-write of sessions / `events.jsonl`. Not a credentials vault / connector / multi-agent / public webhook / sandbox change.
