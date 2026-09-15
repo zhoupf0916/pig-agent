@@ -2,6 +2,11 @@ import { Download, FolderKanban, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { formatBytes, isImage, isTextLike } from "../lib/format";
+import {
+  applyProjectDetailSnapshot,
+  applyProjectsListSnapshot,
+  startProjectsSync,
+} from "../lib/projects-sync";
 import type { Project, ProjectAsset, ProjectSummary, Session, SessionSummary, TodoStatus } from "../types";
 import { AssetPreviewModal } from "./AssetPreviewModal";
 import { HandoffDialog } from "./HandoffDialog";
@@ -75,6 +80,19 @@ export function ProjectsPanel({
       }
     })();
   }, [selectedId, refreshTick]);
+
+  useEffect(() => {
+    return startProjectsSync({
+      fetchList: async () => {
+        const { projects: next } = await api.projects();
+        return next;
+      },
+      onList: (next) => setProjects((prev) => applyProjectsListSnapshot(prev, next)),
+      selectedId,
+      fetchSelected: selectedId ? (id) => api.project(id) : undefined,
+      onSelected: (next) => setDetail((prev) => applyProjectDetailSnapshot(prev, next)),
+    });
+  }, [selectedId]);
 
   useEffect(() => {
     if (!detail || !highlightAssetId) return;

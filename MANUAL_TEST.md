@@ -124,6 +124,17 @@ Does **not** change the default runtime (still **本机 Pig**). Reuses the exist
 - [ ] Milestone L / M / N still work: remote retry + abort→idle, Pig **重试本轮**, Codex **重试本轮**, Chinese fail banners, no secrets in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 
+## Cross-tab projects board / assets / members (Milestone AA)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` refresh of `#/projects`; open detail also `GET /api/projects/:id`. No new write path, no dual-write of projects / sessions / events, no public webhook. Invite / transfer semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already on `#/projects` with a project open. Tab A changes a todo status / uploads an asset / invite·accept changes members — Tab B board · assets · members update without a full page refresh (focus the tab or wait one short poll)
+- [ ] Tab B does **not** GET `/api/projects/:id` when that project's detail is not open. List-side name / `updatedAt` may still catch up from `GET /api/projects`
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, V theme, Y pins, Z automations last-run, and L/M/N / W·X cloud progress unchanged. Invite / redeem / transfer stay the existing paths
+- [ ] Panel / banner / project JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab automations list last-run (Milestone Z)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/automations` refresh of 上次运行 / `lastSessionId` / `lastError` on `#/automations`. Selected item may also `GET /api/automations/:id`. No new write path, no dual-write of automations / sessions / events, no public webhook. 「立即运行」 / 409 in-flight unchanged. Not a credentials vault / connector / multi-agent / sandbox change.

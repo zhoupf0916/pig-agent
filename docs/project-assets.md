@@ -54,7 +54,7 @@ Attaching files requires `session.projectId === :id` (400 otherwise). Copy is th
 
 ## Web
 
-- Project assets list: **预览** modal (Markdown / JSON / text / image), **下载**, **来源会话** when `sourceSessionId` is set.
+- Project assets list: **预览** modal (Markdown / JSON / text / image), **下载**, **来源会话** when `sourceSessionId` is set. Another same-host tab already on `#/projects` with that project open refreshes the list from `GET /api/projects/:id` (focus / visibility / short poll). No new upload path.
 - Bound session row: **转交**. Workstation header: **转交到收件箱** when a project is pinned. Dialog: note + optional recent artifacts.
 - Inbox: handoff items show the note / asset count; **打开会话** jumps to the workstation.
 
