@@ -5,8 +5,10 @@ import {
   CREATE_RUN_PROGRESS,
   CreateRunProgress,
   FOLLOW_UP_PROGRESS,
+  LOCAL_STUB_PROGRESS,
   isCreateRunProgressStep,
   isFollowUpProgressStep,
+  isLocalStubProgressStep,
   sanitizeCreateRunProgressCopy,
 } from "./create-run-progress.ts";
 
@@ -122,5 +124,75 @@ describe("follow-up / reconnect progress copy", () => {
     progress.begin("create");
     expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
     expect(ses.steps.map((s) => s.id)).toEqual(["create-run:snapshot", "create-run:post"]);
+  });
+});
+
+describe("local-stub materialize progress copy", () => {
+  it("uses distinct Chinese titles from W/X and never embeds secrets", () => {
+    const dumped = JSON.stringify(LOCAL_STUB_PROGRESS);
+    expect(dumped).toMatch(/[\u4e00-\u9fff]/);
+    expect(LOCAL_STUB_PROGRESS.materialize.title).toBe("准备隔离工作区");
+    expect(LOCAL_STUB_PROGRESS.start.title).toBe("启动本机循环");
+    expect(LOCAL_STUB_PROGRESS.materialize.title).not.toBe(CREATE_RUN_PROGRESS.snapshot.title);
+    expect(LOCAL_STUB_PROGRESS.start.title).not.toBe(CREATE_RUN_PROGRESS.create.title);
+    expect(LOCAL_STUB_PROGRESS.start.title).not.toBe(FOLLOW_UP_PROGRESS.followup.title);
+    expect(dumped).not.toMatch(/sk-[A-Za-z0-9]{8,}/);
+    expect(dumped).not.toMatch(/Bearer\s+\S+/);
+    expect(dumped).not.toContain("DEEPSEEK_API_KEY");
+    expect(dumped).not.toContain("PIG_CLOUD_TOKEN");
+  });
+
+  it("emits local-stub steps then hands off without W/X chips", () => {
+    const ses = session();
+    const events: AgentEvent[] = [];
+    const progress = new CreateRunProgress(ses, (e) => events.push(e));
+    progress.begin("materialize");
+    progress.begin("start");
+    expect(ses.steps.map((s) => s.id)).toEqual(["local-stub:materialize", "local-stub:start"]);
+    expect(ses.steps[0]?.status).toBe("done");
+    expect(ses.steps[1]?.status).toBe("running");
+    expect(ses.steps[1]?.title).toBe("启动本机循环");
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    expect(events.every((e) => e.type === "steps")).toBe(true);
+
+    progress.fail();
+    expect(ses.steps.find((s) => s.id === "local-stub:start")?.status).toBe("error");
+    expect(ses.status).toBe("running");
+
+    progress.handoffToStream();
+    expect(ses.steps).toEqual([]);
+    expect(ses.steps.some(isLocalStubProgressStep)).toBe(false);
+  });
+
+  it("drops W/X chips when entering local-stub (no mixed catalogs)", () => {
+    const ses = session();
+    const progress = new CreateRunProgress(ses, () => undefined);
+    progress.begin("snapshot");
+    progress.begin("create");
+    expect(ses.steps.map((s) => s.id)).toEqual(["create-run:snapshot", "create-run:post"]);
+    progress.begin("materialize");
+    expect(ses.steps.map((s) => s.id)).toEqual(["local-stub:materialize"]);
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+    progress.begin("followup");
+    expect(ses.steps.map((s) => s.id)).toEqual(["follow-up:post"]);
+    expect(ses.steps.some(isLocalStubProgressStep)).toBe(false);
+    progress.begin("start");
+    expect(ses.steps.map((s) => s.id)).toEqual(["local-stub:start"]);
+    expect(ses.steps.some(isCreateRunProgressStep)).toBe(false);
+    expect(ses.steps.some(isFollowUpProgressStep)).toBe(false);
+  });
+
+  it("abort clears running local-stub chips so idle is not a visual zombie", () => {
+    const ses = session();
+    const keep: PlanStep = { id: "plan_1", title: "写报告", status: "pending" };
+    ses.steps = [keep];
+    const progress = new CreateRunProgress(ses, () => undefined);
+    progress.begin("materialize");
+    progress.begin("start");
+    progress.abort();
+    expect(ses.steps).toEqual([keep]);
+    expect(ses.steps.every((s) => s.status !== "running" || !isLocalStubProgressStep(s))).toBe(true);
   });
 });

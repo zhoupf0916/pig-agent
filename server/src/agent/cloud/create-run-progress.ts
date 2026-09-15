@@ -41,7 +41,28 @@ export const FOLLOW_UP_PROGRESS = {
 } as const;
 
 export type FollowUpProgressPhase = keyof typeof FOLLOW_UP_PROGRESS;
-export type RemoteWaitProgressPhase = CreateRunProgressPhase | FollowUpProgressPhase;
+
+/** Host-emitted chips while local-stub isolate materialize is in flight (Milestone AD). */
+export const LOCAL_STUB_PROGRESS_ID_PREFIX = "local-stub:";
+
+export const LOCAL_STUB_PROGRESS = {
+  materialize: {
+    id: `${LOCAL_STUB_PROGRESS_ID_PREFIX}materialize`,
+    title: "准备隔离工作区",
+    detail: "正在复制工作区（已跳过密钥与 .env）",
+  },
+  start: {
+    id: `${LOCAL_STUB_PROGRESS_ID_PREFIX}start`,
+    title: "启动本机循环",
+    detail: "即将在隔离副本上启动本机 Pig 循环",
+  },
+} as const;
+
+export type LocalStubProgressPhase = keyof typeof LOCAL_STUB_PROGRESS;
+export type RemoteWaitProgressPhase =
+  | CreateRunProgressPhase
+  | FollowUpProgressPhase
+  | LocalStubProgressPhase;
 
 export function isCreateRunProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(CREATE_RUN_PROGRESS_ID_PREFIX);
@@ -51,17 +72,26 @@ export function isFollowUpProgressStep(step: PlanStep): boolean {
   return step.id.startsWith(FOLLOW_UP_PROGRESS_ID_PREFIX);
 }
 
+export function isLocalStubProgressStep(step: PlanStep): boolean {
+  return step.id.startsWith(LOCAL_STUB_PROGRESS_ID_PREFIX);
+}
+
 export function isRemoteWaitProgressStep(step: PlanStep): boolean {
-  return isCreateRunProgressStep(step) || isFollowUpProgressStep(step);
+  return (
+    isCreateRunProgressStep(step) || isFollowUpProgressStep(step) || isLocalStubProgressStep(step)
+  );
 }
 
 function specFor(phase: RemoteWaitProgressPhase): { id: string; title: string; detail: string } {
   if (phase in CREATE_RUN_PROGRESS) return CREATE_RUN_PROGRESS[phase as CreateRunProgressPhase];
-  return FOLLOW_UP_PROGRESS[phase as FollowUpProgressPhase];
+  if (phase in FOLLOW_UP_PROGRESS) return FOLLOW_UP_PROGRESS[phase as FollowUpProgressPhase];
+  return LOCAL_STUB_PROGRESS[phase as LocalStubProgressPhase];
 }
 
-function isCreateRunPhase(phase: RemoteWaitProgressPhase): boolean {
-  return phase in CREATE_RUN_PROGRESS;
+function catalogKeep(phase: RemoteWaitProgressPhase): (step: PlanStep) => boolean {
+  if (phase in CREATE_RUN_PROGRESS) return isCreateRunProgressStep;
+  if (phase in FOLLOW_UP_PROGRESS) return isFollowUpProgressStep;
+  return isLocalStubProgressStep;
 }
 
 /** Progress titles/details are static Chinese; still redact if a caller interpolates. */
@@ -70,8 +100,8 @@ export function sanitizeCreateRunProgressCopy(text: string): string {
 }
 
 /**
- * Surfaces create-run / follow-up wait via the existing `steps` channel (StepStrip).
- * Same state machine as Milestone W — two catalogs, never mixed. No new SSE types,
+ * Surfaces create-run / follow-up / local-stub wait via the existing `steps` channel (StepStrip).
+ * Same state machine as Milestone W — three catalogs, never mixed. No new SSE types,
  * no webhook, no secrets in copy.
  */
 export class CreateRunProgress {
@@ -83,7 +113,7 @@ export class CreateRunProgress {
   ) {}
 
   begin(phase: RemoteWaitProgressPhase): void {
-    const keep = isCreateRunPhase(phase) ? isCreateRunProgressStep : isFollowUpProgressStep;
+    const keep = catalogKeep(phase);
     this.owned = this.owned.filter(keep);
     for (const step of this.owned) {
       if (step.status === "running") step.status = "done";

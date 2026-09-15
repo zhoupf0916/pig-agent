@@ -31,11 +31,11 @@ Never commit API keys or control-plane tokens. Use `.env.local` (gitignored) or 
 When Settings → 云端 and mode is `local-stub` (or no remote URL is configured):
 
 1. Allocate `run_<id>` under `data/cloud-runs/`.
-2. Copy the configured workspace into `…/workspace/` (secrets files skipped).
+2. Copy the configured workspace into `…/workspace/` (secrets files skipped). While isolate materialize / loop start are in flight, the host emits Chinese `steps` chips (准备隔离工作区 → 启动本机循环) — not the remote create-run or follow-up catalogs. Secrets never appear in that copy.
 3. Write `run.json` (id / session id / timestamp only — no keys).
-4. Run the existing pig loop against that copy.
+4. Run the existing pig loop against that copy. The first pig token / tool event clears the bootstrap chips so the UI is the live turn (or the existing local Chinese banner / retry).
 5. Mirror artifact files back to the host workspace so the right-hand tree / preview stay consistent.
-6. Emit the same `AgentEvent` stream the UI already understands.
+6. Emit the same `AgentEvent` stream the UI already understands. Stop returns **idle** so the next send is not a 409 zombie.
 
 This is how automated tests and offline smoke work.
 
