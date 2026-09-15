@@ -9,8 +9,10 @@ import {
   EXPERTS_SYNC_POLL_MS,
   expertSyncKey,
   expertTeamSyncKey,
+  nextOpenExpertId,
   sanitizeExpert,
   sanitizeExpertTeam,
+  shouldFetchExpertDetail,
   startExpertsSync,
 } from "./experts-sync";
 
@@ -383,6 +385,7 @@ describe("experts cross-tab sync (Milestone AC)", () => {
     let server: Expert[] = [expert({ id: "exp_custom", name: "本机助手", bundled: false })];
     let tabBList = server.map((row) => ({ ...row }));
     let tabBDetail: Expert | null = expert({ id: "exp_custom", name: "本机助手", bundled: false });
+    const selectedFetches: string[] = [];
     const { clock, tickInterval } = fakeClock(true);
 
     const stop = startExpertsSync({
@@ -393,12 +396,16 @@ describe("experts cross-tab sync (Milestone AC)", () => {
       fetchTeams: async () => [],
       onTeams: () => undefined,
       selectedId: "exp_custom",
-      fetchSelected: async () => {
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
         const found = server.find((row) => row.id === "exp_custom");
         return found ? { ...found } : null;
       },
       onSelected: (next) => {
         tabBDetail = applyExpertDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: () => {
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, null);
       },
       intervalMs: 50,
       clock,
@@ -406,12 +413,14 @@ describe("experts cross-tab sync (Milestone AC)", () => {
 
     await flush();
     expect(tabBDetail?.id).toBe("exp_custom");
+    expect(selectedFetches).toEqual(["exp_custom"]);
 
     server = [];
     tickInterval();
     await flush();
     expect(tabBList).toEqual([]);
     expect(tabBDetail).toBeNull();
+    expect(selectedFetches).toEqual(["exp_custom"]);
     stop();
   });
 
@@ -557,5 +566,205 @@ describe("experts cross-tab sync (Milestone AC)", () => {
     expect(tabBDetail?.instruction).toBe("只探索并引用路径。");
     expect(tabBTeams[0]?.name).toBe("编码流水线");
     stop();
+  });
+});
+
+describe("open expert detail deleted-elsewhere cleanup (Milestone AR)", () => {
+  it("reuses the 2s list poll and stays on default runtime pig", () => {
+    expect(EXPERTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("keeps the open id when it is still in GET /api/experts", () => {
+    const list = [expert({ id: "exp_custom" }), expert({ id: "exp_scout" })];
+    expect(nextOpenExpertId("exp_custom", list)).toBe("exp_custom");
+    expect(shouldFetchExpertDetail("exp_custom", list)).toBe(true);
+    const prev = expert({ id: "exp_custom" });
+    expect(applyExpertDetailSnapshot(prev, prev)).toBe(prev);
+  });
+
+  it("clears the open expert when the list no longer contains that id", () => {
+    const prev = expert({ id: "exp_custom", name: "幽灵详情", bundled: false });
+    const remaining = [expert({ id: "exp_scout", name: "侦察 Scout" })];
+    expect(applyExpertDetailSnapshot(prev, null)).toBeNull();
+    expect(shouldFetchExpertDetail("exp_custom", remaining)).toBe(false);
+    expect(shouldFetchExpertDetail("exp_custom", [])).toBe(false);
+    expect(shouldFetchExpertDetail(undefined, remaining)).toBe(false);
+    expect(nextOpenExpertId("exp_custom", remaining)).toBe("exp_scout");
+    expect(nextOpenExpertId("exp_custom", [])).toBeNull();
+    expect(nextOpenExpertId(null, remaining)).toBeNull();
+  });
+
+  it("does not GET /api/experts/:id after the list confirms the open id is gone", async () => {
+    let listServer = [expert({ id: "exp_custom", bundled: false }), expert({ id: "exp_scout" })];
+    const selectedFetches: string[] = [];
+    const openIds: Array<string | null> = [];
+    let tabBDetail: Expert | null = expert({ id: "exp_custom", bundled: false });
+    let tabBOpenId: string | null = "exp_custom";
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startExpertsSync({
+      fetchList: async () => listServer.map((row) => ({ ...row })),
+      onList: () => undefined,
+      fetchTeams: async () => [],
+      onTeams: () => undefined,
+      selectedId: "exp_custom",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return expert({ id });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        openIds.push(nextId);
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toEqual(["exp_custom"]);
+    expect(tabBDetail?.id).toBe("exp_custom");
+
+    listServer = [expert({ id: "exp_scout", name: "侦察 Scout" })];
+    tickInterval();
+    await flush();
+
+    expect(selectedFetches).toEqual(["exp_custom"]);
+    expect(selectedFetches).not.toContain("exp_scout");
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("exp_scout");
+    expect(openIds).toEqual(["exp_scout"]);
+    stop();
+  });
+
+  it("Tab B leaves an expert Tab A deleted on poll / focus / visibility", async () => {
+    const server = [
+      expert({ id: "exp_custom", name: "打开中", bundled: false }),
+      expert({ id: "exp_scout", name: "侦察 Scout" }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Expert | null = expert({ id: "exp_custom", name: "打开中", bundled: false });
+    let tabBOpenId: string | null = "exp_custom";
+    const selectedFetches: string[] = [];
+    const listFetches: Expert[][] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startExpertsSync({
+      fetchList: async () => {
+        const snap = server.map((row) => ({ ...row }));
+        listFetches.push(snap);
+        return snap;
+      },
+      onList: (next) => {
+        tabBList = applyExpertsListSnapshot(tabBList, next);
+      },
+      fetchTeams: async () => [],
+      onTeams: () => undefined,
+      selectedId: "exp_custom",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return expert({ id, name: "打开中", bundled: false });
+      },
+      onSelected: (next) => {
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBDetail?.id).toBe("exp_custom");
+    expect(tabBList.map((row) => row.id)).toEqual(["exp_custom", "exp_scout"]);
+
+    server.splice(0, 1);
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("exp_scout");
+    expect(selectedFetches.every((id) => id === "exp_custom")).toBe(true);
+    expect(selectedFetches).not.toContain("exp_scout");
+
+    const afterPoll = listFetches.length;
+    setVisible(false);
+    server.length = 0;
+    tickInterval();
+    await flush();
+    expect(listFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+
+    const beforeFocus = listFetches.length;
+    focus();
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+    stop();
+  });
+
+  it("does not treat a failed list refresh as a delete", async () => {
+    let fail = false;
+    let tabBDetail: Expert | null = expert({ id: "exp_custom", bundled: false });
+    let left = false;
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startExpertsSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [expert({ id: "exp_custom", name: "本机助手", bundled: false })];
+      },
+      onList: () => undefined,
+      fetchTeams: async () => {
+        if (fail) throw new Error("gone");
+        return [];
+      },
+      onTeams: () => undefined,
+      selectedId: "exp_custom",
+      fetchSelected: async () => expert({ id: "exp_custom", name: "本机助手", bundled: false }),
+      onSelected: (next) => {
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: () => {
+        left = true;
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(left).toBe(false);
+    expect(tabBDetail?.id).toBe("exp_custom");
+    expect(tabBDetail?.name).toBe("本机助手");
+    stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const snap = [expert({ id: "exp_scout", name: "侦察 Scout" })];
+    const applied = applyExpertDetailSnapshot(expert({ id: "exp_custom", name: "已删", bundled: false }), null);
+    const raw = JSON.stringify({
+      applied,
+      snap,
+      nextId: nextOpenExpertId("exp_custom", snap),
+      fetch: shouldFetchExpertDetail("exp_custom", snap),
+    });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });

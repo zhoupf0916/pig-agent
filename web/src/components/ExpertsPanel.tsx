@@ -5,6 +5,8 @@ import {
   applyExpertDetailSnapshot,
   applyExpertTeamsListSnapshot,
   applyExpertsListSnapshot,
+  nextOpenExpertId,
+  shouldFetchExpertDetail,
   startExpertsSync,
 } from "../lib/experts-sync";
 import type { Expert, ExpertKind, ExpertTeam, SkillMeta } from "../types";
@@ -62,6 +64,13 @@ export function ExpertsPanel({
     void (async () => {
       try {
         const list = await refreshList();
+        // AN-02 nail: list absence first — rewrite hash / open state, never GET :id
+        if (selectedId && !shouldFetchExpertDetail(selectedId, list)) {
+          const nextId = nextOpenExpertId(selectedId, list);
+          onSelectExpert(nextId ?? undefined);
+          setDetail(null);
+          return;
+        }
         if (selectedId) await loadDetail(selectedId);
         else if (list[0]) onSelectExpert(list[0].id);
       } catch (err) {
@@ -83,16 +92,12 @@ export function ExpertsPanel({
       },
       onTeams: (next) => setTeams((prev) => applyExpertTeamsListSnapshot(prev, next)),
       selectedId,
-      fetchSelected: selectedId
-        ? async (id) => {
-            try {
-              return await api.expert(id);
-            } catch {
-              return null;
-            }
-          }
-        : undefined,
+      fetchSelected: selectedId ? (id) => api.expert(id) : undefined,
       onSelected: (next) => setDetail((prev) => applyExpertDetailSnapshot(prev, next)),
+      onOpenId: (nextId) => {
+        onSelectExpert(nextId ?? undefined);
+        setDetail(null);
+      },
     });
   }, [selectedId]);
 
