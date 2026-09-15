@@ -246,6 +246,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab open project detail deleted elsewhere (Milestone AP)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` detects that the already-open project id is gone (complement to Milestone AA board / assets / members). Clear the open board or switch away. No new write path, no dual-write of projects / sessions / events, no public webhook, no full page reload. Once the list says the id is gone, do **not** `GET /api/projects/:id`. Delete still uses existing `DELETE`. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AP-01** Two workstation tabs on the same host. Tab B has a project open on `#/projects/:id`. Tab A deletes that project — Tab B on focus, visibility, or one short poll clears or navigates away without a full page refresh. Do not stay on a ghost board
+- [ ] **AP-02** Tab B only reuses existing `GET /api/projects`. After the list lacks that id, do **not** request `:id`. Delete still uses existing `DELETE`. No new write path, no dual-write, no public webhook
+- [ ] **AP-03** Header chip still defaults to **本机 Pig**. Milestone O–AO / L·M·N / W·X / AA / AK unchanged
+- [ ] **AP-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab workspace preview deleted elsewhere (Milestone AO)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/workspace/file` detects that the already-open preview path is gone (complement to Milestone U content refresh). Clear the preview empty — do not keep ghost body text. No new write path, no dual-write of workspace / sessions / events, no public webhook, no full page reload. Tree listing still follows Milestone T. Not a credentials vault / connector / multi-agent / sandbox change.

@@ -156,14 +156,16 @@ function assignProjectDetail<T extends ProjectDetailSyncFields>(
  * Patch board / assets / members (and pending invites) on the open project.
  * Same reference when nothing visible changed (avoids remounting the page).
  * Leaves instruction / messages / inviteToken alone.
+ * `next === null` means the open project was deleted (gone from GET /api/projects).
  * Read-only: never POSTs todos / assets / members or writes events.jsonl.
  */
 export function applyProjectDetailSnapshot<T extends ProjectDetailSyncFields>(
   prev: T | null,
   next: ProjectDetailSyncFields | null,
 ): T | null {
+  if (next === null) return null;
   if (!prev) return prev;
-  if (!next || next.id !== prev.id) return prev;
+  if (next.id !== prev.id) return prev;
   const merged = assignProjectDetail(prev, next);
   if (projectDetailSyncKey(prev) === projectDetailSyncKey(merged)) {
     return prev;
@@ -172,9 +174,36 @@ export function applyProjectDetailSnapshot<T extends ProjectDetailSyncFields>(
 }
 
 /**
+ * When the open id is still in GET /api/projects, keep it.
+ * When it is gone, pick the next list row (or null to clear).
+ * Does not load project detail bodies.
+ */
+export function nextOpenProjectId(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): string | null {
+  if (!openId) return null;
+  if (list.some((item) => item.id === openId)) return openId;
+  return list[0]?.id ?? null;
+}
+
+/**
+ * AN-02 nail: GET /api/projects/:id only while the list still contains that id.
+ * Once the list snapshot says the open id is gone, callers must rewrite hash /
+ * open state first and must not request `:id`.
+ */
+export function shouldFetchProjectDetail(
+  openId: string | null | undefined,
+  list: Array<{ id: string }>,
+): boolean {
+  return Boolean(openId && list.some((item) => item.id === openId));
+}
+
+/**
  * Periodically GET the existing projects list (and on tab focus / visible).
  * Hidden tabs skip interval ticks; becoming visible fetches immediately.
  * Open detail also GET /api/projects/:id — never force-fetch when that detail is not open.
+ * If the list snapshot lacks the open id, rewrite open state first and do not GET `:id`.
  */
 export function startProjectsSync(opts: {
   fetchList: () => Promise<ProjectListSyncFields[]>;
@@ -182,6 +211,7 @@ export function startProjectsSync(opts: {
   selectedId?: string;
   fetchSelected?: (id: string) => Promise<ProjectDetailSyncFields | null>;
   onSelected?: (next: ProjectDetailSyncFields) => void;
+  onOpenId?: (nextId: string | null) => void;
   intervalMs?: number;
   clock?: SessionListSyncClock;
 }): () => void {
@@ -198,6 +228,11 @@ export function startProjectsSync(opts: {
       if (stopped) return;
       opts.onList(list);
       const selectedId = opts.selectedId;
+      if (selectedId && !shouldFetchProjectDetail(selectedId, list)) {
+        // list confirms gone — update hash / open state first; never GET :id
+        opts.onOpenId?.(nextOpenProjectId(selectedId, list));
+        return;
+      }
       if (selectedId && opts.fetchSelected && opts.onSelected) {
         try {
           const selected = await opts.fetchSelected(selectedId);

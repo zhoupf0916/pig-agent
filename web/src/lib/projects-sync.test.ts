@@ -5,9 +5,11 @@ import type { SessionListSyncClock } from "./session-list-sync";
 import {
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
+  nextOpenProjectId,
   PROJECTS_SYNC_POLL_MS,
   projectDetailSyncKey,
   projectListSyncKey,
+  shouldFetchProjectDetail,
   startProjectsSync,
   type ProjectDetailSyncFields,
   type ProjectListSyncFields,
@@ -482,23 +484,23 @@ describe("projects cross-tab sync (Milestone AA)", () => {
     stop();
   });
 
-  it("keeps the last good board / members when a refresh fails or the row is missing", async () => {
+  it("keeps the last good board / members when a refresh fails", async () => {
     let fail = false;
-    let missing = false;
     let tabBList = [summary({ id: "prj_a", name: "协作空间" })];
     let tabBDetail: Project | null = project({ id: "prj_a" });
+    const selectedFetches: string[] = [];
     const { clock, tickInterval } = fakeClock(true);
     const stop = startProjectsSync({
       fetchList: async () => {
         if (fail) throw new Error("gone");
-        if (missing) return [listRow({ id: "prj_b", name: "别的项目" })];
         return [listRow({ id: "prj_a", name: "协作空间" })];
       },
       onList: (next) => {
         tabBList = applyProjectsListSnapshot(tabBList, next);
       },
       selectedId: "prj_a",
-      fetchSelected: async () => {
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
         if (fail) throw new Error("gone");
         return {
           id: "prj_a",
@@ -525,13 +527,229 @@ describe("projects cross-tab sync (Milestone AA)", () => {
     await flush();
     expect(tabBList[0]?.name).toBe("协作空间");
     expect(tabBDetail?.todos[0]?.status).toBe("todo");
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    stop();
+  });
+});
 
-    fail = false;
-    missing = true;
+describe("open project deleted-elsewhere cleanup (Milestone AP)", () => {
+  it("reuses the 2s list poll and stays on default runtime pig", () => {
+    expect(PROJECTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+  });
+
+  it("keeps the open id when it is still in GET /api/projects", () => {
+    const list = [listRow({ id: "prj_a" }), listRow({ id: "prj_b" })];
+    expect(nextOpenProjectId("prj_a", list)).toBe("prj_a");
+    expect(shouldFetchProjectDetail("prj_a", list)).toBe(true);
+    const prev = project({ id: "prj_a" });
+    expect(applyProjectDetailSnapshot(prev, prev)).toBe(prev);
+  });
+
+  it("clears the open project when the list no longer contains that id", () => {
+    const prev = project({
+      id: "prj_a",
+      todos: [
+        {
+          id: "td_ghost",
+          title: "幽灵看板",
+          status: "todo",
+          createdAt: "t1",
+          updatedAt: "t1",
+        },
+      ],
+    });
+    const remaining = [listRow({ id: "prj_b", name: "其他项目" })];
+    expect(applyProjectDetailSnapshot(prev, null)).toBeNull();
+    expect(shouldFetchProjectDetail("prj_a", remaining)).toBe(false);
+    expect(shouldFetchProjectDetail("prj_a", [])).toBe(false);
+    expect(shouldFetchProjectDetail(undefined, remaining)).toBe(false);
+    expect(nextOpenProjectId("prj_a", remaining)).toBe("prj_b");
+    expect(nextOpenProjectId("prj_a", [])).toBeNull();
+    expect(nextOpenProjectId(null, remaining)).toBeNull();
+  });
+
+  it("does not GET /api/projects/:id after the list confirms the open id is gone", async () => {
+    let listServer = [listRow({ id: "prj_a" }), listRow({ id: "prj_b" })];
+    const selectedFetches: string[] = [];
+    const openIds: Array<string | null> = [];
+    let tabBDetail: Project | null = project({ id: "prj_a" });
+    let tabBOpenId: string | null = "prj_a";
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => listServer.map((s) => ({ ...s })),
+      onList: () => undefined,
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          id,
+          name: "协作空间",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+          todos: tabBDetail?.todos ?? [],
+          assets: tabBDetail?.assets ?? [],
+          members: tabBDetail?.members ?? [],
+          invites: tabBDetail?.invites ?? [],
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        openIds.push(nextId);
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toEqual(["prj_a"]);
+    expect(tabBDetail?.id).toBe("prj_a");
+
+    listServer = [listRow({ id: "prj_b", name: "其他项目" })];
     tickInterval();
     await flush();
-    expect(tabBList[0]?.name).toBe("协作空间");
+
+    expect(selectedFetches).toEqual(["prj_a"]);
+    expect(selectedFetches).not.toContain("prj_b");
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("prj_b");
+    expect(openIds).toEqual(["prj_b"]);
+    stop();
+  });
+
+  it("Tab B leaves a project Tab A deleted on poll / focus / visibility", async () => {
+    const server = [listRow({ id: "prj_a", name: "打开中" }), listRow({ id: "prj_b", name: "其他项目" })];
+    let tabBList = [summary({ id: "prj_a", name: "打开中" }), summary({ id: "prj_b", name: "其他项目" })];
+    let tabBDetail: Project | null = project({ id: "prj_a", name: "打开中" });
+    let tabBOpenId: string | null = "prj_a";
+    const selectedFetches: string[] = [];
+    const listFetches: ProjectListSyncFields[][] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => {
+        const snap = server.map((s) => ({ ...s }));
+        listFetches.push(snap);
+        return snap;
+      },
+      onList: (next) => {
+        tabBList = applyProjectsListSnapshot(tabBList, next);
+      },
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          id,
+          name: "打开中",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+          todos: tabBDetail?.todos ?? [],
+          assets: tabBDetail?.assets ?? [],
+          members: tabBDetail?.members ?? [],
+          invites: tabBDetail?.invites ?? [],
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: (nextId) => {
+        tabBOpenId = nextId;
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBDetail?.id).toBe("prj_a");
+    expect(tabBList.map((p) => p.id)).toEqual(["prj_a", "prj_b"]);
+
+    server.splice(0, 1);
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBe("prj_b");
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    expect(selectedFetches).not.toContain("prj_b");
+
+    const afterPoll = listFetches.length;
+    setVisible(false);
+    server.length = 0;
+    tickInterval();
+    await flush();
+    expect(listFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+
+    const beforeFocus = listFetches.length;
+    focus();
+    await flush();
+    expect(listFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail).toBeNull();
+    expect(tabBOpenId).toBeNull();
+    stop();
+  });
+
+  it("does not treat a failed list refresh as a delete", async () => {
+    let fail = false;
+    let tabBDetail: Project | null = project({ id: "prj_a" });
+    let left = false;
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startProjectsSync({
+      fetchList: async () => {
+        if (fail) throw new Error("gone");
+        return [listRow({ id: "prj_a", name: "协作空间" })];
+      },
+      onList: () => undefined,
+      selectedId: "prj_a",
+      fetchSelected: async () => ({
+        id: "prj_a",
+        name: "协作空间",
+        updatedAt: "2026-09-14T12:00:00.000Z",
+        todos: tabBDetail?.todos ?? [],
+        assets: tabBDetail?.assets ?? [],
+        members: tabBDetail?.members ?? [],
+        invites: tabBDetail?.invites ?? [],
+      }),
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+      },
+      onOpenId: () => {
+        left = true;
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, null);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    fail = true;
+    tickInterval();
+    await flush();
+    expect(left).toBe(false);
+    expect(tabBDetail?.id).toBe("prj_a");
     expect(tabBDetail?.todos[0]?.id).toBe("td_a");
     stop();
+  });
+
+  it("never treats deleted-open cleanup snapshots as a place to store secrets", () => {
+    const snap = [listRow({ id: "prj_b", name: "其他项目" })];
+    const applied = applyProjectDetailSnapshot(project({ id: "prj_a", name: "已删" }), null);
+    const raw = JSON.stringify({
+      applied,
+      snap,
+      nextId: nextOpenProjectId("prj_a", snap),
+      fetch: shouldFetchProjectDetail("prj_a", snap),
+    });
+    expect(applied).toBeNull();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
