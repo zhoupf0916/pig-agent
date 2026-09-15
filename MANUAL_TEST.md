@@ -131,7 +131,7 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 
 - [ ] Two workstation tabs on the same host. Tab A creates an invite / transfer, or marks read / **接受** / **忽略** — Tab B badge + list update without a full page refresh (focus the tab or wait one short poll)
 - [ ] Tab B reuses the existing `GET /api/inbox` only. Accept / reject / read still use the existing POSTs. No new write path, dual-write, or public webhook
-- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AE / L·M·N / W·X / Y–AC unchanged
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AE / L·M·N / W·X / Y–AC / AG unchanged
 - [ ] Menu / badge / inbox JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` / invite token plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
@@ -166,6 +166,17 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Tab B does **not** GET `/api/projects/:id` when that project's detail is not open. List-side name / `updatedAt` may still catch up from `GET /api/projects`
 - [ ] Header chip still defaults to **本机 Pig**. Milestone O catch-up bar, P persist, Q sidebar running→idle, R chip sync, S draft sync, T tree refresh, U file preview, V theme, Y pins, Z automations last-run, and L/M/N / W·X cloud progress unchanged. Invite / redeem / transfer stay the existing paths
 - [ ] Panel / banner / project JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
+- [ ] Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
+## Cross-tab automations directory (Milestone AG)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/automations` refresh of the full `#/automations` list snapshot (row add/remove, enable / cron / name, plus last-run). Selected item may also `GET /api/automations/:id`. No new write path, no dual-write of automations / sessions / events, no public webhook. 「立即运行」 / 409 in-flight unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] Two workstation tabs on the same host, Tab B already on `#/automations`. Tab A creates / toggles enable / changes cron / renames / deletes a row — Tab B list (and the already-open detail, if any) update without a full page refresh (focus the tab or wait one short poll)
+- [ ] List-visible row / enable / cron / name updates even when Tab B does **not** have that item’s detail open. Last-run fields still catch up as in Milestone Z
+- [ ] Header chip still defaults to **本机 Pig**. Milestone O–AF / L·M·N / W·X / Y–AC / Z unchanged. 「立即运行」 still 409 while in flight
+- [ ] List / detail / banner / automation JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
