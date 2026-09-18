@@ -1,12 +1,21 @@
+import { readFile, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../agent/runtime.ts";
+import { listSkills } from "../agent/skills.ts";
 import { createApp } from "../app.ts";
+import { SKILLS_DIR } from "../config.ts";
 import {
   BUNDLED_CODING_TEAM_ID,
   BUNDLED_IMPLEMENT_ID,
   BUNDLED_SCOUT_ID,
 } from "./bundled-experts.ts";
-import { resolveExpertPlaybook, resolveTeamMemberPlaybook } from "./experts.ts";
+import {
+  expertFile,
+  formatExpertBlock,
+  resolveExpertPlaybook,
+  resolveTeamMemberPlaybook,
+} from "./experts.ts";
 import { getSession, saveSession } from "./sessions.ts";
 import type { TeamRun } from "../types.ts";
 
@@ -487,5 +496,108 @@ describe("local experts registry", () => {
     const afterRefuse = await json<{ teams: Array<{ id: string }> }>(await app.request("/api/expert-teams"));
     expect(afterRefuse.teams.find((t) => t.id === BUNDLED_CODING_TEAM_ID)).toBeTruthy();
     expect(JSON.stringify(afterEmpty)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("drops vanished skill names from GET skillIds without writing expert JSON (Milestone BE)", async () => {
+    const ghostName = "be-vanished-skill";
+    const ghostPath = join(SKILLS_DIR, `${ghostName}.md`);
+    const implementBefore = await json<{ skillIds: string[] }>(
+      await app.request(`/api/experts/${BUNDLED_IMPLEMENT_ID}`),
+    );
+    await writeFile(
+      ghostPath,
+      "---\nname: be-vanished-skill\ndescription: temp BE fixture\n---\n\nTemp.\n",
+    );
+    try {
+      const custom = await json<{ id: string; skillIds: string[] }>(
+        await app.request("/api/experts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "BE 文档专家",
+            instruction: "只写说明，不要改代码。",
+            kind: "custom",
+            skillIds: [ghostName, "coding-helper"],
+          }),
+        }),
+      );
+      expect(custom.skillIds).toEqual([ghostName, "coding-helper"]);
+
+      const implementPatch = await app.request(`/api/experts/${BUNDLED_IMPLEMENT_ID}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillIds: [...implementBefore.skillIds, ghostName] }),
+      });
+      expect(implementPatch.status).toBe(200);
+
+      const present = await json<{ skills: Array<{ name: string }> }>(await app.request("/api/skills"));
+      expect(present.skills.map((s) => s.name)).toContain(ghostName);
+      const listedWhilePresent = await json<{ experts: Array<{ id: string; skillIds: string[] }> }>(
+        await app.request("/api/experts"),
+      );
+      expect(listedWhilePresent.experts.find((e) => e.id === custom.id)?.skillIds).toEqual([
+        ghostName,
+        "coding-helper",
+      ]);
+      expect(listedWhilePresent.experts.find((e) => e.id === BUNDLED_IMPLEMENT_ID)?.skillIds).toContain(
+        ghostName,
+      );
+
+      const storedBeforeGet = await readFile(expertFile(custom.id), "utf8");
+      await unlink(ghostPath);
+      const known = (await listSkills()).map((s) => s.name);
+      expect(known).not.toContain(ghostName);
+      expect(known).toContain("coding-helper");
+
+      const listed = await json<{ experts: Array<{ id: string; skillIds: string[] }> }>(
+        await app.request("/api/experts"),
+      );
+      const afterCustom = listed.experts.find((e) => e.id === custom.id);
+      const afterImplement = listed.experts.find((e) => e.id === BUNDLED_IMPLEMENT_ID);
+      expect(afterCustom?.skillIds).toEqual(["coding-helper"]);
+      expect(afterCustom?.skillIds).not.toContain(ghostName);
+      expect(afterImplement?.skillIds).toContain("coding-helper");
+      expect(afterImplement?.skillIds).not.toContain(ghostName);
+
+      const detail = await json<{ skillIds: string[] }>(await app.request(`/api/experts/${custom.id}`));
+      expect(detail.skillIds).toEqual(["coding-helper"]);
+      expect(detail.skillIds).not.toContain(ghostName);
+
+      const storedAfterGet = await readFile(expertFile(custom.id), "utf8");
+      expect(storedAfterGet).toBe(storedBeforeGet);
+      const storedCustom = JSON.parse(storedAfterGet) as { skillIds: string[] };
+      const storedImplement = JSON.parse(await readFile(expertFile(BUNDLED_IMPLEMENT_ID), "utf8")) as {
+        skillIds: string[];
+      };
+      expect(storedCustom.skillIds).toEqual([ghostName, "coding-helper"]);
+      expect(storedImplement.skillIds).toContain(ghostName);
+
+      const playbook = await resolveExpertPlaybook({ expertId: custom.id });
+      expect(playbook.skillIds).toEqual(["coding-helper"]);
+      expect(playbook.instruction).toContain("coding-helper");
+      expect(playbook.instruction).not.toContain(ghostName);
+      expect(formatExpertBlock(playbook.expert!, known)).toContain("coding-helper");
+      expect(formatExpertBlock(playbook.expert!, known)).not.toContain(ghostName);
+
+      const member = await resolveTeamMemberPlaybook(BUNDLED_CODING_TEAM_ID, 2);
+      expect(member.expert?.id).toBe(BUNDLED_IMPLEMENT_ID);
+      expect(member.skillIds).toContain("coding-helper");
+      expect(member.skillIds).not.toContain(ghostName);
+      expect(member.instruction).not.toContain(ghostName);
+
+      const refuseDelete = await app.request("/api/skills", { method: "DELETE" });
+      expect(refuseDelete.status).not.toBe(200);
+      expect(refuseDelete.status).not.toBe(204);
+
+      expect(JSON.stringify(listed)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+      expect(JSON.stringify(detail)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+    } finally {
+      await unlink(ghostPath).catch(() => undefined);
+      await app.request(`/api/experts/${BUNDLED_IMPLEMENT_ID}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skillIds: implementBefore.skillIds }),
+      });
+    }
   });
 });

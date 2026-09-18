@@ -251,6 +251,16 @@ Does **not** change the default runtime (still **本机 Pig**). After AY leaves 
 - [ ] **BD-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Expert skillIds after a skill file vanishes (Milestone BE)
+
+Does **not** change the default runtime (still **本机 Pig**). After a skill file disappears from `skills/`, `GET /api/experts` and `GET /api/experts/:id` drop that name from `skillIds` (custom + built-in). `listSkills()` is the source of truth. Playbook / `formatExpertBlock` use the same filtered list. Filter is read-time only — GET does **not** rewrite expert JSON. Already-open `#/experts` is the existing Milestone AC read-only catch-up — chip / `· id` disappear, no full page reload, no new sync stack. Settings AJ and `list_skills` / `load_skill` unchanged. Do **not** add `DELETE /api/skills`. No new write path, no dual-write of experts / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **BE-01** After a skill file vanishes from `skills/`, `GET /api/experts` and `GET /api/experts/:id` `skillIds` no longer contain that name (custom + built-in). `listSkills()` is the source of truth. Playbook / `formatExpertBlock` use the same filtered list. Expert JSON on disk still has the old name
+- [ ] **BE-02** Two workstation tabs on the same host. Tab B is already on `#/experts` with that expert open. Tab A deletes the skill file — Tab B on focus, visibility, or one short poll drops the chip / `· id` for the gone skill. No full page refresh. No new sync stack
+- [ ] **BE-03** Header chip still defaults to **本机 Pig**. No `DELETE /api/skills`. GET does not write expert JSON. Settings AJ, `list_skills` / `load_skill` unchanged. Milestone O–BD / AC·AJ / L·M·N / W·X unchanged. No dual-write events, no public webhook
+- [ ] **BE-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Inbox refs after session / project delete (Milestone AX)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a session clears matching inbox `sessionId`. Deleting a project removes inbox items with that `projectId`. Top-bar inbox is the existing Milestone AF read-only `GET /api/inbox` catch-up — no clickable ghost entry into the deleted session / project, no full page reload, no new sync stack. Title / body are not rewritten. Invite / transfer stay the existing kinds (no new history model). Read / accept / ignore stay the existing POSTs. No new write path, no dual-write of inbox / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.

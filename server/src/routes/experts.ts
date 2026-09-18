@@ -6,10 +6,10 @@ import {
   createExpertTeam,
   deleteExpert,
   deleteExpertTeam,
-  getExpert,
+  getExpertForRead,
   getExpertTeam,
   listExpertTeams,
-  listExperts,
+  listExpertsForRead,
   updateExpert,
   updateExpertTeam,
 } from "../store/experts.ts";
@@ -55,7 +55,7 @@ function fail(err: unknown): { error: string; status: 400 } {
 
 export function registerExpertRoutes(app: Hono): void {
   app.get("/api/experts", async (c) => {
-    return c.json({ experts: await listExperts() });
+    return c.json({ experts: await listExpertsForRead() });
   });
 
   app.post("/api/experts", async (c) => {
@@ -71,7 +71,7 @@ export function registerExpertRoutes(app: Hono): void {
   });
 
   app.get("/api/experts/:id", async (c) => {
-    const expert = await getExpert(c.req.param("id"));
+    const expert = await getExpertForRead(c.req.param("id"));
     if (!expert) return c.json({ error: "Expert not found" }, 404);
     return c.json(expert);
   });
