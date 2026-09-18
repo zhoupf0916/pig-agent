@@ -5,11 +5,16 @@ import { describeExecutionSurface } from "./runtime-surface";
 import type { SessionListSyncClock } from "./session-list-sync";
 import {
   applySearchHitsSnapshot,
+  dropSearchHit,
+  isSearchTargetGoneError,
+  openSearchHitOrDrop,
+  probeSearchHitTarget,
   SEARCH_BOX_DROPDOWN_LIMIT,
   SEARCH_SYNC_POLL_MS,
   sanitizeSearchHit,
   searchBoxCanSoftRefetch,
   searchHitSyncKey,
+  searchHitTargetRef,
   startSearchBoxSync,
   startSearchSync,
 } from "./search-sync";
@@ -506,5 +511,196 @@ describe("top-bar SearchBox same-query sync (Milestone AL)", () => {
     expect(fetches.length).toBeGreaterThan(0);
     expect(fetches.every((q) => q === "调研")).toBe(true);
     stop();
+  });
+});
+
+describe("search hits after target delete (Milestone BC)", () => {
+  it("soft-refresh drops a deleted session / project / memory id without a remount", async () => {
+    let server = [
+      hit({ id: "ses_gone", title: "调研会话", sessionId: "ses_gone" }),
+      hit({
+        id: "prj_gone",
+        type: "project",
+        title: "调研项目",
+        href: "#/projects/prj_gone",
+        projectId: "prj_gone",
+      }),
+      hit({
+        id: "mem_gone",
+        type: "memory",
+        title: "调研备忘",
+        href: "#/memory/mem_gone",
+      }),
+    ];
+    let tabB = server.map((row) => ({ ...row }));
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSearchSync({
+      query: "调研",
+      fetchHits: async () => server.map((row) => ({ ...row })),
+      onHits: (next) => {
+        tabB = applySearchHitsSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    expect(tabB.map((row) => row.id)).toEqual(["ses_gone", "prj_gone", "mem_gone"]);
+
+    server = [];
+    tickInterval();
+    await flush();
+    expect(tabB).toEqual([]);
+    expect(tabB.find((row) => row.id === "ses_gone")).toBeUndefined();
+    expect(tabB.find((row) => row.id === "prj_gone")).toBeUndefined();
+    expect(tabB.find((row) => row.id === "mem_gone")).toBeUndefined();
+    stop();
+  });
+
+  it("SearchBox open-dropdown soft-refresh also drops the deleted id", async () => {
+    let server = [hit({ id: "ses_gone", title: "调研会话", sessionId: "ses_gone" })];
+    let tabB = server.map((row) => ({ ...row }));
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startSearchBoxSync({
+      query: "调研",
+      dropdownOpen: true,
+      fetchHits: async () => server.map((row) => ({ ...row })),
+      onHits: (next) => {
+        tabB = applySearchHitsSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    expect(tabB.map((row) => row.id)).toEqual(["ses_gone"]);
+
+    server = [hit({ id: "ses_keep", title: "调研还在", sessionId: "ses_keep" })];
+    tickInterval();
+    await flush();
+    expect(tabB.map((row) => row.id)).toEqual(["ses_keep"]);
+    expect(tabB.find((row) => row.id === "ses_gone")).toBeUndefined();
+    stop();
+  });
+
+  it("click-before-refresh 404/gone drops the row and does not open a ghost detail", async () => {
+    expect(isSearchTargetGoneError({ status: 404, message: "Session not found" })).toBe(true);
+    expect(isSearchTargetGoneError(new Error("Project not found"))).toBe(true);
+    expect(isSearchTargetGoneError(new Error("Memory note not found"))).toBe(true);
+    expect(isSearchTargetGoneError(new Error("gone"))).toBe(true);
+    expect(isSearchTargetGoneError(new Error("network"))).toBe(false);
+    expect(searchHitTargetRef(hit({ id: "ses_gone", sessionId: "ses_gone" }))).toEqual({
+      kind: "session",
+      id: "ses_gone",
+    });
+    expect(
+      searchHitTargetRef(
+        hit({
+          id: "todo_a",
+          type: "todo",
+          href: "#/projects/prj_gone?todo=todo_a",
+          projectId: "prj_gone",
+          todoId: "todo_a",
+        }),
+      ),
+    ).toEqual({ kind: "project", id: "prj_gone" });
+
+    const stale = [
+      hit({ id: "ses_gone", title: "调研会话", sessionId: "ses_gone" }),
+      hit({
+        id: "mem_keep",
+        type: "memory",
+        title: "调研备忘",
+        href: "#/memory/mem_keep",
+      }),
+    ];
+    let tabB = stale.map((row) => ({ ...row }));
+    const opened: string[] = [];
+    const probed: string[] = [];
+
+    const result = await openSearchHitOrDrop({
+      hit: stale[0]!,
+      probe: (row) =>
+        probeSearchHitTarget(row, {
+          session: async (id) => {
+            probed.push(id);
+            const err = new Error("Session not found");
+            (err as Error & { status: number }).status = 404;
+            throw err;
+          },
+          project: async () => undefined,
+          memory: async () => undefined,
+        }),
+      onOpen: (row) => {
+        opened.push(row.href);
+      },
+      onDrop: (gone) => {
+        tabB = dropSearchHit(tabB, gone);
+      },
+    });
+
+    expect(result).toBe("drop");
+    expect(probed).toEqual(["ses_gone"]);
+    expect(opened).toEqual([]);
+    expect(tabB.map((row) => row.id)).toEqual(["mem_keep"]);
+    expect(tabB.find((row) => row.id === "ses_gone")).toBeUndefined();
+    expect(JSON.stringify({ tabB, opened })).not.toMatch(/#\/sessions\/ses_gone/);
+
+    const keep = await openSearchHitOrDrop({
+      hit: stale[1]!,
+      probe: async () => undefined,
+      onOpen: (row) => {
+        opened.push(row.href);
+      },
+      onDrop: (gone) => {
+        tabB = dropSearchHit(tabB, gone);
+      },
+    });
+    expect(keep).toBe("open");
+    expect(opened).toEqual(["#/memory/mem_keep"]);
+
+    const same = dropSearchHit(tabB, { type: "session", id: "ses_gone" });
+    expect(same).toBe(tabB);
+  });
+
+  it("does not invent a new poller and stays GET-only / pig / secret-free", async () => {
+    expect(SEARCH_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+
+    const dirty = {
+      ...hit({
+        id: "ses_gone",
+        title: "调研 sk-abcdefghijklmnop",
+        snippet: "Bearer tok-secret DEEPSEEK_API_KEY=sk-zzzzzzzz",
+        sessionId: "ses_gone",
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+    } as SearchHit & { llmApiKey: string };
+    const dropped = dropSearchHit(applySearchHitsSnapshot([], [dirty]), {
+      type: "session",
+      id: "ses_gone",
+    });
+    const raw = JSON.stringify({ dropped, painted: painted(dropped[0]) });
+    expect(raw).not.toMatch(/llmApiKey|DEEPSEEK_API_KEY|sk-|Bearer /);
+
+    const methods: string[] = [];
+    await openSearchHitOrDrop({
+      hit: hit({ id: "ses_a", sessionId: "ses_a" }),
+      probe: (row) =>
+        probeSearchHitTarget(row, {
+          session: async (id) => {
+            methods.push(`GET /api/sessions/${id}`);
+          },
+          project: async () => {
+            methods.push("GET /api/projects");
+          },
+          memory: async () => {
+            methods.push("GET /api/memory");
+          },
+        }),
+      onOpen: () => undefined,
+      onDrop: () => undefined,
+    });
+    expect(methods).toEqual(["GET /api/sessions/ses_a"]);
+    expect(methods.join(" ")).not.toMatch(/POST|PATCH|DELETE|events\.jsonl|webhook/i);
   });
 });

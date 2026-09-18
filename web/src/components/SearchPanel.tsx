@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
-import { applySearchHitsSnapshot, startSearchSync } from "../lib/search-sync";
+import {
+  applySearchHitsSnapshot,
+  dropSearchHit,
+  openSearchHitOrDrop,
+  probeSearchHitTarget,
+  startSearchSync,
+} from "../lib/search-sync";
 import type { SearchHit, SearchHitType } from "../types";
 
 const GROUPS: SearchHitType[] = ["session", "project", "todo", "asset", "project_message", "memory"];
@@ -68,6 +74,20 @@ export function SearchPanel({
     });
   }, [q]);
 
+  const openHitOrDrop = (hit: SearchHit) => {
+    void openSearchHitOrDrop({
+      hit,
+      probe: (row) =>
+        probeSearchHitTarget(row, {
+          session: (id) => api.session(id),
+          project: (id) => api.project(id),
+          memory: (id) => api.memoryNote(id),
+        }),
+      onOpen: onOpenHit,
+      onDrop: (gone) => setHits((prev) => dropSearchHit(prev, gone)),
+    });
+  };
+
   const grouped = useMemo(() => {
     const map = new Map<SearchHitType, SearchHit[]>();
     for (const type of GROUPS) map.set(type, []);
@@ -114,7 +134,7 @@ export function SearchPanel({
                     <button
                       type="button"
                       className="flex w-full flex-col rounded-[10px] px-3 py-2 text-left hover:bg-ink-100"
-                      onClick={() => onOpenHit(hit)}
+                      onClick={() => openHitOrDrop(hit)}
                     >
                       <div className="truncate text-[13px] font-medium text-ink-800">{hit.title}</div>
                       {hit.snippet && (

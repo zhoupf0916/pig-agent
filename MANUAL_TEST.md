@@ -136,6 +136,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Cross-tab search hits after target delete (Milestone BC)
+
+Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/search?q=` refresh of already-open `#/search` / top-bar SearchBox results after another tab deletes a hit session / project / memory (complement to Milestones AI / AL). Clicking a stale hit before that refresh (404 / gone) drops the row and does not open a ghost detail. No new search index or poller. No new write path, no dual-write, no public webhook. Search / navigation semantics unchanged. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **BC-01** Two workstation tabs on the same host. Tab B is already on `#/search` with a query, or the top-bar SearchBox already has a query and the dropdown is open. Tab A deletes a hit session / project / memory — Tab B on focus, visibility, or one short poll no longer contains that id. No full page refresh
+- [ ] **BC-02** If Tab B clicks that deleted hit before the soft refresh (404 / gone), the row disappears from the current results / dropdown and the tab does not stay on a ghost detail route. No new search index or poller
+- [ ] **BC-03** Header chip still defaults to **本机 Pig**. Milestone O–BB / AI·AL / L·M·N / W·X unchanged. Search write semantics unchanged. No dual-write events, no public webhook
+- [ ] **BC-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab workbench pin-dropdown catalogs (Milestone AK)
 
 Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /api/projects` + `GET /api/experts` + `GET /api/expert-teams` refresh of the workbench 项目 / 专家 / 小队 pin **option lists**. No new write path, no dual-write, no public webhook. Pin binding still uses the existing paths (Milestone Y). Not a credentials vault / connector / multi-agent / sandbox change.
