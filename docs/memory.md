@@ -63,7 +63,7 @@ Treat pins as user-curated facts, not a license to leave the workspace.
 - `#/memory/<id>` selects a note. Search hits navigate here.
 - Workstation header: **钉住笔记** (dialog, binds `sessionId` / `projectId`) and **写摘要** (heuristic recap).
 - Another same-host tab already on `#/memory` refreshes the list from `GET /api/memory` (focus / visibility / short poll). An already-open note also `GET /api/memory/:id` **only while that id is still in the list**. Once the list lacks the open id, rewrite `#/memory/:id` (or `#/memory`) and clear or switch away — do **not** `GET /api/memory/:id`. Pin / recap / search stay the existing write and index paths.
-- Deleting a project or a session (existing `DELETE`) clears the matching `projectId` / `sessionId` on notes that still named that id. Body / tags stay. An already-open `#/memory` list / detail catches up via the same Milestone AB GET (focus / visibility / short poll) — no ghost link into the deleted project / session, no new poller. Automation `lastSessionId` is Milestone AW.
+- Deleting a project or a session (existing `DELETE`) clears the matching `projectId` / `sessionId` on notes that still named that id. Body / tags stay. An already-open `#/memory` list / detail catches up via the same Milestone AB GET (focus / visibility / short poll) — no ghost link into the deleted project / session, no new poller. Automation `lastSessionId` is Milestone AW. Inbox cleanup is Milestone AX.
 
 ## Out of scope
 

@@ -5,7 +5,7 @@ import {
   type SessionListSyncClock,
 } from "./session-list-sync";
 
-/** Read-only inbox refresh. Same-host tabs pick up invite / transfer / read from GET /api/inbox. */
+/** Read-only inbox refresh. Same-host tabs pick up invite / transfer / read / AX cleanup from GET /api/inbox. */
 export const INBOX_SYNC_POLL_MS = 2_000;
 
 const KINDS = new Set<InboxItem["kind"]>(["invite", "handoff"]);
@@ -114,7 +114,8 @@ export function normalizeInboxUnread(value: number | undefined, items: InboxItem
 /**
  * Replace the header inbox with a GET /api/inbox snapshot.
  * Same object reference when badge + list are unchanged (avoids extra renders).
- * Adds / updates / removes rows so Tab A invite / transfer / read / accept / ignore catch up.
+ * Adds / updates / removes rows so Tab A invite / transfer / read / accept / ignore
+ * and session/project-delete cleanup catch up.
  * Read-only: never POSTs accept / decline / read or writes sessions / events.
  */
 export function applyInboxSnapshot(prev: InboxSnapshot, next: InboxSnapshot): InboxSnapshot {
