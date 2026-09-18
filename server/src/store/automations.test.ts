@@ -518,3 +518,115 @@ describe("automation pins after expert / team / project delete (Milestone AU)", 
     expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 });
+
+describe("automation lastSessionId after session delete (Milestone AW)", () => {
+  const app = createApp();
+
+  afterEach(() => {
+    setAutomationTurnForTests(null);
+    resetAutomationRuns();
+  });
+
+  it("clears lastSessionId only after deleting that session", async () => {
+    setAutomationTurnForTests(idleTurn);
+    const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    const keepSession = await json<{ id: string }>(
+      await app.request("/api/sessions", { method: "POST" }),
+    );
+    const project = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AW 保留项目" }),
+      }),
+    );
+    const pointed = await json<{
+      id: string;
+      expertId?: string;
+      expertTeamId?: string;
+      projectId?: string;
+      enabled: boolean;
+      schedule: string | null;
+      runtime: string;
+    }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AW 指向已删会话",
+          prompt: "整理工作区并写一份简报",
+          schedule: "@daily",
+          enabled: true,
+          expertId: BUNDLED_SCOUT_ID,
+          expertTeamId: BUNDLED_CODING_TEAM_ID,
+          projectId: project.id,
+        }),
+      }),
+    );
+    const lastRunAt = "2026-09-15T08:00:00.000Z";
+    const lastError = "上一轮失败";
+    await updateAutomation(pointed.id, {
+      lastRunAt,
+      lastSessionId: session.id,
+      lastError,
+    });
+    const other = await json<{ id: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AW 指向保留会话",
+          prompt: "写一份简报",
+        }),
+      }),
+    );
+    await updateAutomation(other.id, { lastSessionId: keepSession.id, lastRunAt });
+    expect((await json<{ lastSessionId?: string }>(await app.request(`/api/automations/${pointed.id}`)))
+      .lastSessionId).toBe(session.id);
+
+    const deleted = await app.request(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{
+      lastSessionId?: string;
+      lastRunAt?: string;
+      lastError?: string;
+      expertId?: string;
+      expertTeamId?: string;
+      projectId?: string;
+      enabled: boolean;
+      schedule: string | null;
+      runtime: string;
+    }>(await app.request(`/api/automations/${pointed.id}`));
+    expect(after.lastSessionId).toBeUndefined();
+    expect(after.lastRunAt).toBe(lastRunAt);
+    expect(after.lastError).toBe(lastError);
+    expect(after.expertId).toBe(BUNDLED_SCOUT_ID);
+    expect(after.expertTeamId).toBe(BUNDLED_CODING_TEAM_ID);
+    expect(after.projectId).toBe(project.id);
+    expect(after.enabled).toBe(true);
+    expect(after.schedule).toBe("@daily");
+    expect(after.runtime).toBe("pig");
+
+    const listed = await json<{
+      automations: Array<{ id: string; lastSessionId?: string; lastRunAt?: string }>;
+    }>(await app.request("/api/automations"));
+    expect(listed.automations.find((a) => a.id === pointed.id)?.lastSessionId).toBeUndefined();
+    expect(listed.automations.find((a) => a.id === pointed.id)?.lastRunAt).toBe(lastRunAt);
+    expect(
+      (await json<{ lastSessionId?: string }>(await app.request(`/api/automations/${other.id}`)))
+        .lastSessionId,
+    ).toBe(keepSession.id);
+
+    const run = await app.request(`/api/automations/${pointed.id}/run`, { method: "POST" });
+    expect(run.status).toBe(202);
+    const body = await json<{
+      automation: { lastSessionId?: string; lastRunAt?: string; runtime: string };
+      session: { id: string };
+    }>(run);
+    expect(body.automation.runtime).toBe("pig");
+    expect(body.automation.lastSessionId).toBe(body.session.id);
+    expect(body.session.id).not.toBe(session.id);
+    expect(JSON.stringify({ after, listed })).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+});

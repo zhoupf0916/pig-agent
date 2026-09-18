@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../agent/runtime.ts";
 import { createApp } from "../app.ts";
-import { updateAutomation } from "./automations.ts";
 import {
   MEMORY_PIN_HEADING,
   buildHeuristicRecap,
@@ -293,7 +292,7 @@ describe("memory refs after project / session delete (Milestone AV)", () => {
     expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 
-  it("clears memory sessionId after deleting that session (body/tags stay; lastSessionId untouched)", async () => {
+  it("clears memory sessionId after deleting that session (body/tags stay)", async () => {
     const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
     const keep = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
     const project = await json<{ id: string }>(
@@ -327,17 +326,6 @@ describe("memory refs after project / session delete (Milestone AV)", () => {
         }),
       }),
     );
-    const automation = await json<{ id: string }>(
-      await app.request("/api/automations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "AV 上次会话",
-          prompt: "整理工作区",
-        }),
-      }),
-    );
-    await updateAutomation(automation.id, { lastSessionId: session.id });
     expect(pinned.sessionId).toBe(session.id);
 
     const deleted = await app.request(`/api/sessions/${session.id}`, { method: "DELETE" });
@@ -352,12 +340,6 @@ describe("memory refs after project / session delete (Milestone AV)", () => {
     const listed = await json<{ notes: MemoryNote[] }>(await app.request("/api/memory"));
     expect(listed.notes.find((n) => n.id === pinned.id)?.sessionId).toBeUndefined();
     expect((await json<MemoryNote>(await app.request(`/api/memory/${other.id}`))).sessionId).toBe(keep.id);
-
-    const still = await json<{ lastSessionId?: string; runtime: string }>(
-      await app.request(`/api/automations/${automation.id}`),
-    );
-    expect(still.lastSessionId).toBe(session.id);
-    expect(still.runtime).toBe("pig");
     expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 });
