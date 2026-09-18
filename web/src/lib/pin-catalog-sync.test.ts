@@ -465,3 +465,58 @@ describe("workbench team catalog after custom expert delete (Milestone AY)", () 
     stop();
   });
 });
+
+describe("workbench empty custom team catalog (Milestone BD)", () => {
+  it("keeps an emptied custom team in the existing AK catalog until DELETE", async () => {
+    let serverTeams = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_custom"],
+      }),
+    ];
+    let tabBTeams = serverTeams.map((row) => ({ ...row, expertIds: [...row.expertIds] }));
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startPinCatalogSync({
+      fetchProjects: async () => [project({ id: "prj_1" })],
+      onProjects: () => undefined,
+      fetchExperts: async () => [expert({ id: "exp_scout", name: "侦察 Scout" })],
+      onExperts: () => undefined,
+      fetchTeams: async () => serverTeams.map((row) => ({ ...row, expertIds: [...row.expertIds] })),
+      onTeams: (next) => {
+        tabBTeams = applyPinTeamCatalogSnapshot(tabBTeams, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBTeams[0]?.expertIds).toEqual(["exp_custom"]);
+
+    serverTeams = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: [],
+        updatedAt: "2026-09-18T08:01:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBTeams.map((row) => row.id)).toEqual(["team_docs"]);
+    expect(tabBTeams[0]?.expertIds).toEqual([]);
+    expect(pinCatalogSelectOptions(tabBTeams).map((opt) => opt.label)).toEqual(["未绑定", "文档小队"]);
+
+    serverTeams = [];
+    tickInterval();
+    await flush();
+
+    expect(tabBTeams).toEqual([]);
+    expect(JSON.stringify(tabBTeams)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    stop();
+  });
+});

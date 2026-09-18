@@ -5,6 +5,8 @@ import {
   applyExpertDetailSnapshot,
   applyExpertTeamsListSnapshot,
   applyExpertsListSnapshot,
+  canDeleteExpertTeam,
+  formatExpertTeamMemberLabel,
   nextOpenExpertId,
   shouldFetchExpertDetail,
   startExpertsSync,
@@ -190,7 +192,8 @@ export function ExpertsPanel({
             >
               <div className="truncate text-[13px] font-medium text-ink-800">{team.name}</div>
               <div className="mt-0.5 text-meta text-ink-500">
-                {team.mode === "chain" ? "接力（同会话顺序执行）" : "并行（仍为一条拼接指令）"} · {team.expertIds.length} 人
+                {team.mode === "chain" ? "接力（同会话顺序执行）" : "并行（仍为一条拼接指令）"} ·{" "}
+                {formatExpertTeamMemberLabel(team.expertIds)}
                 {team.bundled ? " · 内置" : ""}
               </div>
               <button
@@ -200,6 +203,21 @@ export function ExpertsPanel({
               >
                 绑定到当前会话
               </button>
+              {canDeleteExpertTeam(team) && (
+                <button
+                  type="button"
+                  className="btn-ghost mt-1 w-full text-danger hover:bg-danger-soft"
+                  onClick={() => {
+                    void (async () => {
+                      await api.deleteExpertTeam(team.id);
+                      await refreshList();
+                    })();
+                  }}
+                >
+                  <Trash2 size={14} />
+                  删除
+                </button>
+              )}
             </div>
           ))}
         </div>

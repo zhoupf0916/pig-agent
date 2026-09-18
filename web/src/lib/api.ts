@@ -291,6 +291,9 @@ export const api = {
       body: JSON.stringify(input),
     }).then((r) => json<ExpertTeam>(r)),
 
+  deleteExpertTeam: (id: string) =>
+    fetch(`/api/expert-teams/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+
   automations: () => fetch("/api/automations").then((r) => json<{ automations: Automation[] }>(r)),
 
   automation: (id: string) => fetch(`/api/automations/${id}`).then((r) => json<Automation>(r)),

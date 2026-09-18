@@ -216,6 +216,12 @@ Deleting a **custom** expert (existing `DELETE /api/experts/:id`) also drops tha
 
 When Tab B is already on `#/experts`, the team list is the existing Milestone AC **read-only** refresh of `GET /api/expert-teams`. The workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK (`GET /api/experts` + `GET /api/expert-teams`). Another same-host tab that deletes the custom expert updates Tab B on focus, visibility, or a short poll — no ghost member, no full page reload, no new sync stack. Sequential team-run for remaining members stays the existing path. This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Empty custom teams stay visible and deletable (Milestone BD)
+
+After Milestone AY drops a deleted custom expert from every team's `expertIds`, a team that becomes empty stays listed. `#/experts` paints that row as **0 人** (source of truth is `expertIds.length`, not leftover member names). The user may delete that custom team with the existing `DELETE /api/expert-teams/:id`. Built-in teams stay undeletable (existing 400). Empty teams are **not** auto-deleted.
+
+When Tab B is already on `#/experts`, the team list is the existing Milestone AC **read-only** refresh of `GET /api/expert-teams`. The workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK. Another same-host tab that empties or deletes a custom team updates Tab B on focus, visibility, or a short poll — no stale member names, no full page reload, no new sync stack. Sequential team-run / pin semantics stay the existing paths. This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## Settings skills list (Milestone AJ)
 
 When Tab B already has Settings open, the `skills/` list is a **read-only** refresh of the existing `GET /api/skills`. Another same-host tab that adds, edits, or deletes `skills/*.md` updates Tab B's list on focus, visibility, or a short poll — no full page reload. This does **not** add a write path, a public webhook, or dual-write skills / settings / sessions / `events.jsonl`. `list_skills` / `load_skill` stay the existing tools. Codex MVP still does not bridge Pig skills. Default runtime stays **pig**. List / snapshot JSON never carry provider-key plaintext or skill body.
