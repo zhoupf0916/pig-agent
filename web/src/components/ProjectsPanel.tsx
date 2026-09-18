@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { formatBytes, isImage, isTextLike } from "../lib/format";
 import {
+  applyOpenAssetPreviewSnapshot,
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
   nextOpenProjectId,
@@ -99,7 +100,10 @@ export function ProjectsPanel({
       onList: (next) => setProjects((prev) => applyProjectsListSnapshot(prev, next)),
       selectedId,
       fetchSelected: selectedId ? (id) => api.project(id) : undefined,
-      onSelected: (next) => setDetail((prev) => applyProjectDetailSnapshot(prev, next)),
+      onSelected: (next) => {
+        setDetail((prev) => applyProjectDetailSnapshot(prev, next));
+        setPreviewAsset((prev) => applyOpenAssetPreviewSnapshot(prev, next));
+      },
       onOpenId: (nextId) => {
         onSelectProject(nextId ?? undefined);
         setDetail(null);

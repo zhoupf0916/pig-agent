@@ -194,6 +194,37 @@ export function applyProjectDetailSnapshot<T extends ProjectDetailSyncFields>(
 }
 
 /**
+ * Patch the already-open asset preview from the existing AA project-detail
+ * snapshot. Only the matching asset (same id) is updated. Same reference when
+ * nothing preview-visible changed. Does not close the modal, delete the file,
+ * or GET /api/sessions/:id. Preview body stays on the existing asset GET.
+ */
+export function applyOpenAssetPreviewSnapshot(
+  preview: ProjectAsset | null,
+  detail: Pick<ProjectDetailSyncFields, "assets"> | null,
+): ProjectAsset | null {
+  if (!preview) return preview;
+  if (!detail) return preview;
+  const snap = detail.assets.find((asset) => asset.id === preview.id);
+  if (!snap) return preview;
+  const merged: ProjectAsset = { ...snap };
+  if (!normalizeProjectText(merged.sourceSessionId)) {
+    delete merged.sourceSessionId;
+  }
+  if (assetSyncKey(preview) === assetSyncKey(merged)) return preview;
+  return merged;
+}
+
+/** Preview affordance — hide when the AA snapshot cleared sourceSessionId. */
+export function paintedOpenAssetPreviewSourceSession(
+  asset: Pick<ProjectAsset, "sourceSessionId"> | null | undefined,
+): { sessionId: string; label: "打开来源会话" } | null {
+  const sessionId = normalizeProjectText(asset?.sourceSessionId);
+  if (!sessionId) return null;
+  return { sessionId, label: "打开来源会话" };
+}
+
+/**
  * When the open id is still in GET /api/projects, keep it.
  * When it is gone, pick the next list row (or null to clear).
  * Does not load project detail bodies.

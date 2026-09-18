@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Project, ProjectSummary } from "../types";
+import type { Project, ProjectAsset, ProjectSummary } from "../types";
 import { describeExecutionSurface } from "./runtime-surface";
 import type { SessionListSyncClock } from "./session-list-sync";
 import {
+  applyOpenAssetPreviewSnapshot,
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
   nextOpenProjectId,
+  paintedOpenAssetPreviewSourceSession,
   PROJECTS_SYNC_POLL_MS,
   projectDetailSyncKey,
   projectListSyncKey,
@@ -1335,6 +1337,201 @@ describe("project message sessionId after session delete (Milestone BA)", () => 
     expect(tabBDetail?.messages.find((m) => m.id === "pmsg_hand_keep")?.sessionId).toBe("ses_keep");
     expect(JSON.stringify(tabBDetail?.messages.map((m) => m.sessionId ?? ""))).not.toMatch(/ses_gone/);
     expect(JSON.stringify(tabBDetail)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+    stop();
+  });
+});
+
+describe("open asset preview after source session delete (Milestone BB)", () => {
+  function previewAsset(overrides: Partial<Project["assets"][number]> & { id: string }) {
+    return {
+      id: overrides.id,
+      filename: overrides.filename ?? "brief.md",
+      size: overrides.size ?? 12,
+      mimeType: overrides.mimeType ?? "text/markdown",
+      createdAt: overrides.createdAt ?? "2026-09-14T12:00:00.000Z",
+      updatedAt: overrides.updatedAt,
+      sourceSessionId: overrides.sourceSessionId,
+      sourceArtifactPath: overrides.sourceArtifactPath ?? "notes/brief.md",
+    };
+  }
+
+  it("reuses the existing 2s AA poll and stays on default runtime pig", () => {
+    expect(PROJECTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("open-preview snapshots drop sourceSessionId without closing or deleting the file", () => {
+    const open = previewAsset({
+      id: "ast_gone",
+      sourceSessionId: "ses_gone",
+    });
+    const keep = previewAsset({
+      id: "ast_keep",
+      filename: "keep.md",
+      sourceSessionId: "ses_keep",
+      sourceArtifactPath: undefined,
+    });
+    const detail = project({
+      id: "prj_a",
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      assets: [
+        previewAsset({
+          id: "ast_gone",
+          sourceArtifactPath: "notes/brief.md",
+        }),
+        previewAsset({
+          id: "ast_keep",
+          filename: "keep.md",
+          sourceSessionId: "ses_keep",
+          sourceArtifactPath: undefined,
+        }),
+      ],
+    });
+    const appliedGone = applyOpenAssetPreviewSnapshot(open, detail);
+    const appliedKeep = applyOpenAssetPreviewSnapshot(keep, detail);
+    expect(appliedGone).not.toBe(open);
+    expect(appliedGone?.id).toBe("ast_gone");
+    expect(appliedGone?.filename).toBe("brief.md");
+    expect(appliedGone?.sourceArtifactPath).toBe("notes/brief.md");
+    expect(appliedGone?.sourceSessionId).toBeUndefined();
+    expect(paintedOpenAssetPreviewSourceSession(appliedGone)).toBeNull();
+    expect(paintedOpenAssetPreviewSourceSession(appliedKeep)).toEqual({
+      sessionId: "ses_keep",
+      label: "打开来源会话",
+    });
+    expect(applyOpenAssetPreviewSnapshot(null, detail)).toBeNull();
+    expect(applyOpenAssetPreviewSnapshot(open, null)).toBe(open);
+    expect(JSON.stringify(appliedGone)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B open preview drops 打开来源会话 after Tab A deletes that session", async () => {
+    const listServer = [listRow({ id: "prj_a", assetCount: 2 })];
+    let detailServer: ProjectDetailSyncFields = {
+      id: "prj_a",
+      name: "协作空间",
+      updatedAt: "2026-09-14T12:00:00.000Z",
+      todos: [],
+      assets: [
+        previewAsset({
+          id: "ast_gone",
+          sourceSessionId: "ses_gone",
+        }),
+        previewAsset({
+          id: "ast_keep",
+          filename: "keep.md",
+          sourceSessionId: "ses_keep",
+          sourceArtifactPath: undefined,
+        }),
+      ],
+      members: [
+        {
+          id: "mem_owner",
+          userId: "user_local",
+          displayName: "本机用户",
+          role: "owner",
+          joinedAt: "2026-09-14T12:00:00.000Z",
+        },
+      ],
+      invites: [],
+    };
+    let tabBList = [summary({ id: "prj_a", assetCount: 2 })];
+    let tabBDetail: Project | null = project({
+      id: "prj_a",
+      instruction: "本地草稿指令",
+      assets: detailServer.assets,
+    });
+    let tabBPreview: ProjectAsset | null = previewAsset({
+      id: "ast_gone",
+      sourceSessionId: "ses_gone",
+    });
+    const selectedFetches: string[] = [];
+    const sessionDetailGets: string[] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => listServer.map((s) => ({ ...s })),
+      onList: (next) => {
+        tabBList = applyProjectsListSnapshot(tabBList, next);
+      },
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          ...detailServer,
+          todos: detailServer.todos.map((t) => ({ ...t })),
+          assets: detailServer.assets.map((a) => ({ ...a })),
+          members: detailServer.members.map((m) => ({ ...m })),
+          invites: [...detailServer.invites],
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+        tabBPreview = applyOpenAssetPreviewSnapshot(tabBPreview, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedOpenAssetPreviewSourceSession(tabBPreview)).toEqual({
+      sessionId: "ses_gone",
+      label: "打开来源会话",
+    });
+    expect(tabBPreview?.id).toBe("ast_gone");
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+
+    // Tab A DELETE /api/sessions/:id cleared sourceSessionId on the GET snapshot (no new poller).
+    detailServer = {
+      ...detailServer,
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      assets: [
+        previewAsset({
+          id: "ast_gone",
+          sourceArtifactPath: "notes/brief.md",
+        }),
+        previewAsset({
+          id: "ast_keep",
+          filename: "keep.md",
+          sourceSessionId: "ses_keep",
+          sourceArtifactPath: undefined,
+        }),
+      ],
+    };
+    tickInterval();
+    await flush();
+
+    expect(tabBPreview?.id).toBe("ast_gone");
+    expect(tabBPreview?.filename).toBe("brief.md");
+    expect(tabBPreview?.sourceArtifactPath).toBe("notes/brief.md");
+    expect(tabBPreview?.sourceSessionId).toBeUndefined();
+    expect(paintedOpenAssetPreviewSourceSession(tabBPreview)).toBeNull();
+    expect(paintedOpenAssetPreviewSourceSession(tabBDetail?.assets.find((a) => a.id === "ast_keep"))).toEqual({
+      sessionId: "ses_keep",
+      label: "打开来源会话",
+    });
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    expect(sessionDetailGets).toEqual([]);
+    expect(tabBList[0]?.id).toBe("prj_a");
+
+    const afterPoll = selectedFetches.length;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(selectedFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(afterPoll);
+    expect(paintedOpenAssetPreviewSourceSession(tabBPreview)).toBeNull();
+
+    const beforeFocus = selectedFetches.length;
+    focus();
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBPreview?.sourceArtifactPath).toBe("notes/brief.md");
+    expect(JSON.stringify(tabBPreview)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
     stop();
   });
 });

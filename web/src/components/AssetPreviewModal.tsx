@@ -2,6 +2,7 @@ import { Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { formatBytes } from "../lib/format";
+import { paintedOpenAssetPreviewSourceSession } from "../lib/projects-sync";
 import type { AssetPreview, ProjectAsset } from "../types";
 import { MarkdownView } from "./MarkdownView";
 
@@ -45,7 +46,8 @@ export function AssetPreviewModal({
   }, [onClose]);
 
   const downloadHref = api.assetDownloadUrl(projectId, asset.id);
-  const sourceSession = preview?.asset.sourceSessionId ?? asset.sourceSessionId;
+  // AA snapshot is source of truth — do not keep a stale preview GET session id.
+  const sourceSession = paintedOpenAssetPreviewSourceSession(asset);
   const sourcePath = preview?.asset.sourceArtifactPath ?? asset.sourceArtifactPath;
 
   return (
@@ -66,9 +68,9 @@ export function AssetPreviewModal({
                   <button
                     type="button"
                     className="ml-2 text-accent hover:underline"
-                    onClick={() => onOpenSession(sourceSession)}
+                    onClick={() => onOpenSession(sourceSession.sessionId)}
                   >
-                    打开来源会话
+                    {sourceSession.label}
                   </button>
                 )}
               </p>

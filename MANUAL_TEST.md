@@ -211,6 +211,16 @@ Does **not** change the default runtime (still **本机 Pig**). Deleting a sessi
 - [ ] **BA-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Open asset preview after source session delete (Milestone BB)
+
+Does **not** change the default runtime (still **本机 Pig**). After AZ clears asset `sourceSessionId`, an already-open asset preview is the existing Milestone AA read-only `GET /api/projects` / `:id` catch-up — the preview's 「打开来源会话」 control disappears, no `GET` of the deleted session id, no full page reload, no new sync stack. Close / reopen preview is unchanged. The asset file itself is not deleted. Asset / todo / message cleanup stay AZ / BA. Inbox / memory / automation / team cleanup stay AX / AV / AW / AY. No new write path, no dual-write of projects / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **BB-01** Two workstation tabs on the same host. Tab B is on `#/projects` with a project open **and** that asset preview already open. Tab A deletes the source session — Tab B on focus, visibility, or one short poll no longer shows 「打开来源会话」. No `GET /api/sessions/:deletedId`. No full page refresh
+- [ ] **BB-02** Only the matching open-preview asset fields sync from the existing project-detail snapshot. No new poller. Close / reopen preview unchanged. The asset file itself is not deleted
+- [ ] **BB-03** Header chip still defaults to **本机 Pig**. Milestone O–BA / AA·AZ / L·M·N / W·X unchanged. No dual-write events, no public webhook
+- [ ] **BB-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Team expertIds after custom expert delete (Milestone AY)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert drops that id from every team's `expertIds`. Already-open `#/experts` team list is the existing Milestone AC read-only `GET /api/expert-teams` catch-up — no ghost member, no full page reload, no new sync stack. Workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK. Empty teams are **not** auto-deleted. Built-in expert delete stays 400. Sequential team-run for remaining members unchanged. Session pin cleanup stays AT; automation pin cleanup stays AU. No new write path, no dual-write of experts / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
