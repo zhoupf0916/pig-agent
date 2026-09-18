@@ -669,3 +669,26 @@ export async function recordSessionBound(projectId: string, sessionId: string): 
   await activity(project, `会话 ${sessionId} 已绑定到本项目`, { sessionId });
   await writeProject(project);
 }
+
+/**
+ * Unbind project assets / todos that still name a deleted session.
+ * sourceSessionId / sessionId only — title / status / activity stay.
+ */
+export async function clearProjectSessionRefs(sessionId: string): Promise<void> {
+  const target = sessionId.trim();
+  if (!target) return;
+  for (const project of await listProjectRecords()) {
+    let changed = false;
+    for (const asset of project.assets) {
+      if (asset.sourceSessionId !== target) continue;
+      delete asset.sourceSessionId;
+      changed = true;
+    }
+    for (const todo of project.todos) {
+      if (todo.sessionId !== target) continue;
+      delete todo.sessionId;
+      changed = true;
+    }
+    if (changed) await writeProject(project);
+  }
+}
