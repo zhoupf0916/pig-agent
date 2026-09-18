@@ -996,3 +996,140 @@ describe("empty custom teams visible and deletable (Milestone BD)", () => {
     stop();
   });
 });
+
+describe("ghost skillIds drop from GET snapshot (Milestone BE)", () => {
+  function paintedSkillSuffix(skillIds: string[]): string {
+    return skillIds.length ? ` · ${skillIds.join(", ")}` : "";
+  }
+
+  it("reuses the existing 2s GET /api/experts poll and stays on default runtime pig", () => {
+    expect(EXPERTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("applies a GET snapshot that dropped a vanished skill name", () => {
+    const prev = [
+      expert({
+        id: "exp_custom",
+        name: "文档专家",
+        bundled: false,
+        skillIds: ["be-vanished-skill", "coding-helper"],
+      }),
+      expert({
+        id: "exp_implement",
+        name: "实现 Implement",
+        kind: "implement",
+        skillIds: ["coding-helper", "be-vanished-skill"],
+      }),
+    ];
+    const next = applyExpertsListSnapshot(prev, [
+      expert({
+        id: "exp_custom",
+        name: "文档专家",
+        bundled: false,
+        skillIds: ["coding-helper"],
+        updatedAt: "2026-09-18T14:00:00.000Z",
+      }),
+      expert({
+        id: "exp_implement",
+        name: "实现 Implement",
+        kind: "implement",
+        skillIds: ["coding-helper"],
+        updatedAt: "2026-09-18T14:00:00.000Z",
+      }),
+    ]);
+    expect(next).not.toBe(prev);
+    expect(next[0]?.skillIds).toEqual(["coding-helper"]);
+    expect(next[1]?.skillIds).toEqual(["coding-helper"]);
+    expect(paintedSkillSuffix(next[0]!.skillIds)).toBe(" · coding-helper");
+    expect(paintedSkillSuffix(next[0]!.skillIds)).not.toContain("be-vanished-skill");
+    expect(expertSyncKey(next[0]!)).not.toBe(expertSyncKey(prev[0]!));
+  });
+
+  it("open #/experts drops the chip / · id via existing AC GET without remount", async () => {
+    let server = [
+      expert({
+        id: "exp_custom",
+        name: "文档专家",
+        bundled: false,
+        skillIds: ["be-vanished-skill", "coding-helper"],
+      }),
+      expert({
+        id: "exp_implement",
+        name: "实现 Implement",
+        kind: "implement",
+        skillIds: ["coding-helper", "be-vanished-skill"],
+      }),
+    ];
+    let tabB = server.map((row) => ({ ...row, skillIds: [...row.skillIds] }));
+    let tabBDetail: Expert | null = { ...server[0]!, skillIds: [...server[0]!.skillIds] };
+    const selectedFetches: string[] = [];
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startExpertsSync({
+      fetchList: async () => server.map((row) => ({ ...row, skillIds: [...row.skillIds] })),
+      onList: (next) => {
+        tabB = applyExpertsListSnapshot(tabB, next);
+      },
+      fetchTeams: async () => [],
+      onTeams: () => undefined,
+      selectedId: "exp_custom",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        const row = server.find((item) => item.id === id);
+        return row ? { ...row, skillIds: [...row.skillIds] } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyExpertDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedSkillSuffix(tabB.find((row) => row.id === "exp_custom")!.skillIds)).toBe(
+      " · be-vanished-skill, coding-helper",
+    );
+    expect(tabBDetail?.skillIds).toEqual(["be-vanished-skill", "coding-helper"]);
+
+    // Tab A deleted skills/be-vanished-skill.md — GET /api/experts dropped the ghost (no new poller).
+    server = [
+      expert({
+        id: "exp_custom",
+        name: "文档专家",
+        bundled: false,
+        skillIds: ["coding-helper"],
+        updatedAt: "2026-09-18T14:01:00.000Z",
+      }),
+      expert({
+        id: "exp_implement",
+        name: "实现 Implement",
+        kind: "implement",
+        skillIds: ["coding-helper"],
+        updatedAt: "2026-09-18T14:01:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabB.map((row) => row.id)).toEqual(["exp_custom", "exp_implement"]);
+    expect(paintedExpert(tabB.find((row) => row.id === "exp_custom")!)).toEqual({
+      id: "exp_custom",
+      name: "文档专家",
+      kind: "scout",
+      instruction: "只探索并引用路径。默认不改文件。",
+      skillIds: ["coding-helper"],
+    });
+    expect(paintedSkillSuffix(tabB.find((row) => row.id === "exp_custom")!.skillIds)).toBe(
+      " · coding-helper",
+    );
+    expect(tabB.every((row) => !row.skillIds.includes("be-vanished-skill"))).toBe(true);
+    expect(tabBDetail?.skillIds).toEqual(["coding-helper"]);
+    expect(tabBDetail?.skillIds).not.toContain("be-vanished-skill");
+    expect(selectedFetches).toContain("exp_custom");
+    expect(JSON.stringify(tabB)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(JSON.stringify(tabBDetail)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    stop();
+  });
+});

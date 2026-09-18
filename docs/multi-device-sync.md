@@ -222,6 +222,12 @@ After Milestone AY drops a deleted custom expert from every team's `expertIds`, 
 
 When Tab B is already on `#/experts`, the team list is the existing Milestone AC **read-only** refresh of `GET /api/expert-teams`. The workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK. Another same-host tab that empties or deletes a custom team updates Tab B on focus, visibility, or a short poll — no stale member names, no full page reload, no new sync stack. Sequential team-run / pin semantics stay the existing paths. This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Expert skillIds after a skill file vanishes (Milestone BE)
+
+After a skill file disappears from `skills/`, expert `skillIds` drop that name at **read time**. `listSkills()` is the source of truth for `GET /api/experts`, `GET /api/experts/:id`, playbook `skillIds`, and `formatExpertBlock`. Custom and built-in experts both filter. The stored expert JSON is **not** rewritten on GET. Settings AJ (`GET /api/skills`) and `list_skills` / `load_skill` stay unchanged. This does **not** add `DELETE /api/skills`.
+
+When Tab B is already on `#/experts`, the list (and already-open detail) is the existing Milestone AC **read-only** refresh of `GET /api/experts` / `:id`. Another same-host tab that deletes the skill file updates Tab B on focus, visibility, or a short poll — the chip / `· id` for the gone skill disappears, no full page reload, no new sync stack. This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## Settings skills list (Milestone AJ)
 
 When Tab B already has Settings open, the `skills/` list is a **read-only** refresh of the existing `GET /api/skills`. Another same-host tab that adds, edits, or deletes `skills/*.md` updates Tab B's list on focus, visibility, or a short poll — no full page reload. This does **not** add a write path, a public webhook, or dual-write skills / settings / sessions / `events.jsonl`. `list_skills` / `load_skill` stay the existing tools. Codex MVP still does not bridge Pig skills. Default runtime stays **pig**. List / snapshot JSON never carry provider-key plaintext or skill body.

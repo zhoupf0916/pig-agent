@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { listSkills } from "../agent/skills.ts";
 import { DATA_DIR, ensureDir } from "../config.ts";
 import type { Expert, ExpertKind, ExpertTeam, ExpertTeamMode } from "../types.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
@@ -142,6 +143,36 @@ export async function getExpert(id: string): Promise<Expert | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Read-time filter: keep skillIds that still appear in listSkills().
+ * Does not write expert JSON.
+ */
+export function filterSkillIds(skillIds: string[], knownNames: Iterable<string>): string[] {
+  const known = knownNames instanceof Set ? knownNames : new Set(knownNames);
+  return skillIds.filter((id) => known.has(id));
+}
+
+export function expertWithLiveSkillIds(expert: Expert, knownNames: Iterable<string>): Expert {
+  return { ...expert, skillIds: filterSkillIds(expert.skillIds, knownNames) };
+}
+
+export async function knownSkillNames(): Promise<Set<string>> {
+  return new Set((await listSkills()).map((s) => s.name));
+}
+
+/** GET /api/experts — same stored rows, skillIds filtered against listSkills(). */
+export async function listExpertsForRead(): Promise<Expert[]> {
+  const [experts, known] = await Promise.all([listExperts(), knownSkillNames()]);
+  return experts.map((expert) => expertWithLiveSkillIds(expert, known));
+}
+
+/** GET /api/experts/:id — stored expert, skillIds filtered against listSkills(). */
+export async function getExpertForRead(id: string): Promise<Expert | null> {
+  const expert = await getExpert(id);
+  if (!expert) return null;
+  return expertWithLiveSkillIds(expert, await knownSkillNames());
 }
 
 export async function createExpert(input: {
@@ -293,10 +324,11 @@ export async function clearExpertIdFromTeams(expertId: string): Promise<void> {
   }
 }
 
-export function formatExpertBlock(expert: Expert): string {
+export function formatExpertBlock(expert: Expert, knownNames?: Iterable<string>): string {
+  const skillIds = knownNames ? filterSkillIds(expert.skillIds, knownNames) : expert.skillIds;
   const skills =
-    expert.skillIds.length > 0
-      ? `\nPreferred local skills (already installed; load_skill if needed): ${expert.skillIds.join(", ")}`
+    skillIds.length > 0
+      ? `\nPreferred local skills (already installed; load_skill if needed): ${skillIds.join(", ")}`
       : "";
   return `### ${expert.name} (${expert.kind})\n${expert.instruction.trim()}${skills}`;
 }
@@ -307,9 +339,10 @@ export function formatSequentialMemberInstruction(
   expert: Expert,
   index: number,
   total: number,
+  knownNames?: Iterable<string>,
 ): string {
   const header = `Expert team 「${team.name}」 — sequential same-session step ${index + 1}/${total}. You are only 「${expert.name}」 (${expert.kind}). Do not perform later members' jobs. Previous members' notes are in this transcript.`;
-  return `${header}\n\n${formatExpertBlock(expert)}`;
+  return `${header}\n\n${formatExpertBlock(expert, knownNames)}`;
 }
 
 export async function resolveTeamMemberPlaybook(
@@ -323,16 +356,18 @@ export async function resolveTeamMemberPlaybook(
   memberIndex: number;
 }> {
   await ensureBundledExperts();
+  const known = await knownSkillNames();
   const team = (await getExpertTeam(teamId)) ?? undefined;
   if (!team) return { skillIds: [], memberIndex };
   const expertId = team.expertIds[memberIndex];
   if (!expertId) return { skillIds: [], team, memberIndex };
   const expert = (await getExpert(expertId)) ?? undefined;
   if (!expert) return { skillIds: [], team, memberIndex };
+  const live = expertWithLiveSkillIds(expert, known);
   return {
-    instruction: formatSequentialMemberInstruction(team, expert, memberIndex, team.expertIds.length),
-    skillIds: [...expert.skillIds],
-    expert,
+    instruction: formatSequentialMemberInstruction(team, live, memberIndex, team.expertIds.length, known),
+    skillIds: [...live.skillIds],
+    expert: live,
     team,
     memberIndex,
   };
@@ -354,6 +389,7 @@ export async function resolveExpertPlaybook(input: {
   team?: ExpertTeam;
 }> {
   await ensureBundledExperts();
+  const known = await knownSkillNames();
   const skillIds: string[] = [];
   let expert: Expert | undefined;
   let team: ExpertTeam | undefined;
@@ -365,11 +401,12 @@ export async function resolveExpertPlaybook(input: {
   if (input.expertId) {
     expert = (await getExpert(input.expertId)) ?? undefined;
     if (expert) {
-      skillIds.push(...expert.skillIds);
+      const live = expertWithLiveSkillIds(expert, known);
+      skillIds.push(...live.skillIds);
       return {
-        instruction: formatExpertBlock(expert),
+        instruction: formatExpertBlock(live, known),
         skillIds: [...new Set(skillIds)],
-        expert,
+        expert: live,
         team,
       };
     }
@@ -380,8 +417,9 @@ export async function resolveExpertPlaybook(input: {
     for (const id of team.expertIds) {
       const member = await getExpert(id);
       if (!member) continue;
-      skillIds.push(...member.skillIds);
-      blocks.push(formatExpertBlock(member));
+      const live = expertWithLiveSkillIds(member, known);
+      skillIds.push(...live.skillIds);
+      blocks.push(formatExpertBlock(live, known));
     }
     if (blocks.length === 0) return { skillIds: [], team };
     const header =
