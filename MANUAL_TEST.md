@@ -191,9 +191,19 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Inbox refs after session / project delete (Milestone AX)
+
+Does **not** change the default runtime (still **本机 Pig**). Deleting a session clears matching inbox `sessionId`. Deleting a project removes inbox items with that `projectId`. Top-bar inbox is the existing Milestone AF read-only `GET /api/inbox` catch-up — no clickable ghost entry into the deleted session / project, no full page reload, no new sync stack. Title / body are not rewritten. Invite / transfer stay the existing kinds (no new history model). Read / accept / ignore stay the existing POSTs. No new write path, no dual-write of inbox / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AX-01** Two workstation tabs on the same host. Tab B has the header inbox with a handoff that has `sessionId`. Tab A deletes that session — Tab B on focus, visibility, or one short poll no longer shows a clickable ghost entry into the deleted session. No full page refresh
+- [ ] **AX-02** After deleting a project, inbox items with that `projectId` are gone (or can no longer open that project). No ghost **打开项目**. Invite / transfer history does not get a new model
+- [ ] **AX-03** Header chip still defaults to **本机 Pig**. Milestone O–AW / AF / L·M·N / W·X unchanged. Read / accept / ignore semantics unchanged. No dual-write events, no public webhook
+- [ ] **AX-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Automation lastSessionId after session delete (Milestone AW)
 
-Does **not** change the default runtime (still **本机 Pig**). Deleting a session clears `lastSessionId` on automations that still name that session. Already-open `#/automations` list / detail is the existing Milestone AG read-only `GET /api/automations` catch-up — no clickable ghost entry into the deleted session, no full page reload, no new sync stack. `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay put. 「立即运行」 unchanged. Inbox entries stay put. Memory `sessionId` cleanup stays AV. No new write path, no dual-write of automations / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+Does **not** change the default runtime (still **本机 Pig**). Deleting a session clears `lastSessionId` on automations that still name that session. Already-open `#/automations` list / detail is the existing Milestone AG read-only `GET /api/automations` catch-up — no clickable ghost entry into the deleted session, no full page reload, no new sync stack. `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay put. 「立即运行」 unchanged. Inbox cleanup is Milestone AX. Memory `sessionId` cleanup stays AV. No new write path, no dual-write of automations / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
 
 - [ ] **AW-01** Two workstation tabs on the same host. Tab B is on `#/automations` with an automation whose `lastSessionId` points at a session (list and/or open detail). Tab A deletes that session — Tab B on focus, visibility, or one short poll no longer shows a clickable ghost entry into the deleted session. No full page refresh
 - [ ] **AW-02** `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay. Only `lastSessionId` clears. 「立即运行」 semantics unchanged

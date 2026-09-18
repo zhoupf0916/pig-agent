@@ -340,3 +340,281 @@ describe("inbox cross-tab sync (Milestone AF)", () => {
     stop();
   });
 });
+
+describe("inbox refs after session / project delete (Milestone AX)", () => {
+  function paintedActions(row: InboxItem | undefined) {
+    return {
+      openSession: row?.kind === "handoff" && row.sessionId ? "打开会话" : "",
+      openProject: row?.projectId ? "打开项目" : "",
+      sessionId: row?.sessionId ?? "",
+      projectId: row?.projectId ?? "",
+    };
+  }
+
+  it("reuses the existing 2s AF list poll and stays on default runtime pig", () => {
+    expect(INBOX_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("snapshots drop a cleared sessionId without rewriting title/body or inventing a history model", () => {
+    const prev = snapshot([
+      item({
+        id: "inb_handoff",
+        kind: "handoff",
+        title: "转交：请接手 brief",
+        body: "请从 brief 接着做",
+        sessionId: "ses_gone",
+        projectId: "prj_keep",
+      }),
+    ]);
+    const next = snapshot([
+      item({
+        id: "inb_handoff",
+        kind: "handoff",
+        title: "转交：请接手 brief",
+        body: "请从 brief 接着做",
+        projectId: "prj_keep",
+      }),
+    ]);
+    const applied = applyInboxSnapshot(prev, next);
+    expect(applied.items[0]?.sessionId).toBeUndefined();
+    expect(applied.items[0]?.title).toBe("转交：请接手 brief");
+    expect(applied.items[0]?.body).toBe("请从 brief 接着做");
+    expect(applied.items[0]?.kind).toBe("handoff");
+    expect(applied.items[0]?.projectId).toBe("prj_keep");
+    expect(paintedActions(applied.items[0])).toEqual({
+      openSession: "",
+      openProject: "打开项目",
+      sessionId: "",
+      projectId: "prj_keep",
+    });
+    expect(JSON.stringify(applied)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B drops sessionId after a session delete via existing GET /api/inbox", async () => {
+    let server = snapshot([
+      item({
+        id: "inb_handoff",
+        kind: "handoff",
+        title: "转交：请接手 brief",
+        body: "请从 brief 接着做",
+        sessionId: "ses_gone",
+        projectId: "prj_keep",
+      }),
+      item({
+        id: "inb_keep",
+        kind: "handoff",
+        title: "转交：保留会话",
+        body: "继续",
+        sessionId: "ses_keep",
+        projectId: "prj_keep",
+        createdAt: "2026-09-14T12:01:00.000Z",
+      }),
+    ]);
+    let tabB = snapshot(server.items.map((row) => ({ ...row })));
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startInboxSync({
+      fetchInbox: async () => ({
+        unread: server.unread,
+        items: server.items.map((row) => ({ ...row })),
+      }),
+      onInbox: (next) => {
+        tabB = applyInboxSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedActions(tabB.items.find((row) => row.id === "inb_handoff")).openSession).toBe(
+      "打开会话",
+    );
+
+    // Tab A DELETE /api/sessions/:id cleared sessionId on the GET snapshot (no new poller).
+    server = snapshot([
+      item({
+        id: "inb_handoff",
+        kind: "handoff",
+        title: "转交：请接手 brief",
+        body: "请从 brief 接着做",
+        projectId: "prj_keep",
+      }),
+      item({
+        id: "inb_keep",
+        kind: "handoff",
+        title: "转交：保留会话",
+        body: "继续",
+        sessionId: "ses_keep",
+        projectId: "prj_keep",
+        createdAt: "2026-09-14T12:01:00.000Z",
+      }),
+    ]);
+    tickInterval();
+    await flush();
+
+    const gone = tabB.items.find((row) => row.id === "inb_handoff");
+    expect(gone?.sessionId).toBeUndefined();
+    expect(gone?.title).toBe("转交：请接手 brief");
+    expect(gone?.body).toBe("请从 brief 接着做");
+    expect(paintedActions(gone).openSession).toBe("");
+    expect(tabB.items.find((row) => row.id === "inb_keep")?.sessionId).toBe("ses_keep");
+    expect(JSON.stringify(tabB)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(tabB.items.find((row) => row.id === "inb_keep")?.sessionId).toBe("ses_keep");
+
+    setVisible(true);
+    await flush();
+    expect(paintedActions(tabB.items.find((row) => row.id === "inb_handoff")).openSession).toBe("");
+    focus();
+    await flush();
+    expect(tabB.items.find((row) => row.id === "inb_handoff")?.body).toBe("请从 brief 接着做");
+    stop();
+  });
+
+  it("Tab B removes project inbox rows after Tab A deletes that project", async () => {
+    let server = snapshot([
+      item({
+        id: "inb_invite",
+        kind: "invite",
+        projectId: "prj_gone",
+        projectName: "已删项目",
+        inviteStatus: "pending",
+        inviteeName: "小陈",
+      }),
+      item({
+        id: "inb_handoff",
+        kind: "handoff",
+        title: "转交：已删项目",
+        body: "请接手",
+        projectId: "prj_gone",
+        sessionId: "ses_a",
+        createdAt: "2026-09-14T12:08:00.000Z",
+      }),
+      item({
+        id: "inb_keep",
+        kind: "invite",
+        projectId: "prj_keep",
+        projectName: "保留项目",
+        inviteStatus: "pending",
+        inviteeName: "小周",
+        createdAt: "2026-09-14T11:00:00.000Z",
+      }),
+    ]);
+    let tabB = snapshot(server.items.map((row) => ({ ...row })));
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startInboxSync({
+      fetchInbox: async () => ({
+        unread: server.unread,
+        items: server.items.map((row) => ({ ...row })),
+      }),
+      onInbox: (next) => {
+        tabB = applyInboxSnapshot(tabB, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedActions(tabB.items.find((row) => row.id === "inb_invite")).openProject).toBe(
+      "打开项目",
+    );
+    expect(tabB.items.map((row) => row.id)).toEqual(["inb_invite", "inb_handoff", "inb_keep"]);
+
+    // Tab A DELETE /api/projects/:id removed those rows on the GET snapshot (no new poller / history model).
+    server = snapshot([
+      item({
+        id: "inb_keep",
+        kind: "invite",
+        projectId: "prj_keep",
+        projectName: "保留项目",
+        inviteStatus: "pending",
+        inviteeName: "小周",
+        createdAt: "2026-09-14T11:00:00.000Z",
+      }),
+    ]);
+    tickInterval();
+    await flush();
+
+    expect(tabB.items.find((row) => row.id === "inb_invite")).toBeUndefined();
+    expect(tabB.items.find((row) => row.id === "inb_handoff")).toBeUndefined();
+    expect(tabB.items.some((row) => row.projectId === "prj_gone")).toBe(false);
+    expect(paintedActions(tabB.items.find((row) => row.id === "inb_invite")).openProject).toBe("");
+    expect(tabB.items.find((row) => row.id === "inb_keep")?.inviteStatus).toBe("pending");
+    expect(tabB.items.find((row) => row.id === "inb_keep")?.projectId).toBe("prj_keep");
+    expect(JSON.stringify(tabB)).not.toMatch(/prj_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(tabB.items).toHaveLength(1);
+
+    setVisible(true);
+    await flush();
+    expect(tabB.items[0]?.id).toBe("inb_keep");
+    focus();
+    await flush();
+    expect(tabB.items[0]?.inviteStatus).toBe("pending");
+    stop();
+  });
+
+  it("never treats cleared-session / removed-project snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...item({
+        id: "inb_a",
+        kind: "handoff",
+        title: "转交：请接手 brief",
+        body: "请从 brief 接着做\nsk-abcdefghijklmnop",
+        sessionId: "ses_gone",
+        inviteToken: "inv_secret_token",
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+    } as InboxItem & { llmApiKey: string; cloudToken: string };
+    const applied = applyInboxSnapshot(
+      snapshot([dirty], 1),
+      snapshot([
+        item({
+          id: "inb_a",
+          kind: "handoff",
+          title: "转交：请接手 brief",
+          body: "请从 brief 接着做\nsk-abcdefghijklmnop",
+        }),
+      ]),
+    );
+    const raw = JSON.stringify({
+      inbox: applied,
+      painted: paintedActions(applied.items[0]),
+      badge: applied.unread,
+    });
+    expect(applied.items[0]?.sessionId).toBeUndefined();
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN|inviteToken|inv_secret_token|ses_gone/);
+    expect(sanitizeInboxItem(dirty)).not.toHaveProperty("inviteToken");
+
+    const fetches: InboxSnapshot[] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startInboxSync({
+      fetchInbox: async () => {
+        const next = snapshot([item({ id: "inb_keep", inviteStatus: "pending" })]);
+        fetches.push(next);
+        return next;
+      },
+      onInbox: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((snap) => snap.items[0]?.id === "inb_keep")).toBe(true);
+    stop();
+  });
+});
+

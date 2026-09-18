@@ -81,6 +81,35 @@ export async function markInboxRead(id: string): Promise<InboxItem | null> {
   return item;
 }
 
+/**
+ * Unbind inbox rows that still name a deleted session.
+ * Same field-clear as omitting sessionId; title / body / project / invite stay.
+ */
+export async function clearInboxSessionRefs(sessionId: string): Promise<void> {
+  const target = sessionId.trim();
+  if (!target) return;
+  const items = await loadAll();
+  let changed = false;
+  for (const item of items) {
+    if (item.sessionId !== target) continue;
+    delete item.sessionId;
+    changed = true;
+  }
+  if (changed) await saveAll(items);
+}
+
+/**
+ * Drop inbox rows that still name a deleted project.
+ * Invite / transfer stay the existing kinds — no archive / history model.
+ */
+export async function removeInboxItemsForProject(projectId: string): Promise<void> {
+  const target = projectId.trim();
+  if (!target) return;
+  const items = await loadAll();
+  const next = items.filter((item) => item.projectId !== target);
+  if (next.length !== items.length) await saveAll(next);
+}
+
 export async function syncInboxInviteStatus(input: {
   inviteId?: string;
   inviteToken?: string;

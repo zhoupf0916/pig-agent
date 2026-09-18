@@ -160,7 +160,7 @@ When Tab B is already on `#/automations`, the directory (and already-open detail
 
 ## Automation lastSessionId after session delete (Milestone AW)
 
-Deleting a session clears `lastSessionId` on automations that still name that session — the same field-null as PATCH. `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay put. Inbox entries stay put. Memory `sessionId` cleanup stays Milestone AV.
+Deleting a session clears `lastSessionId` on automations that still name that session — the same field-null as PATCH. `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay put. Inbox cleanup is Milestone AX. Memory `sessionId` cleanup stays Milestone AV.
 
 When Tab B is already on `#/automations`, the directory (and already-open detail) is the existing Milestone AG **read-only** refresh of `GET /api/automations`. Another same-host tab that deletes that last-run session updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted session, no full page reload, no new sync stack. Last-run field apply still follows Milestone Z. Open-detail-deleted-elsewhere still follows Milestone AS. Pin cleanup still follows Milestone AU. 「立即运行」 / cron / enabled stay the existing run path. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. Default runtime stays **pig**.
 
@@ -182,7 +182,7 @@ When Tab B is already on `#/memory` with a note open, the same read-only `GET /a
 
 ## Memory refs after project / session delete (Milestone AV)
 
-Deleting a project or a session clears the matching field on memory notes — `projectId` / `sessionId` — the same unbind as PATCH null. Note body / tags are not rewritten. Inbox entries stay put. Automation `lastSessionId` is Milestone AW.
+Deleting a project or a session clears the matching field on memory notes — `projectId` / `sessionId` — the same unbind as PATCH null. Note body / tags are not rewritten. Inbox cleanup is Milestone AX. Automation `lastSessionId` is Milestone AW.
 
 When Tab B is already on `#/memory`, the list (and already-open detail) is the existing Milestone AB **read-only** refresh of `GET /api/memory`. Another same-host tab that deletes the referenced project / session updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted project / session, no full page reload, no new sync stack. Open-note-deleted-elsewhere still follows Milestone AQ. Pin / write-summary stay the existing write paths. This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Default runtime stays **pig**.
 
@@ -209,6 +209,12 @@ When Tab B's header `SearchBox` already has a query **and** the dropdown is open
 ## Inbox menu (Milestone AF)
 
 The header inbox (unread badge + list) is a **read-only** refresh of the existing `GET /api/inbox`. Another same-host tab that creates an invite / transfer, or marks read / accept / ignore, updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches to the badge count and list rows in place (no remount). Accept / decline / read stay the existing POSTs. This does **not** add a write path, a public webhook, or dual-write inbox / sessions / `events.jsonl`. Default runtime stays **pig**. Menu / badge / snapshot JSON never carry invite tokens or provider-key plaintext.
+
+## Inbox refs after session / project delete (Milestone AX)
+
+Deleting a session clears `sessionId` on inbox items that still name that session. Title / body / read / invite fields stay. Deleting a project **removes** inbox items with that `projectId` (invite and handoff). Invite / transfer stay the existing kinds — no archive / history model.
+
+When Tab B already has the header inbox, it is the existing Milestone AF **read-only** refresh of `GET /api/inbox`. Another same-host tab that deletes that session / project updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted session / project, no full page reload, no new sync stack. Accept / decline / read stay the existing POSTs. This does **not** add a write path, a public webhook, or dual-write inbox / sessions / `events.jsonl`. Default runtime stays **pig**. Menu / badge / snapshot JSON never carry invite tokens or provider-key plaintext.
 
 ## What this is not
 

@@ -53,7 +53,7 @@ Another same-host tab already on the page refreshes the **full list snapshot** (
 
 Deleting a **custom** expert, custom expert-team, or a project (existing `DELETE`) clears the matching `expertId` / `expertTeamId` / `projectId` on automations that still named that id. Built-in expert / team delete stays 400. An already-open `#/automations` list / detail catches up via the same Milestone AG GET (focus / visibility / short poll) — no ghost name, no new poller. Session pin cleanup stays Milestone AT / existing project-delete logic.
 
-Deleting a session (existing `DELETE /api/sessions/:id`) clears `lastSessionId` on automations that still named that session. `lastRunAt` / `lastError`, pins, cron, and enabled stay put. The same Milestone AG GET (focus / visibility / short poll) drops the clickable last-session entry — no ghost link into the deleted session, no new poller. 「立即运行」 stays the existing run path.
+Deleting a session (existing `DELETE /api/sessions/:id`) clears `lastSessionId` on automations that still named that session. `lastRunAt` / `lastError`, pins, cron, and enabled stay put. The same Milestone AG GET (focus / visibility / short poll) drops the clickable last-session entry — no ghost link into the deleted session, no new poller. 「立即运行」 stays the existing run path. Inbox cleanup is Milestone AX.
 
 ## Out of scope
 

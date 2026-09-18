@@ -44,7 +44,8 @@ Redeem / accept of an unknown token is 404 (`邀请令牌无效或已失效`). D
 
 - Project page: invite form (display name + optional note), copyable token, paste-to-redeem, owner + members + pending list, **撤销** on pending, no owner remove. Another same-host tab already on `#/projects` with that project open refreshes members / pending invites from `GET /api/projects/:id` (focus / visibility / short poll). Invite / redeem / accept / decline stay the existing write paths.
 - Inbox: invite rows show project name + inviter / note; **接受** joins and opens the project; **忽略** marks the invite terminal without navigating away; row click still opens the project and marks read; Esc / outside click closes the menu. Another same-host tab refreshes the unread badge and list from `GET /api/inbox` (focus / visibility / short poll). Accept / decline / read stay the existing write paths. Invalid or expired redeem tokens show a readable error and do not add a member.
-- Handoff rows keep **打开会话**.
+- Deleting a project (existing `DELETE`) removes inbox items for that `projectId`. Deleting a session clears `sessionId` on handoff rows (title / body stay). Tab B header inbox follows the same `GET /api/inbox` (focus / visibility / short poll) — no ghost open-project / **打开会话**, no new poller.
+- Handoff rows keep **打开会话** while `sessionId` is still set.
 
 ## Out of scope
 
