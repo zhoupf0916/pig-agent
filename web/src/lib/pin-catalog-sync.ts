@@ -104,7 +104,7 @@ export function pinExpertCatalogKey(row: Expert): string {
 }
 
 export function pinTeamCatalogKey(row: ExpertTeam): string {
-  return pinCatalogOptionKey(row);
+  return [pinCatalogOptionKey(row), normalizeIds(row.expertIds).join("\u0002")].join("\u0001");
 }
 
 function applyCatalog<T extends PinCatalogOption>(
@@ -150,12 +150,22 @@ export function applyPinExpertCatalogSnapshot(prev: Expert[], next: Expert[]): E
 
 /**
  * Replace the workbench 小队 pin-dropdown catalog with a GET /api/expert-teams snapshot.
- * Same array reference when dropdown-visible id / name are unchanged.
- * Adds / updates / removes rows so Tab A create / rename / delete catch up.
+ * Same array reference when dropdown-visible id / name / expertIds are unchanged.
+ * Adds / updates / removes rows so Tab A create / rename / delete / member-clear catch up.
  * Read-only: never POSTs / PATCHes / DELETEs teams or writes sessions / events.
  */
 export function applyPinTeamCatalogSnapshot(prev: ExpertTeam[], next: ExpertTeam[]): ExpertTeam[] {
-  return applyCatalog(prev, next, sanitizePinTeam);
+  const clean = next.map(sanitizePinTeam);
+  if (
+    prev.length === clean.length &&
+    prev.every((row, i) => {
+      const other = clean[i];
+      return other !== undefined && pinTeamCatalogKey(row) === pinTeamCatalogKey(other);
+    })
+  ) {
+    return prev;
+  }
+  return clean;
 }
 
 /** Chat-header select options: existing 未绑定 plus catalog rows. Milestone Y label unchanged. */

@@ -379,3 +379,89 @@ describe("workbench pin-dropdown catalogs (Milestone AK)", () => {
     stop();
   });
 });
+
+describe("workbench team catalog after custom expert delete (Milestone AY)", () => {
+  it("applies GET /api/expert-teams member-clear onto the existing AK catalog", () => {
+    const prev = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_custom", "exp_scout"],
+      }),
+    ];
+    const next = applyPinTeamCatalogSnapshot(prev, [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_scout"],
+        updatedAt: "2026-09-18T07:00:00.000Z",
+      }),
+    ]);
+    expect(next).not.toBe(prev);
+    expect(next[0]?.expertIds).toEqual(["exp_scout"]);
+    expect(next[0]?.expertIds).not.toContain("exp_custom");
+    expect(pinTeamCatalogKey(next[0]!)).not.toBe(pinTeamCatalogKey(prev[0]!));
+  });
+
+  it("Tab B pin-dropdown team catalog drops the ghost member via existing AK", async () => {
+    let serverExperts = [
+      expert({ id: "exp_custom", name: "AY 文档专家", kind: "custom", bundled: false }),
+      expert({ id: "exp_scout", name: "侦察 Scout" }),
+    ];
+    let serverTeams = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_custom", "exp_scout"],
+      }),
+    ];
+    let tabBExperts = serverExperts.map((row) => ({ ...row }));
+    let tabBTeams = serverTeams.map((row) => ({ ...row, expertIds: [...row.expertIds] }));
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startPinCatalogSync({
+      fetchProjects: async () => [project({ id: "prj_1" })],
+      onProjects: () => undefined,
+      fetchExperts: async () => serverExperts.map((row) => ({ ...row })),
+      onExperts: (next) => {
+        tabBExperts = applyPinExpertCatalogSnapshot(tabBExperts, next);
+      },
+      fetchTeams: async () => serverTeams.map((row) => ({ ...row, expertIds: [...row.expertIds] })),
+      onTeams: (next) => {
+        tabBTeams = applyPinTeamCatalogSnapshot(tabBTeams, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBExperts.map((row) => row.id)).toEqual(["exp_custom", "exp_scout"]);
+    expect(tabBTeams[0]?.expertIds).toEqual(["exp_custom", "exp_scout"]);
+
+    serverExperts = [expert({ id: "exp_scout", name: "侦察 Scout" })];
+    serverTeams = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_scout"],
+        updatedAt: "2026-09-18T07:01:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBExperts.map((row) => row.id)).toEqual(["exp_scout"]);
+    expect(tabBTeams.map((row) => row.id)).toEqual(["team_docs"]);
+    expect(tabBTeams[0]?.expertIds).toEqual(["exp_scout"]);
+    expect(tabBTeams[0]?.expertIds).not.toContain("exp_custom");
+    expect(pinCatalogSelectOptions(tabBTeams).map((opt) => opt.label)).toEqual(["未绑定", "文档小队"]);
+    expect(JSON.stringify({ experts: tabBExperts, teams: tabBTeams })).not.toMatch(
+      /llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /,
+    );
+    stop();
+  });
+});

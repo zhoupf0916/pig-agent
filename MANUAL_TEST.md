@@ -191,6 +191,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Team expertIds after custom expert delete (Milestone AY)
+
+Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert drops that id from every team's `expertIds`. Already-open `#/experts` team list is the existing Milestone AC read-only `GET /api/expert-teams` catch-up — no ghost member, no full page reload, no new sync stack. Workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK. Empty teams are **not** auto-deleted. Built-in expert delete stays 400. Sequential team-run for remaining members unchanged. Session pin cleanup stays AT; automation pin cleanup stays AU. No new write path, no dual-write of experts / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AY-01** Two workstation tabs on the same host. Tab B is on `#/experts` with a team that lists a **custom** expert. Tab A deletes that expert — Tab B on focus, visibility, or one short poll no longer shows that id in any team's `expertIds`. No full page refresh
+- [ ] **AY-02** Workbench 专家 / 小队 pin-dropdown catalogs catch up the same way via existing AK. `DELETE` of a bundled expert still 400. A team that becomes empty is **not** auto-deleted
+- [ ] **AY-03** Header chip still defaults to **本机 Pig**. Milestone O–AX / AC·AR·AT·AU·AK / L·M·N / W·X unchanged. Sequential expert-team execution for remaining members unchanged. No dual-write events, no public webhook
+- [ ] **AY-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Inbox refs after session / project delete (Milestone AX)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a session clears matching inbox `sessionId`. Deleting a project removes inbox items with that `projectId`. Top-bar inbox is the existing Milestone AF read-only `GET /api/inbox` catch-up — no clickable ghost entry into the deleted session / project, no full page reload, no new sync stack. Title / body are not rewritten. Invite / transfer stay the existing kinds (no new history model). Read / accept / ignore stay the existing POSTs. No new write path, no dual-write of inbox / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.

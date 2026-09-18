@@ -278,6 +278,21 @@ export async function deleteExpertTeam(id: string): Promise<"ok" | "missing" | "
   return "ok";
 }
 
+/**
+ * Drop a deleted custom expert from every team's expertIds.
+ * Empty teams stay (user may delete manually). Remaining member order is unchanged.
+ */
+export async function clearExpertIdFromTeams(expertId: string): Promise<void> {
+  const target = expertId.trim();
+  if (!target) return;
+  for (const team of await listExpertTeams()) {
+    if (!team.expertIds.includes(target)) continue;
+    await updateExpertTeam(team.id, {
+      expertIds: team.expertIds.filter((id) => id !== target),
+    });
+  }
+}
+
 export function formatExpertBlock(expert: Expert): string {
   const skills =
     expert.skillIds.length > 0
