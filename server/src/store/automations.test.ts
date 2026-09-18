@@ -7,7 +7,11 @@ import {
 } from "../automations/run.ts";
 import { createApp } from "../app.ts";
 import type { Session } from "../types.ts";
-import { BUNDLED_SCOUT_ID } from "./bundled-experts.ts";
+import {
+  BUNDLED_CODING_TEAM_ID,
+  BUNDLED_IMPLEMENT_ID,
+  BUNDLED_SCOUT_ID,
+} from "./bundled-experts.ts";
 import { updateAutomation } from "./automations.ts";
 
 async function json<T>(res: Response): Promise<T> {
@@ -260,5 +264,257 @@ describe("local automations", () => {
     await runAutomation(on.id, { wait: true });
     const assets = (await getProject(project.id))?.assets ?? [];
     expect(assets.some((a) => a.sourceArtifactPath === "notes/todo.txt")).toBe(true);
+  });
+});
+
+describe("automation pins after expert / team / project delete (Milestone AU)", () => {
+  const app = createApp();
+
+  it("clears automation expertId after deleting that custom expert", async () => {
+    const custom = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AU 文档专家",
+          instruction: "只写说明，不要改代码。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AU 保留专家",
+          instruction: "保留钉选。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const pinned = await json<{ id: string; expertId?: string; expertTeamId?: string; projectId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了已删专家",
+          prompt: "整理工作区",
+          expertId: custom.id,
+          expertTeamId: BUNDLED_CODING_TEAM_ID,
+        }),
+      }),
+    );
+    const other = await json<{ id: string; expertId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了保留专家",
+          prompt: "写一份简报",
+          expertId: keep.id,
+        }),
+      }),
+    );
+    const bundled = await json<{ id: string; expertId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了内置专家",
+          prompt: "侦察一下",
+          expertId: BUNDLED_SCOUT_ID,
+        }),
+      }),
+    );
+    expect(pinned.expertId).toBe(custom.id);
+
+    const deleted = await app.request(`/api/experts/${custom.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{
+      expertId?: string;
+      expertTeamId?: string;
+      projectId?: string;
+      runtime: string;
+    }>(await app.request(`/api/automations/${pinned.id}`));
+    expect(after.expertId).toBeUndefined();
+    expect(after.expertTeamId).toBe(BUNDLED_CODING_TEAM_ID);
+    expect(after.runtime).toBe("pig");
+
+    const listed = await json<{ automations: Array<{ id: string; expertId?: string }> }>(
+      await app.request("/api/automations"),
+    );
+    expect(listed.automations.find((a) => a.id === pinned.id)?.expertId).toBeUndefined();
+    expect((await json<{ expertId?: string }>(await app.request(`/api/automations/${other.id}`))).expertId).toBe(
+      keep.id,
+    );
+    expect(
+      (await json<{ expertId?: string }>(await app.request(`/api/automations/${bundled.id}`))).expertId,
+    ).toBe(BUNDLED_SCOUT_ID);
+
+    const refuse = await app.request(`/api/experts/${BUNDLED_SCOUT_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    expect(
+      (await json<{ expertId?: string }>(await app.request(`/api/automations/${bundled.id}`))).expertId,
+    ).toBe(BUNDLED_SCOUT_ID);
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("clears automation expertTeamId after deleting that custom team", async () => {
+    const team = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AU 文档小队",
+          mode: "chain",
+          expertIds: [BUNDLED_SCOUT_ID, "exp_plan"],
+        }),
+      }),
+    );
+    const keepTeam = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AU 保留小队",
+          mode: "parallel",
+          expertIds: [BUNDLED_IMPLEMENT_ID],
+        }),
+      }),
+    );
+    const pinned = await json<{ id: string; expertId?: string; expertTeamId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了已删小队",
+          prompt: "按小队跑",
+          expertId: BUNDLED_SCOUT_ID,
+          expertTeamId: team.id,
+        }),
+      }),
+    );
+    const other = await json<{ id: string; expertTeamId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了保留小队",
+          prompt: "并行",
+          expertTeamId: keepTeam.id,
+        }),
+      }),
+    );
+    const bundled = await json<{ id: string; expertTeamId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了内置小队",
+          prompt: "编码流水线",
+          expertTeamId: BUNDLED_CODING_TEAM_ID,
+        }),
+      }),
+    );
+
+    const deleted = await app.request(`/api/expert-teams/${team.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{ expertId?: string; expertTeamId?: string; runtime: string }>(
+      await app.request(`/api/automations/${pinned.id}`),
+    );
+    expect(after.expertTeamId).toBeUndefined();
+    expect(after.expertId).toBe(BUNDLED_SCOUT_ID);
+    expect(after.runtime).toBe("pig");
+
+    const listed = await json<{ automations: Array<{ id: string; expertTeamId?: string }> }>(
+      await app.request("/api/automations"),
+    );
+    expect(listed.automations.find((a) => a.id === pinned.id)?.expertTeamId).toBeUndefined();
+    expect(
+      (await json<{ expertTeamId?: string }>(await app.request(`/api/automations/${other.id}`))).expertTeamId,
+    ).toBe(keepTeam.id);
+    expect(
+      (await json<{ expertTeamId?: string }>(await app.request(`/api/automations/${bundled.id}`))).expertTeamId,
+    ).toBe(BUNDLED_CODING_TEAM_ID);
+
+    const refuse = await app.request(`/api/expert-teams/${BUNDLED_CODING_TEAM_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    expect(
+      (await json<{ expertTeamId?: string }>(await app.request(`/api/automations/${bundled.id}`))).expertTeamId,
+    ).toBe(BUNDLED_CODING_TEAM_ID);
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("clears automation projectId after deleting that project", async () => {
+    const project = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AU 已删项目", instruction: "项目指令" }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AU 保留项目" }),
+      }),
+    );
+    const pinned = await json<{
+      id: string;
+      expertId?: string;
+      projectId?: string;
+      saveArtifactsToProject?: boolean;
+    }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了已删项目",
+          prompt: "写一份简报",
+          expertId: BUNDLED_SCOUT_ID,
+          projectId: project.id,
+          saveArtifactsToProject: true,
+        }),
+      }),
+    );
+    const other = await json<{ id: string; projectId?: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "钉了保留项目",
+          prompt: "整理笔记",
+          projectId: keep.id,
+        }),
+      }),
+    );
+    expect(pinned.projectId).toBe(project.id);
+
+    const deleted = await app.request(`/api/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<{
+      expertId?: string;
+      projectId?: string;
+      saveArtifactsToProject?: boolean;
+      runtime: string;
+    }>(await app.request(`/api/automations/${pinned.id}`));
+    expect(after.projectId).toBeUndefined();
+    expect(after.expertId).toBe(BUNDLED_SCOUT_ID);
+    expect(after.saveArtifactsToProject).toBe(true);
+    expect(after.runtime).toBe("pig");
+
+    const listed = await json<{ automations: Array<{ id: string; projectId?: string }> }>(
+      await app.request("/api/automations"),
+    );
+    expect(listed.automations.find((a) => a.id === pinned.id)?.projectId).toBeUndefined();
+    expect((await json<{ projectId?: string }>(await app.request(`/api/automations/${other.id}`))).projectId).toBe(
+      keep.id,
+    );
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 });

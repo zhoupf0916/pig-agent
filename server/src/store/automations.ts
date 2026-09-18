@@ -203,6 +203,24 @@ export async function deleteAutomation(id: string): Promise<boolean> {
   return true;
 }
 
+export type AutomationPinField = "expertId" | "expertTeamId" | "projectId";
+
+/**
+ * Unbind automations that still name a deleted custom expert / team / project.
+ * Same field-null as PATCH; other pins on the row stay put.
+ */
+export async function clearAutomationPins(
+  field: AutomationPinField,
+  id: string,
+): Promise<void> {
+  const target = id.trim();
+  if (!target) return;
+  for (const automation of await listAutomations()) {
+    if (automation[field] !== target) continue;
+    await updateAutomation(automation.id, { [field]: null });
+  }
+}
+
 export function automationIsDue(automation: Automation, now: Date): boolean {
   if (!automation.enabled) return false;
   return isScheduleDue({

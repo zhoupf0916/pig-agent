@@ -64,7 +64,7 @@ SSE event `team_run` carries the same object so the workstation pipeline chips u
 
 `POST /api/sessions` and `PATCH /api/sessions/:id` accept `expertId` and `expertTeamId` (nullable to unbind). Unbinding a team clears `teamRun`.
 
-Deleting a **custom** expert (existing `DELETE /api/experts/:id`) clears `expertId` on sessions that pinned it. Deleting a **custom** team (`DELETE /api/expert-teams/:id`) clears `expertTeamId` and `teamRun`. Built-in experts / teams cannot be deleted (400). An already-open workbench pin row catches up via the existing Milestone Y `GET /api/sessions` list sync (focus / visibility / short poll) — no ghost name, no new poller. Automations that still name the id are not rewritten.
+Deleting a **custom** expert (existing `DELETE /api/experts/:id`) clears `expertId` on sessions that pinned it. Deleting a **custom** team (`DELETE /api/expert-teams/:id`) clears `expertTeamId` and `teamRun`. Built-in experts / teams cannot be deleted (400). An already-open workbench pin row catches up via the existing Milestone Y `GET /api/sessions` list sync (focus / visibility / short poll) — no ghost name, no new poller. Automation records that named the id are Milestone AU (`expertId` / `expertTeamId` cleared on the same DELETE).
 
 Injection rules:
 

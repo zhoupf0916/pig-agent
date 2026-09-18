@@ -32,6 +32,7 @@ import {
   findProjectAsset,
   readAssetBytes,
 } from "../store/asset-preview.ts";
+import { clearAutomationPins } from "../store/automations.ts";
 import { listInbox, markInboxRead } from "../store/inbox.ts";
 import { createSession, getSession, listSessions, saveSession } from "../store/sessions.ts";
 
@@ -128,6 +129,7 @@ export function registerProjectRoutes(app: Hono): void {
       delete session.projectId;
       await saveSession(session);
     }
+    await clearAutomationPins("projectId", id);
     return c.json({ ok: true });
   });
 

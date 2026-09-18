@@ -191,6 +191,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Automation pins after expert / team / project delete (Milestone AU)
+
+Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert / team / project clears matching automation fields (`expertId` / `expertTeamId` / `projectId`). Already-open `#/automations` list / detail is the existing Milestone AG read-only `GET /api/automations` catch-up — no ghost name, no full page reload, no new sync stack. Session pin cleanup stays AT / existing project-delete logic. Built-in expert / team delete stays 400. 「立即运行」 / cron / enabled unchanged. No new write path, no dual-write of automations / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AU-01** Two workstation tabs on the same host. Tab B is on `#/automations` with an automation pinned to a **custom** expert (list and/or open detail). Tab A deletes that expert — Tab B on focus, visibility, or one short poll no longer shows a ghost expert name. No full page refresh
+- [ ] **AU-02** Same for a **custom** team (`expertTeamId`) and for a project (`projectId`). `DELETE` of a bundled expert / team still 400. Session pin cleanup stays AT / existing project-delete logic
+- [ ] **AU-03** Header chip still defaults to **本机 Pig**. Milestone O–AT / Z·AG·AS / L·M·N / W·X unchanged. 「立即运行」 / cron / enabled semantics unchanged. No dual-write events, no public webhook
+- [ ] **AU-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Cross-tab session pins after expert / team delete (Milestone AT)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert / team clears matching session pins (`expertId` / `expertTeamId`, and `teamRun` if the team is gone). Already-open workbench pin row is the existing Milestone Y read-only `GET /api/sessions` catch-up — no ghost name, no full page reload, no new sync stack. Pin writes still use the existing PATCH. Built-in delete stays 400. No new write path, no dual-write of sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.

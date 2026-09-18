@@ -12,6 +12,7 @@ import {
   updateExpert,
   updateExpertTeam,
 } from "../store/experts.ts";
+import { clearAutomationPins } from "../store/automations.ts";
 import { getSession, listSessions, saveSession } from "../store/sessions.ts";
 
 const kindSchema = z.enum(["scout", "plan", "implement", "review", "custom"]);
@@ -95,6 +96,7 @@ export function registerExpertRoutes(app: Hono): void {
       delete session.expertId;
       await saveSession(session);
     }
+    await clearAutomationPins("expertId", id);
     return c.json({ ok: true });
   });
 
@@ -142,6 +144,7 @@ export function registerExpertRoutes(app: Hono): void {
       delete session.teamRun;
       await saveSession(session);
     }
+    await clearAutomationPins("expertTeamId", id);
     return c.json({ ok: true });
   });
 }
