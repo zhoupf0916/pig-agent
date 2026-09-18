@@ -20,6 +20,9 @@ describe("hash routes", () => {
     expect(searchHash("foo bar")).toBe("#/search?q=foo%20bar");
     expect(sessionHash("ses_1")).toBe("#/sessions/ses_1");
     expect(projectsHash("prj_1", { assetId: "ast_9" })).toBe("#/projects/prj_1?asset=ast_9");
+    expect(projectsHash("prj_1", { assetId: "ast_9", todoId: undefined })).toBe(
+      "#/projects/prj_1?asset=ast_9",
+    );
     expect(parseHash(projectsHash("prj_1", { todoId: "todo_8" }))).toMatchObject({
       name: "projects",
       projectId: "prj_1",

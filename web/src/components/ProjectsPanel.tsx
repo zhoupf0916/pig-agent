@@ -1,5 +1,5 @@
 import { Download, FolderKanban, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatBytes, isImage, isTextLike } from "../lib/format";
 import {
@@ -7,6 +7,7 @@ import {
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
   nextOpenProjectId,
+  nextOpenTodoHighlight,
   shouldFetchProjectDetail,
   startProjectsSync,
 } from "../lib/projects-sync";
@@ -35,7 +36,7 @@ export function ProjectsPanel({
   highlightAssetId?: string;
   highlightTodoId?: string;
   sessions: SessionSummary[];
-  onSelectProject: (id?: string) => void;
+  onSelectProject: (id?: string, extra?: { assetId?: string; todoId?: string }) => void;
   onOpenSession: (id: string) => void;
   onCreateSession: (projectId: string) => void;
 }) {
@@ -54,6 +55,10 @@ export function ProjectsPanel({
   const [previewAsset, setPreviewAsset] = useState<ProjectAsset | null>(null);
   const [handoffSession, setHandoffSession] = useState<Session | null>(null);
   const [handoffBusy, setHandoffBusy] = useState<string | null>(null);
+  const highlightTodoIdRef = useRef(highlightTodoId);
+  const highlightAssetIdRef = useRef(highlightAssetId);
+  highlightTodoIdRef.current = highlightTodoId;
+  highlightAssetIdRef.current = highlightAssetId;
 
   const refreshList = async () => {
     const { projects: next } = await api.projects();
@@ -103,6 +108,11 @@ export function ProjectsPanel({
       onSelected: (next) => {
         setDetail((prev) => applyProjectDetailSnapshot(prev, next));
         setPreviewAsset((prev) => applyOpenAssetPreviewSnapshot(prev, next));
+        // BF: AA detail snapshot is the source of truth for ?todo= — no GET of the deleted id.
+        const openTodo = highlightTodoIdRef.current;
+        if (openTodo && nextOpenTodoHighlight(openTodo, next.todos) !== openTodo) {
+          onSelectProject(selectedId, { assetId: highlightAssetIdRef.current });
+        }
       },
       onOpenId: (nextId) => {
         onSelectProject(nextId ?? undefined);
@@ -116,6 +126,12 @@ export function ProjectsPanel({
     const asset = detail.assets.find((a) => a.id === highlightAssetId);
     if (asset) setPreviewAsset(asset);
   }, [detail, highlightAssetId]);
+
+  useEffect(() => {
+    if (!detail || !highlightTodoId) return;
+    if (nextOpenTodoHighlight(highlightTodoId, detail.todos) === highlightTodoId) return;
+    onSelectProject(selectedId, { assetId: highlightAssetId });
+  }, [detail, highlightTodoId, highlightAssetId, selectedId]);
 
   const linked = useMemo(
     () => sessions.filter((s) => s.projectId === detail?.id),

@@ -921,7 +921,7 @@ export function App() {
             highlightAssetId={route.assetId}
             highlightTodoId={route.todoId}
             sessions={sessions}
-            onSelectProject={(id) => goProjects(id)}
+            onSelectProject={(id, extra) => goProjects(id, extra)}
             onOpenSession={(id) => {
               void loadSession(id);
               goWorkstation(id);
