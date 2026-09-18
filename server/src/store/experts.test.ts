@@ -438,4 +438,54 @@ describe("local experts registry", () => {
     );
     expect(JSON.stringify(listed)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
+
+  it("lets DELETE remove an empty custom team and refuses bundled (Milestone BD)", async () => {
+    const custom = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "BD 文档专家",
+          instruction: "只写说明，不要改代码。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const emptyTeam = await json<{ id: string; expertIds: string[] }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "BD 将变空小队",
+          mode: "chain",
+          expertIds: [custom.id],
+        }),
+      }),
+    );
+    expect(emptyTeam.expertIds).toEqual([custom.id]);
+
+    const deletedExpert = await app.request(`/api/experts/${custom.id}`, { method: "DELETE" });
+    expect(deletedExpert.status).toBe(200);
+
+    const afterEmpty = await json<{ teams: Array<{ id: string; expertIds: string[]; bundled: boolean }> }>(
+      await app.request("/api/expert-teams"),
+    );
+    const listedEmpty = afterEmpty.teams.find((t) => t.id === emptyTeam.id);
+    expect(listedEmpty).toBeTruthy();
+    expect(listedEmpty?.expertIds).toEqual([]);
+    expect(listedEmpty?.bundled).toBe(false);
+    expect(afterEmpty.teams.find((t) => t.id === BUNDLED_CODING_TEAM_ID)).toBeTruthy();
+
+    const deletedEmpty = await app.request(`/api/expert-teams/${emptyTeam.id}`, { method: "DELETE" });
+    expect(deletedEmpty.status).toBe(200);
+
+    const afterDelete = await json<{ teams: Array<{ id: string }> }>(await app.request("/api/expert-teams"));
+    expect(afterDelete.teams.find((t) => t.id === emptyTeam.id)).toBeUndefined();
+
+    const refuse = await app.request(`/api/expert-teams/${BUNDLED_CODING_TEAM_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    const afterRefuse = await json<{ teams: Array<{ id: string }> }>(await app.request("/api/expert-teams"));
+    expect(afterRefuse.teams.find((t) => t.id === BUNDLED_CODING_TEAM_ID)).toBeTruthy();
+    expect(JSON.stringify(afterEmpty)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
 });

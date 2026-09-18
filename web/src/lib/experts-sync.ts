@@ -94,6 +94,19 @@ export function expertTeamSyncKey(team: ExpertTeam): string {
 }
 
 /**
+ * `#/experts` team-card member line. Source of truth is `expertIds.length`.
+ * Empty custom teams paint "0 人" — never leftover member names.
+ */
+export function formatExpertTeamMemberLabel(expertIds?: string[] | null): string {
+  return `${normalizeExpertIds(expertIds).length} 人`;
+}
+
+/** Existing DELETE /api/expert-teams/:id is allowed for custom teams only (bundled → 400). */
+export function canDeleteExpertTeam(team: Pick<ExpertTeam, "bundled">): boolean {
+  return team.bundled !== true;
+}
+
+/**
  * Replace the `#/experts` list with a GET /api/experts snapshot.
  * Same array reference when nothing visible changed (avoids remounting the page).
  * Adds / updates / removes rows so Tab A create / edit / delete catch up.
