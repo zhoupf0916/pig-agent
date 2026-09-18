@@ -351,4 +351,91 @@ describe("local experts registry", () => {
     ).toBe(BUNDLED_CODING_TEAM_ID);
     expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
+
+  it("clears that custom expert from every team's expertIds (Milestone AY)", async () => {
+    const custom = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AY 文档专家",
+          instruction: "只写说明，不要改代码。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/experts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AY 保留专家",
+          instruction: "保留成员。",
+          kind: "custom",
+        }),
+      }),
+    );
+    const mixed = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AY 混合小队",
+          mode: "chain",
+          expertIds: [BUNDLED_SCOUT_ID, custom.id, keep.id],
+        }),
+      }),
+    );
+    const onlyGone = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AY 将变空小队",
+          mode: "parallel",
+          expertIds: [custom.id],
+        }),
+      }),
+    );
+    const other = await json<{ id: string }>(
+      await app.request("/api/expert-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AY 无关小队",
+          mode: "chain",
+          expertIds: [keep.id, BUNDLED_IMPLEMENT_ID],
+        }),
+      }),
+    );
+
+    const deleted = await app.request(`/api/experts/${custom.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const listed = await json<{
+      teams: Array<{ id: string; expertIds: string[]; name: string }>;
+    }>(await app.request("/api/expert-teams"));
+    const afterMixed = listed.teams.find((t) => t.id === mixed.id);
+    const afterEmpty = listed.teams.find((t) => t.id === onlyGone.id);
+    const afterOther = listed.teams.find((t) => t.id === other.id);
+    const bundled = listed.teams.find((t) => t.id === BUNDLED_CODING_TEAM_ID);
+
+    expect(afterMixed).toBeTruthy();
+    expect(afterMixed?.expertIds).toEqual([BUNDLED_SCOUT_ID, keep.id]);
+    expect(afterEmpty).toBeTruthy();
+    expect(afterEmpty?.expertIds).toEqual([]);
+    expect(afterOther?.expertIds).toEqual([keep.id, BUNDLED_IMPLEMENT_ID]);
+    expect(bundled?.expertIds).toContain(BUNDLED_SCOUT_ID);
+    expect(listed.teams.every((t) => !t.expertIds.includes(custom.id))).toBe(true);
+
+    const refuse = await app.request(`/api/experts/${BUNDLED_SCOUT_ID}`, { method: "DELETE" });
+    expect(refuse.status).toBe(400);
+    const afterRefuse = await json<{ teams: Array<{ id: string; expertIds: string[] }> }>(
+      await app.request("/api/expert-teams"),
+    );
+    expect(afterRefuse.teams.find((t) => t.id === BUNDLED_CODING_TEAM_ID)?.expertIds).toContain(
+      BUNDLED_SCOUT_ID,
+    );
+    expect(JSON.stringify(listed)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
 });

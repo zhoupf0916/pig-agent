@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { z } from "zod";
 import {
+  clearExpertIdFromTeams,
   createExpert,
   createExpertTeam,
   deleteExpert,
@@ -97,6 +98,7 @@ export function registerExpertRoutes(app: Hono): void {
       await saveSession(session);
     }
     await clearAutomationPins("expertId", id);
+    await clearExpertIdFromTeams(id);
     return c.json({ ok: true });
   });
 

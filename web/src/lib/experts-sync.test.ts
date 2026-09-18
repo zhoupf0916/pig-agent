@@ -768,3 +768,100 @@ describe("open expert detail deleted-elsewhere cleanup (Milestone AR)", () => {
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
+
+describe("team expertIds after custom expert delete (Milestone AY)", () => {
+  it("reuses the existing 2s GET /api/expert-teams poll and stays on default runtime pig", () => {
+    expect(EXPERTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("applies a GET /api/expert-teams snapshot that dropped the deleted member", () => {
+    const prev = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_custom", "exp_scout"],
+      }),
+    ];
+    const next = applyExpertTeamsListSnapshot(prev, [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_scout"],
+        updatedAt: "2026-09-18T07:00:00.000Z",
+      }),
+    ]);
+    expect(next).not.toBe(prev);
+    expect(next[0]?.expertIds).toEqual(["exp_scout"]);
+    expect(next[0]?.expertIds).not.toContain("exp_custom");
+    expect(expertTeamSyncKey(next[0]!)).not.toBe(expertTeamSyncKey(prev[0]!));
+  });
+
+  it("Tab B team list drops the ghost member via existing AC GET /api/expert-teams", async () => {
+    let teamServer = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_custom", "exp_scout"],
+      }),
+      team({
+        id: "team_empty",
+        name: "将变空小队",
+        bundled: false,
+        expertIds: ["exp_custom"],
+      }),
+    ];
+    let tabBTeams = teamServer.map((row) => ({ ...row, expertIds: [...row.expertIds] }));
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startExpertsSync({
+      fetchList: async () => [expert({ id: "exp_scout" })],
+      onList: () => undefined,
+      fetchTeams: async () => teamServer.map((row) => ({ ...row, expertIds: [...row.expertIds] })),
+      onTeams: (next) => {
+        tabBTeams = applyExpertTeamsListSnapshot(tabBTeams, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBTeams.find((row) => row.id === "team_docs")?.expertIds).toEqual(["exp_custom", "exp_scout"]);
+
+    // Tab A DELETE /api/experts/:id cleared expertIds on the GET snapshot (no new poller).
+    teamServer = [
+      team({
+        id: "team_docs",
+        name: "文档小队",
+        bundled: false,
+        expertIds: ["exp_scout"],
+        updatedAt: "2026-09-18T07:01:00.000Z",
+      }),
+      team({
+        id: "team_empty",
+        name: "将变空小队",
+        bundled: false,
+        expertIds: [],
+        updatedAt: "2026-09-18T07:01:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBTeams.map((row) => row.id)).toEqual(["team_docs", "team_empty"]);
+    expect(paintedTeam(tabBTeams.find((row) => row.id === "team_docs")!)).toEqual({
+      id: "team_docs",
+      name: "文档小队",
+      mode: "chain",
+      expertIds: ["exp_scout"],
+    });
+    expect(tabBTeams.find((row) => row.id === "team_empty")?.expertIds).toEqual([]);
+    expect(tabBTeams.every((row) => !row.expertIds.includes("exp_custom"))).toBe(true);
+    expect(JSON.stringify(tabBTeams)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    stop();
+  });
+});
