@@ -30,7 +30,7 @@ import { publishPersistedEvent } from "./store/events.ts";
 import { clearAutomationLastSessionId } from "./store/automations.ts";
 import { clearInboxSessionRefs } from "./store/inbox.ts";
 import { clearMemoryRefs } from "./store/memory.ts";
-import { recordSessionBound } from "./store/projects.ts";
+import { clearProjectSessionRefs, recordSessionBound } from "./store/projects.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
 import type { Session } from "./types.ts";
@@ -181,6 +181,7 @@ export function createApp(): Hono {
     await clearMemoryRefs("sessionId", c.req.param("id"));
     await clearAutomationLastSessionId(c.req.param("id"));
     await clearInboxSessionRefs(c.req.param("id"));
+    await clearProjectSessionRefs(c.req.param("id"));
     return c.json({ ok: true });
   });
 

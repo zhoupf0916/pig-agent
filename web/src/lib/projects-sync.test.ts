@@ -753,3 +753,292 @@ describe("open project deleted-elsewhere cleanup (Milestone AP)", () => {
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
+
+describe("project asset / todo session refs after session delete (Milestone AZ)", () => {
+  function paintedSourceLinks(detail: ProjectDetailSyncFields | null) {
+    return {
+      sourceSession: (detail?.assets ?? [])
+        .filter((a) => a.sourceSessionId)
+        .map((a) => ({ id: a.id, sourceSessionId: a.sourceSessionId, label: "来源会话" })),
+      todoSessions: (detail?.todos ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        sessionId: t.sessionId ?? "",
+      })),
+    };
+  }
+
+  it("reuses the existing 2s AA poll and stays on default runtime pig", () => {
+    expect(PROJECTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("open-detail snapshots drop sourceSessionId / todo sessionId without rewriting title/status", () => {
+    const prev = project({
+      id: "prj_a",
+      todos: [
+        {
+          id: "td_gone",
+          title: "AZ 已删会话待办",
+          status: "doing",
+          sessionId: "ses_gone",
+          createdAt: "t1",
+          updatedAt: "t1",
+        },
+        {
+          id: "td_keep",
+          title: "AZ 保留会话待办",
+          status: "todo",
+          sessionId: "ses_keep",
+          createdAt: "t1",
+          updatedAt: "t1",
+        },
+      ],
+      assets: [
+        {
+          id: "ast_gone",
+          filename: "brief.md",
+          size: 12,
+          mimeType: "text/markdown",
+          createdAt: "t1",
+          sourceSessionId: "ses_gone",
+          sourceArtifactPath: "notes/brief.md",
+        },
+        {
+          id: "ast_keep",
+          filename: "keep.md",
+          size: 8,
+          mimeType: "text/markdown",
+          createdAt: "t1",
+          sourceSessionId: "ses_keep",
+        },
+      ],
+    });
+    const cleared = project({
+      id: "prj_a",
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      todos: [
+        {
+          id: "td_gone",
+          title: "AZ 已删会话待办",
+          status: "doing",
+          createdAt: "t1",
+          updatedAt: "t1",
+        },
+        {
+          id: "td_keep",
+          title: "AZ 保留会话待办",
+          status: "todo",
+          sessionId: "ses_keep",
+          createdAt: "t1",
+          updatedAt: "t1",
+        },
+      ],
+      assets: [
+        {
+          id: "ast_gone",
+          filename: "brief.md",
+          size: 12,
+          mimeType: "text/markdown",
+          createdAt: "t1",
+          sourceArtifactPath: "notes/brief.md",
+        },
+        {
+          id: "ast_keep",
+          filename: "keep.md",
+          size: 8,
+          mimeType: "text/markdown",
+          createdAt: "t1",
+          sourceSessionId: "ses_keep",
+        },
+      ],
+    });
+    const applied = applyProjectDetailSnapshot(prev, cleared);
+    expect(applied).not.toBe(prev);
+    expect(paintedSourceLinks(applied).sourceSession).toEqual([
+      { id: "ast_keep", sourceSessionId: "ses_keep", label: "来源会话" },
+    ]);
+    expect(paintedSourceLinks(applied).todoSessions).toEqual([
+      { id: "td_gone", title: "AZ 已删会话待办", status: "doing", sessionId: "" },
+      { id: "td_keep", title: "AZ 保留会话待办", status: "todo", sessionId: "ses_keep" },
+    ]);
+    expect(applied?.assets.find((a) => a.id === "ast_gone")?.sourceArtifactPath).toBe("notes/brief.md");
+    expect(JSON.stringify(applied)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B open detail drops source-session links after Tab A deletes that session", async () => {
+    const listServer = [listRow({ id: "prj_a", todoCount: 2, assetCount: 2 })];
+    let detailServer: ProjectDetailSyncFields = {
+      id: "prj_a",
+      name: "协作空间",
+      updatedAt: "2026-09-14T12:00:00.000Z",
+      todos: [
+        {
+          id: "td_gone",
+          title: "AZ 已删会话待办",
+          status: "doing",
+          sessionId: "ses_gone",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+        },
+        {
+          id: "td_keep",
+          title: "AZ 保留会话待办",
+          status: "todo",
+          sessionId: "ses_keep",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+        },
+      ],
+      assets: [
+        {
+          id: "ast_gone",
+          filename: "brief.md",
+          size: 12,
+          mimeType: "text/markdown",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          sourceSessionId: "ses_gone",
+          sourceArtifactPath: "notes/brief.md",
+        },
+        {
+          id: "ast_keep",
+          filename: "keep.md",
+          size: 8,
+          mimeType: "text/markdown",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          sourceSessionId: "ses_keep",
+        },
+      ],
+      members: [
+        {
+          id: "mem_owner",
+          userId: "user_local",
+          displayName: "本机用户",
+          role: "owner",
+          joinedAt: "2026-09-14T12:00:00.000Z",
+        },
+      ],
+      invites: [],
+    };
+    let tabBList = [summary({ id: "prj_a", todoCount: 2, assetCount: 2 })];
+    let tabBDetail: Project | null = project({
+      id: "prj_a",
+      instruction: "本地草稿指令",
+      todos: detailServer.todos,
+      assets: detailServer.assets,
+    });
+    const selectedFetches: string[] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => listServer.map((s) => ({ ...s })),
+      onList: (next) => {
+        tabBList = applyProjectsListSnapshot(tabBList, next);
+      },
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          ...detailServer,
+          todos: detailServer.todos.map((t) => ({ ...t })),
+          assets: detailServer.assets.map((a) => ({ ...a })),
+          members: detailServer.members.map((m) => ({ ...m })),
+          invites: [...detailServer.invites],
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedSourceLinks(tabBDetail).sourceSession.map((a) => a.sourceSessionId)).toEqual([
+      "ses_gone",
+      "ses_keep",
+    ]);
+    expect(tabBDetail?.todos.find((t) => t.id === "td_gone")?.sessionId).toBe("ses_gone");
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+
+    // Tab A DELETE /api/sessions/:id cleared refs on the GET snapshot (no new poller).
+    detailServer = {
+      ...detailServer,
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      todos: [
+        {
+          id: "td_gone",
+          title: "AZ 已删会话待办",
+          status: "doing",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+        },
+        {
+          id: "td_keep",
+          title: "AZ 保留会话待办",
+          status: "todo",
+          sessionId: "ses_keep",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          updatedAt: "2026-09-14T12:00:00.000Z",
+        },
+      ],
+      assets: [
+        {
+          id: "ast_gone",
+          filename: "brief.md",
+          size: 12,
+          mimeType: "text/markdown",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          sourceArtifactPath: "notes/brief.md",
+        },
+        {
+          id: "ast_keep",
+          filename: "keep.md",
+          size: 8,
+          mimeType: "text/markdown",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          sourceSessionId: "ses_keep",
+        },
+      ],
+    };
+    tickInterval();
+    await flush();
+
+    expect(paintedSourceLinks(tabBDetail).sourceSession).toEqual([
+      { id: "ast_keep", sourceSessionId: "ses_keep", label: "来源会话" },
+    ]);
+    expect(paintedSourceLinks(tabBDetail).todoSessions).toEqual([
+      { id: "td_gone", title: "AZ 已删会话待办", status: "doing", sessionId: "" },
+      { id: "td_keep", title: "AZ 保留会话待办", status: "todo", sessionId: "ses_keep" },
+    ]);
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+    expect(tabBDetail?.assets.find((a) => a.id === "ast_gone")?.sourceArtifactPath).toBe(
+      "notes/brief.md",
+    );
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    expect(tabBList[0]?.id).toBe("prj_a");
+
+    const afterPoll = selectedFetches.length;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(selectedFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(afterPoll);
+    expect(paintedSourceLinks(tabBDetail).sourceSession.map((a) => a.sourceSessionId)).toEqual([
+      "ses_keep",
+    ]);
+
+    const beforeFocus = selectedFetches.length;
+    focus();
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail?.todos.find((t) => t.id === "td_gone")?.title).toBe("AZ 已删会话待办");
+    expect(JSON.stringify(tabBDetail)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+    stop();
+  });
+});
