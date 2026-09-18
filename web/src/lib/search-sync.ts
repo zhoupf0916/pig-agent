@@ -80,7 +80,8 @@ export function searchHitSyncKey(hit: SearchHit): string {
 /**
  * Replace the `#/search` or SearchBox hit list with a GET /api/search?q= snapshot.
  * Same array reference when nothing visible changed (avoids remounting the page / dropdown).
- * Adds / updates / removes rows so Tab A title / project / memory edits catch up.
+ * Adds / updates / removes rows so Tab A title / project / memory edits
+ * — and deletes of those hit targets — catch up.
  * Read-only: never POSTs / PATCHes / DELETEs search, sessions, or events.
  */
 export function applySearchHitsSnapshot(prev: SearchHit[], next: SearchHit[]): SearchHit[] {
@@ -97,6 +98,85 @@ export function applySearchHitsSnapshot(prev: SearchHit[], next: SearchHit[]): S
     return prev;
   }
   return clean;
+}
+
+export type SearchHitTargetKind = "session" | "project" | "memory";
+
+/** Session / project / memory id the hit would open (todo / asset use the parent project). */
+export function searchHitTargetRef(hit: SearchHit): { kind: SearchHitTargetKind; id: string } {
+  if (hit.type === "session") {
+    return { kind: "session", id: hit.sessionId || hit.id };
+  }
+  if (hit.type === "memory") {
+    return { kind: "memory", id: hit.id };
+  }
+  return { kind: "project", id: hit.projectId || hit.id };
+}
+
+/**
+ * Drop one stale row (clicked-before-refresh 404 / gone).
+ * Same array reference when that id is already absent.
+ */
+export function dropSearchHit(hits: SearchHit[], gone: Pick<SearchHit, "type" | "id">): SearchHit[] {
+  const next = hits.filter((row) => row.type !== gone.type || row.id !== gone.id);
+  return next.length === hits.length ? hits : next;
+}
+
+/**
+ * Navigate-to-hit 404 / gone. Transient network errors are not gone.
+ * Once this is true, do not open / keep a ghost detail route (AN-02: no GET :id after gone).
+ */
+export function isSearchTargetGoneError(err: unknown): boolean {
+  if (typeof err === "object" && err !== null && "status" in err) {
+    const status = Number((err as { status: unknown }).status);
+    if (status === 404 || status === 410) return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /(not found|\bgone\b)/i.test(msg);
+}
+
+/** Existing session / project / memory GET used by navigate-to-hit. No new search index. */
+export async function probeSearchHitTarget(
+  hit: SearchHit,
+  fetchers: {
+    session: (id: string) => Promise<unknown>;
+    project: (id: string) => Promise<unknown>;
+    memory: (id: string) => Promise<unknown>;
+  },
+): Promise<void> {
+  const ref = searchHitTargetRef(hit);
+  if (ref.kind === "session") {
+    await fetchers.session(ref.id);
+    return;
+  }
+  if (ref.kind === "memory") {
+    await fetchers.memory(ref.id);
+    return;
+  }
+  await fetchers.project(ref.id);
+}
+
+/**
+ * Click a hit: probe the target first. 404 / gone → drop the row and do not
+ * open a ghost `#/sessions/:id` / `#/projects/:id` / `#/memory/:id`. Other errors fall through
+ * to the existing open path.
+ */
+export async function openSearchHitOrDrop(opts: {
+  hit: SearchHit;
+  probe: (hit: SearchHit) => Promise<void>;
+  onOpen: (hit: SearchHit) => void;
+  onDrop: (hit: SearchHit) => void;
+}): Promise<"open" | "drop"> {
+  try {
+    await opts.probe(opts.hit);
+  } catch (err) {
+    if (isSearchTargetGoneError(err)) {
+      opts.onDrop(opts.hit);
+      return "drop";
+    }
+  }
+  opts.onOpen(opts.hit);
+  return "open";
 }
 
 /**

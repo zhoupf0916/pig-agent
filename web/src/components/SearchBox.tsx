@@ -4,6 +4,9 @@ import { api } from "../lib/api";
 import { searchHitLabel } from "../lib/format";
 import {
   applySearchHitsSnapshot,
+  dropSearchHit,
+  openSearchHitOrDrop,
+  probeSearchHitTarget,
   SEARCH_BOX_DROPDOWN_LIMIT,
   startSearchBoxSync,
 } from "../lib/search-sync";
@@ -68,6 +71,23 @@ export function SearchBox({
       onHits: (next) => setHits((prev) => applySearchHitsSnapshot(prev, next)),
     });
   }, [q, open]);
+
+  const openHitOrDrop = (hit: SearchHit) => {
+    void openSearchHitOrDrop({
+      hit,
+      probe: (row) =>
+        probeSearchHitTarget(row, {
+          session: (id) => api.session(id),
+          project: (id) => api.project(id),
+          memory: (id) => api.memoryNote(id),
+        }),
+      onOpen: (live) => {
+        onOpenHit(live);
+        setOpen(false);
+      },
+      onDrop: (gone) => setHits((prev) => dropSearchHit(prev, gone)),
+    });
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -137,10 +157,7 @@ export function SearchBox({
               key={`${hit.type}:${hit.id}`}
               type="button"
               className="flex w-full flex-col rounded-[10px] px-2 py-1.5 text-left hover:bg-ink-100"
-              onClick={() => {
-                onOpenHit(hit);
-                setOpen(false);
-              }}
+              onClick={() => openHitOrDrop(hit)}
             >
               <div className="flex items-center gap-2">
                 <span className="text-meta text-ink-500">{searchHitLabel(hit.type)}</span>
