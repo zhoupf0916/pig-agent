@@ -1,8 +1,11 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.ts";
 import { buildSystemPrompt } from "../agent/runtime.ts";
+import { DATA_DIR } from "../config.ts";
 import { createTodo, resolveProjectInstruction, upsertAsset } from "./projects.ts";
-import type { Project } from "../types.ts";
+import type { Project, ProjectMessage } from "../types.ts";
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
@@ -240,6 +243,160 @@ describe("project asset / todo session refs after session delete (Milestone AZ)"
     expect(otherAfter.todos.find((t) => t.title === "AZ 其他项目待办")?.status).toBe("done");
     expect(otherAfter.assets.find((a) => a.id === otherAsset?.asset.id)?.sourceSessionId).toBeUndefined();
     expect(otherAfter.assets.find((a) => a.id === otherAsset?.asset.id)?.filename).toBe("other.md");
+
+    expect(JSON.stringify({ after, otherAfter })).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+});
+
+describe("project message sessionId after session delete (Milestone BA)", () => {
+  const app = createApp();
+
+  async function setMessageSessionId(projectId: string, messageId: string, sessionId: string) {
+    const file = join(DATA_DIR, "projects", projectId, "project.json");
+    const raw = JSON.parse(await readFile(file, "utf8")) as Project;
+    const row = raw.messages.find((m) => m.id === messageId);
+    if (!row) throw new Error(`message ${messageId} not found`);
+    row.sessionId = sessionId;
+    await writeFile(file, JSON.stringify(raw, null, 2));
+  }
+
+  function identity(message: ProjectMessage) {
+    return {
+      id: message.id,
+      kind: message.kind,
+      body: message.body,
+      createdAt: message.createdAt,
+      actorId: message.actorId,
+    };
+  }
+
+  it("clears message sessionId only (body/kind/timestamp stay; messages stay)", async () => {
+    const project = await json<Project>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "BA 会话动态项目" }),
+      }),
+    );
+    const otherProject = await json<Project>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "BA 保留项目" }),
+      }),
+    );
+    const session = await json<{ id: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      }),
+    );
+
+    const goneHandoff = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${project.id}/handoffs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: session.id, note: "BA 请接手已删会话" }),
+      }),
+    );
+    const keepHandoff = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${project.id}/handoffs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: keep.id, note: "BA 请接手保留会话" }),
+      }),
+    );
+    expect(goneHandoff.messages.some((m) => m.kind === "handoff" && m.sessionId === session.id)).toBe(
+      true,
+    );
+    expect(keepHandoff.messages.some((m) => m.kind === "handoff" && m.sessionId === keep.id)).toBe(
+      true,
+    );
+
+    const goneComment = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${project.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "BA 已删会话评论" }),
+      }),
+    );
+    const goneCommentRow = goneComment.messages.find((m) => m.body === "BA 已删会话评论");
+    expect(goneCommentRow).toBeTruthy();
+    await setMessageSessionId(project.id, goneCommentRow!.id, session.id);
+
+    const keepComment = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${project.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "BA 保留会话评论" }),
+      }),
+    );
+    const keepCommentRow = keepComment.messages.find((m) => m.body === "BA 保留会话评论");
+    expect(keepCommentRow).toBeTruthy();
+    await setMessageSessionId(project.id, keepCommentRow!.id, keep.id);
+
+    const plainComment = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${project.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "BA 无会话评论" }),
+      }),
+    );
+    expect(plainComment.messages.find((m) => m.body === "BA 无会话评论")?.sessionId).toBeUndefined();
+
+    const otherComment = await json<{ messages: ProjectMessage[] }>(
+      await app.request(`/api/projects/${otherProject.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: "BA 其他项目评论" }),
+      }),
+    );
+    const otherCommentRow = otherComment.messages.find((m) => m.body === "BA 其他项目评论");
+    expect(otherCommentRow).toBeTruthy();
+    await setMessageSessionId(otherProject.id, otherCommentRow!.id, session.id);
+
+    const before = await json<Project>(await app.request(`/api/projects/${project.id}`));
+    const beforeIds = before.messages.map((m) => m.id);
+    const beforeIdentity = before.messages.map(identity);
+    expect(before.messages.some((m) => m.kind === "activity" && m.sessionId === session.id)).toBe(
+      true,
+    );
+    expect(before.messages.find((m) => m.body === "BA 已删会话评论")?.sessionId).toBe(session.id);
+    expect(before.messages.find((m) => m.body === "BA 保留会话评论")?.sessionId).toBe(keep.id);
+
+    const deleted = await app.request(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<Project>(await app.request(`/api/projects/${project.id}`));
+    expect(after.messages.map((m) => m.id)).toEqual(beforeIds);
+    expect(after.messages.map(identity)).toEqual(beforeIdentity);
+    expect(after.messages.filter((m) => m.sessionId === session.id)).toEqual([]);
+    expect(after.messages.find((m) => m.body === "BA 已删会话评论")?.sessionId).toBeUndefined();
+    expect(after.messages.find((m) => m.body === "BA 已删会话评论")?.kind).toBe("comment");
+    expect(after.messages.find((m) => m.kind === "handoff" && m.body.includes("BA 请接手已删会话"))?.sessionId).toBeUndefined();
+    expect(after.messages.find((m) => m.kind === "handoff" && m.body.includes("BA 请接手保留会话"))?.sessionId).toBe(
+      keep.id,
+    );
+    expect(after.messages.find((m) => m.body === "BA 保留会话评论")?.sessionId).toBe(keep.id);
+    expect(after.messages.find((m) => m.body === "BA 无会话评论")?.sessionId).toBeUndefined();
+    expect(after.messages.find((m) => m.kind === "activity" && m.body.includes(keep.id))?.sessionId).toBe(
+      keep.id,
+    );
+
+    const otherAfter = await json<Project>(await app.request(`/api/projects/${otherProject.id}`));
+    const otherRow = otherAfter.messages.find((m) => m.body === "BA 其他项目评论");
+    expect(otherRow).toBeTruthy();
+    expect(otherRow?.sessionId).toBeUndefined();
+    expect(otherRow?.kind).toBe("comment");
+    expect(otherRow?.body).toBe("BA 其他项目评论");
 
     expect(JSON.stringify({ after, otherAfter })).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });

@@ -671,8 +671,8 @@ export async function recordSessionBound(projectId: string, sessionId: string): 
 }
 
 /**
- * Unbind project assets / todos that still name a deleted session.
- * sourceSessionId / sessionId only — title / status / activity stay.
+ * Unbind project assets / todos / messages that still name a deleted session.
+ * sourceSessionId / sessionId only — title / status / body / kind / timestamp stay.
  */
 export async function clearProjectSessionRefs(sessionId: string): Promise<void> {
   const target = sessionId.trim();
@@ -687,6 +687,11 @@ export async function clearProjectSessionRefs(sessionId: string): Promise<void> 
     for (const todo of project.todos) {
       if (todo.sessionId !== target) continue;
       delete todo.sessionId;
+      changed = true;
+    }
+    for (const message of project.messages) {
+      if (message.sessionId !== target) continue;
+      delete message.sessionId;
       changed = true;
     }
     if (changed) await writeProject(project);

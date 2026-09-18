@@ -178,6 +178,12 @@ Deleting a session clears matching project-internal refs — asset `sourceSessio
 
 When Tab B is already on `#/projects` with a project open, the board / assets sections are the existing Milestone AA **read-only** refresh of `GET /api/projects` plus `GET /api/projects/:id`. Another same-host tab that deletes the source session updates Tab B on focus, visibility, or a short poll — no clickable 「来源会话」 into the deleted session, no full page reload, no new sync stack. Open-project-deleted-elsewhere still follows Milestone AP. Do **not** `GET /api/sessions/:deletedId` after list / detail says that session is gone (AN-02). This does **not** add a write path, a public webhook, or dual-write projects / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Project message sessionId after session delete (Milestone BA)
+
+Deleting a session also clears the structured `sessionId` on project `messages` (activity / comment / handoff) that still name that session — same `DELETE /api/sessions/:id` path as Milestone AZ. Messages themselves stay. Body / timestamp / kind are not rewritten. Asset `sourceSessionId` and todo `sessionId` cleanup stay Milestone AZ.
+
+When Tab B is already on `#/projects` with a project open, the already-open detail is the existing Milestone AA **read-only** refresh of `GET /api/projects` plus `GET /api/projects/:id`. Another same-host tab that deletes that session updates Tab B on focus, visibility, or a short poll — no full page reload, no new sync stack. Do **not** `GET /api/sessions/:deletedId` after refs are cleared (AN-02). Open-project-deleted-elsewhere still follows Milestone AP. This does **not** add a write path, a public webhook, or dual-write projects / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## Memory directory (Milestone AB)
 
 When Tab B is already on `#/memory`, the note list is a **read-only** refresh of the existing `GET /api/memory`. Another same-host tab (or the workstation **钉住笔记** / **写摘要** write) that pins, edits, or deletes a note updates Tab B's list on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/memory/:id`; that body is **not** force-fetched when the note is not open. Apply list / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Pin / write-summary / search stay the existing paths. Default runtime stays **pig**.

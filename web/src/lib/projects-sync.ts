@@ -20,11 +20,14 @@ export type ProjectListSyncFields = Pick<
   "id" | "name" | "updatedAt" | "todoCount" | "assetCount" | "memberCount" | "sessionCount"
 >;
 
-/** Open-detail fields the board / assets / members sections paint. */
+/** Open-detail fields the board / assets / members / activity sections paint. */
 export type ProjectDetailSyncFields = Pick<
   Project,
   "id" | "name" | "updatedAt" | "todos" | "assets" | "members" | "invites"
->;
+> & {
+  /** Present on GET /api/projects/:id; optional on list-only fixtures. */
+  messages?: Project["messages"];
+};
 
 export function normalizeProjectText(value?: string | null): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -87,6 +90,17 @@ function inviteSyncKey(invite: ProjectInvite): string {
   ].join("\u0001");
 }
 
+function messageSyncKey(message: Project["messages"][number]): string {
+  return [
+    message.id,
+    message.kind,
+    normalizeProjectText(message.body) ?? "",
+    normalizeProjectText(message.actorId) ?? "",
+    normalizeProjectText(message.createdAt) ?? "",
+    normalizeProjectText(message.sessionId) ?? "",
+  ].join("\u0001");
+}
+
 export function projectDetailSyncKey(row: ProjectDetailSyncFields): string {
   return [
     row.id,
@@ -96,6 +110,7 @@ export function projectDetailSyncKey(row: ProjectDetailSyncFields): string {
     row.assets.map(assetSyncKey).join("\u0002"),
     row.members.map(memberSyncKey).join("\u0002"),
     (row.invites ?? []).map(inviteSyncKey).join("\u0002"),
+    (row.messages ?? []).map(messageSyncKey).join("\u0002"),
   ].join("\u0001");
 }
 
@@ -149,13 +164,18 @@ function assignProjectDetail<T extends ProjectDetailSyncFields>(
     assets: snap.assets.map((asset) => ({ ...asset })),
     members: snap.members.map((member) => ({ ...member })),
     invites: (snap.invites ?? []).map((invite) => ({ ...invite })),
+    ...(Array.isArray(snap.messages)
+      ? { messages: snap.messages.map((message) => ({ ...message })) }
+      : {}),
   };
 }
 
 /**
  * Patch board / assets / members (and pending invites) on the open project.
  * Same reference when nothing visible changed (avoids remounting the page).
- * Leaves instruction / messages / inviteToken alone.
+ * Leaves instruction / inviteToken alone.
+ * Messages apply when the GET /api/projects/:id snapshot includes them
+ * (sessionId catch-up after session delete; body / kind / timestamp stay).
  * `next === null` means the open project was deleted (gone from GET /api/projects).
  * Read-only: never POSTs todos / assets / members or writes events.jsonl.
  */

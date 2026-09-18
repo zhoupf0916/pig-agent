@@ -1042,3 +1042,299 @@ describe("project asset / todo session refs after session delete (Milestone AZ)"
     stop();
   });
 });
+
+describe("project message sessionId after session delete (Milestone BA)", () => {
+  function paintedMessages(detail: { messages?: Project["messages"] } | null) {
+    return (detail?.messages ?? []).map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      body: m.body,
+      createdAt: m.createdAt,
+      sessionId: m.sessionId ?? "",
+    }));
+  }
+
+  it("reuses the existing 2s AA poll and stays on default runtime pig", () => {
+    expect(PROJECTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("open-detail snapshots drop message sessionId without rewriting body/kind/timestamp", () => {
+    const prev = project({
+      id: "prj_a",
+      messages: [
+        {
+          id: "pmsg_act_gone",
+          kind: "activity",
+          body: "会话 ses_gone 已绑定到本项目",
+          actorId: "user_local",
+          createdAt: "t1",
+          sessionId: "ses_gone",
+        },
+        {
+          id: "pmsg_cmt_gone",
+          kind: "comment",
+          body: "BA 已删会话评论",
+          actorId: "user_local",
+          createdAt: "t2",
+          sessionId: "ses_gone",
+        },
+        {
+          id: "pmsg_hand_gone",
+          kind: "handoff",
+          body: "转交会话 ses_gone：BA 请接手已删会话",
+          actorId: "user_local",
+          createdAt: "t3",
+          sessionId: "ses_gone",
+        },
+        {
+          id: "pmsg_hand_keep",
+          kind: "handoff",
+          body: "转交会话 ses_keep：BA 请接手保留会话",
+          actorId: "user_local",
+          createdAt: "t4",
+          sessionId: "ses_keep",
+        },
+      ],
+    });
+    const cleared = project({
+      id: "prj_a",
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      messages: [
+        {
+          id: "pmsg_act_gone",
+          kind: "activity",
+          body: "会话 ses_gone 已绑定到本项目",
+          actorId: "user_local",
+          createdAt: "t1",
+        },
+        {
+          id: "pmsg_cmt_gone",
+          kind: "comment",
+          body: "BA 已删会话评论",
+          actorId: "user_local",
+          createdAt: "t2",
+        },
+        {
+          id: "pmsg_hand_gone",
+          kind: "handoff",
+          body: "转交会话 ses_gone：BA 请接手已删会话",
+          actorId: "user_local",
+          createdAt: "t3",
+        },
+        {
+          id: "pmsg_hand_keep",
+          kind: "handoff",
+          body: "转交会话 ses_keep：BA 请接手保留会话",
+          actorId: "user_local",
+          createdAt: "t4",
+          sessionId: "ses_keep",
+        },
+      ],
+    });
+    const applied = applyProjectDetailSnapshot(prev, cleared);
+    expect(applied).not.toBe(prev);
+    expect(applied?.messages).toHaveLength(4);
+    expect(paintedMessages(applied)).toEqual([
+      {
+        id: "pmsg_act_gone",
+        kind: "activity",
+        body: "会话 ses_gone 已绑定到本项目",
+        createdAt: "t1",
+        sessionId: "",
+      },
+      {
+        id: "pmsg_cmt_gone",
+        kind: "comment",
+        body: "BA 已删会话评论",
+        createdAt: "t2",
+        sessionId: "",
+      },
+      {
+        id: "pmsg_hand_gone",
+        kind: "handoff",
+        body: "转交会话 ses_gone：BA 请接手已删会话",
+        createdAt: "t3",
+        sessionId: "",
+      },
+      {
+        id: "pmsg_hand_keep",
+        kind: "handoff",
+        body: "转交会话 ses_keep：BA 请接手保留会话",
+        createdAt: "t4",
+        sessionId: "ses_keep",
+      },
+    ]);
+    expect(applied?.instruction).toBe(prev.instruction);
+    expect(JSON.stringify(paintedMessages(applied).map((m) => m.sessionId))).not.toMatch(/ses_gone/);
+    expect(JSON.stringify(applied)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B open detail drops message sessionId after Tab A deletes that session", async () => {
+    const listServer = [listRow({ id: "prj_a" })];
+    const members: ProjectDetailSyncFields["members"] = [
+      {
+        id: "mem_owner",
+        userId: "user_local",
+        displayName: "本机用户",
+        role: "owner",
+        joinedAt: "2026-09-14T12:00:00.000Z",
+      },
+    ];
+    let detailServer: ProjectDetailSyncFields = {
+      id: "prj_a",
+      name: "协作空间",
+      updatedAt: "2026-09-14T12:00:00.000Z",
+      todos: [],
+      assets: [],
+      members,
+      invites: [],
+      messages: [
+        {
+          id: "pmsg_act_gone",
+          kind: "activity",
+          body: "会话 ses_gone 已绑定到本项目",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:00:00.000Z",
+          sessionId: "ses_gone",
+        },
+        {
+          id: "pmsg_cmt_gone",
+          kind: "comment",
+          body: "BA 已删会话评论",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:01:00.000Z",
+          sessionId: "ses_gone",
+        },
+        {
+          id: "pmsg_hand_keep",
+          kind: "handoff",
+          body: "转交会话 ses_keep：BA 请接手保留会话",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:02:00.000Z",
+          sessionId: "ses_keep",
+        },
+      ],
+    };
+    let tabBList = [summary({ id: "prj_a" })];
+    let tabBDetail: Project | null = project({
+      id: "prj_a",
+      instruction: "本地草稿指令",
+      messages: detailServer.messages,
+    });
+    const selectedFetches: string[] = [];
+    const sessionDetailGets: string[] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => listServer.map((s) => ({ ...s })),
+      onList: (next) => {
+        tabBList = applyProjectsListSnapshot(tabBList, next);
+      },
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          ...detailServer,
+          todos: detailServer.todos.map((t) => ({ ...t })),
+          assets: detailServer.assets.map((a) => ({ ...a })),
+          members: detailServer.members.map((m) => ({ ...m })),
+          invites: [...detailServer.invites],
+          messages: (detailServer.messages ?? []).map((m) => ({ ...m })),
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(selectedFetches).toContain("prj_a");
+    expect(tabBDetail?.messages.find((m) => m.id === "pmsg_cmt_gone")?.sessionId).toBe("ses_gone");
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+
+    // Tab A DELETE /api/sessions/:id cleared message sessionId on the GET snapshot (no new poller).
+    detailServer = {
+      ...detailServer,
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      messages: [
+        {
+          id: "pmsg_act_gone",
+          kind: "activity",
+          body: "会话 ses_gone 已绑定到本项目",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:00:00.000Z",
+        },
+        {
+          id: "pmsg_cmt_gone",
+          kind: "comment",
+          body: "BA 已删会话评论",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:01:00.000Z",
+        },
+        {
+          id: "pmsg_hand_keep",
+          kind: "handoff",
+          body: "转交会话 ses_keep：BA 请接手保留会话",
+          actorId: "user_local",
+          createdAt: "2026-09-14T12:02:00.000Z",
+          sessionId: "ses_keep",
+        },
+      ],
+    };
+    tickInterval();
+    await flush();
+
+    expect(paintedMessages(tabBDetail)).toEqual([
+      {
+        id: "pmsg_act_gone",
+        kind: "activity",
+        body: "会话 ses_gone 已绑定到本项目",
+        createdAt: "2026-09-14T12:00:00.000Z",
+        sessionId: "",
+      },
+      {
+        id: "pmsg_cmt_gone",
+        kind: "comment",
+        body: "BA 已删会话评论",
+        createdAt: "2026-09-14T12:01:00.000Z",
+        sessionId: "",
+      },
+      {
+        id: "pmsg_hand_keep",
+        kind: "handoff",
+        body: "转交会话 ses_keep：BA 请接手保留会话",
+        createdAt: "2026-09-14T12:02:00.000Z",
+        sessionId: "ses_keep",
+      },
+    ]);
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+    expect(tabBDetail?.messages).toHaveLength(3);
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    expect(sessionDetailGets).toEqual([]);
+    expect(tabBList[0]?.id).toBe("prj_a");
+
+    const afterPoll = selectedFetches.length;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(selectedFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBDetail?.messages.find((m) => m.id === "pmsg_cmt_gone")?.sessionId).toBeUndefined();
+
+    const beforeFocus = selectedFetches.length;
+    focus();
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail?.messages.find((m) => m.id === "pmsg_hand_keep")?.sessionId).toBe("ses_keep");
+    expect(JSON.stringify(tabBDetail?.messages.map((m) => m.sessionId ?? ""))).not.toMatch(/ses_gone/);
+    expect(JSON.stringify(tabBDetail)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+    stop();
+  });
+});
