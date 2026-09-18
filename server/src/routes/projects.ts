@@ -34,6 +34,7 @@ import {
 } from "../store/asset-preview.ts";
 import { clearAutomationPins } from "../store/automations.ts";
 import { listInbox, markInboxRead } from "../store/inbox.ts";
+import { clearMemoryRefs } from "../store/memory.ts";
 import { createSession, getSession, listSessions, saveSession } from "../store/sessions.ts";
 
 const createSchema = z.object({
@@ -130,6 +131,7 @@ export function registerProjectRoutes(app: Hono): void {
       await saveSession(session);
     }
     await clearAutomationPins("projectId", id);
+    await clearMemoryRefs("projectId", id);
     return c.json({ ok: true });
   });
 

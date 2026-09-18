@@ -600,3 +600,245 @@ describe("open memory note deleted-elsewhere cleanup (Milestone AQ)", () => {
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
   });
 });
+
+describe("memory refs after project / session delete (Milestone AV)", () => {
+  function paintedLinks(row: MemoryNote | null) {
+    return {
+      session: row?.sessionId ? "打开来源会话" : "",
+      project: row?.projectId ? "打开关联项目" : "",
+      sessionId: row?.sessionId ?? "",
+      projectId: row?.projectId ?? "",
+    };
+  }
+
+  it("reuses the existing 2s AB list poll and stays on default runtime pig", () => {
+    expect(MEMORY_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("list / open detail snapshots drop a cleared projectId without rewriting body/tags", () => {
+    const prev = note({
+      id: "mem_a",
+      text: "默认用 DeepSeek",
+      tags: ["llm"],
+      sessionId: "ses_keep",
+      projectId: "prj_gone",
+    });
+    const cleared = note({
+      id: "mem_a",
+      text: "默认用 DeepSeek",
+      tags: ["llm"],
+      sessionId: "ses_keep",
+    });
+    const list = applyMemoryListSnapshot([prev], [cleared]);
+    const detail = applyMemoryDetailSnapshot(prev, cleared);
+    expect(list[0]?.projectId).toBeUndefined();
+    expect(list[0]?.sessionId).toBe("ses_keep");
+    expect(list[0]?.text).toBe("默认用 DeepSeek");
+    expect(list[0]?.tags).toEqual(["llm"]);
+    expect(detail?.projectId).toBeUndefined();
+    expect(detail?.sessionId).toBe("ses_keep");
+    expect(paintedLinks(detail)).toEqual({
+      session: "打开来源会话",
+      project: "",
+      sessionId: "ses_keep",
+      projectId: "",
+    });
+    expect(JSON.stringify({ list, detail })).not.toMatch(/prj_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B list and open detail drop projectId after Tab A deletes that project", async () => {
+    let server = [
+      note({
+        id: "mem_a",
+        text: "打开中",
+        tags: ["av"],
+        sessionId: "ses_keep",
+        projectId: "prj_gone",
+      }),
+      note({ id: "mem_b", text: "其他笔记", projectId: "prj_keep" }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: MemoryNote | null = note({
+      id: "mem_a",
+      text: "打开中",
+      tags: ["av"],
+      sessionId: "ses_keep",
+      projectId: "prj_gone",
+    });
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startMemorySync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyMemoryListSnapshot(tabBList, next);
+      },
+      selectedId: "mem_a",
+      fetchSelected: async (id) => {
+        const found = server.find((row) => row.id === id);
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedLinks(tabBDetail).project).toBe("打开关联项目");
+    expect(tabBList.find((row) => row.id === "mem_a")?.projectId).toBe("prj_gone");
+
+    // Tab A DELETE /api/projects/:id cleared projectId on the GET snapshot (no new poller).
+    server = [
+      note({
+        id: "mem_a",
+        text: "打开中",
+        tags: ["av"],
+        sessionId: "ses_keep",
+        updatedAt: "2026-09-15T07:20:00.000Z",
+      }),
+      note({ id: "mem_b", text: "其他笔记", projectId: "prj_keep" }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail?.projectId).toBeUndefined();
+    expect(tabBDetail?.sessionId).toBe("ses_keep");
+    expect(tabBDetail?.text).toBe("打开中");
+    expect(tabBDetail?.tags).toEqual(["av"]);
+    expect(tabBDetail?.id).toBe("mem_a");
+    expect(paintedLinks(tabBDetail).project).toBe("");
+    expect(tabBList.find((row) => row.id === "mem_a")?.projectId).toBeUndefined();
+    expect(tabBList.find((row) => row.id === "mem_b")?.projectId).toBe("prj_keep");
+    expect(JSON.stringify({ list: tabBList, detail: tabBDetail })).not.toMatch(
+      /prj_gone|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.sessionId).toBe("ses_keep");
+
+    setVisible(true);
+    await flush();
+    expect(tabBDetail?.projectId).toBeUndefined();
+    focus();
+    await flush();
+    expect(tabBDetail?.text).toBe("打开中");
+    stop();
+  });
+
+  it("Tab B drops sessionId after a session delete without rewriting body/tags", async () => {
+    let server = [
+      note({
+        id: "mem_a",
+        text: "回合摘要 · 整理工作区",
+        tags: ["recap"],
+        sessionId: "ses_gone",
+        projectId: "prj_keep",
+      }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: MemoryNote | null = note({
+      id: "mem_a",
+      text: "回合摘要 · 整理工作区",
+      tags: ["recap"],
+      sessionId: "ses_gone",
+      projectId: "prj_keep",
+    });
+    const { clock, tickInterval } = fakeClock(true);
+
+    const stop = startMemorySync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyMemoryListSnapshot(tabBList, next);
+      },
+      selectedId: "mem_a",
+      fetchSelected: async (id) => {
+        const found = server.find((row) => row.id === id);
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyMemoryDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedLinks(tabBDetail)).toMatchObject({
+      session: "打开来源会话",
+      project: "打开关联项目",
+    });
+
+    server = [
+      note({
+        id: "mem_a",
+        text: "回合摘要 · 整理工作区",
+        tags: ["recap"],
+        projectId: "prj_keep",
+        updatedAt: "2026-09-15T07:21:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.sessionId).toBeUndefined();
+    expect(tabBDetail?.projectId).toBe("prj_keep");
+    expect(tabBDetail?.text).toBe("回合摘要 · 整理工作区");
+    expect(tabBDetail?.tags).toEqual(["recap"]);
+    expect(paintedLinks(tabBDetail).session).toBe("");
+    expect(tabBList[0]?.sessionId).toBeUndefined();
+    expect(JSON.stringify({ list: tabBList, detail: tabBDetail })).not.toMatch(
+      /ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+    stop();
+  });
+
+  it("never treats cleared-ref snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...note({
+        id: "mem_a",
+        text: "整理 notes",
+        tags: ["llm"],
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+    } as MemoryNote & { llmApiKey: string; cloudToken: string };
+    const applied = applyMemoryListSnapshot(
+      [note({ id: "mem_a", projectId: "prj_gone", sessionId: "ses_gone" })],
+      [dirty],
+    );
+    const detail = applyMemoryDetailSnapshot(
+      note({ id: "mem_a", projectId: "prj_gone", sessionId: "ses_gone" }),
+      dirty,
+    );
+    const raw = JSON.stringify({ list: applied, detail, painted: paintedLinks(detail) });
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN/);
+    expect(applied[0]?.projectId).toBeUndefined();
+    expect(applied[0]?.sessionId).toBeUndefined();
+    expect(detail?.projectId).toBeUndefined();
+    expect(detail?.sessionId).toBeUndefined();
+
+    const fetches: MemoryNote[][] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startMemorySync({
+      fetchList: async () => {
+        const next = [note({ id: "mem_a", text: "整理 notes" })];
+        fetches.push(next);
+        return next;
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((list) => list[0]?.id === "mem_a")).toBe(true);
+    stop();
+  });
+});
