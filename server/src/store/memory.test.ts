@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "../agent/runtime.ts";
 import { createApp } from "../app.ts";
+import { updateAutomation } from "./automations.ts";
 import {
   MEMORY_PIN_HEADING,
   buildHeuristicRecap,
@@ -221,5 +222,142 @@ describe("memory API", () => {
     expect(bare).not.toContain(MEMORY_PIN_HEADING);
 
     await app.request(`/api/memory/${created.id}`, { method: "DELETE" });
+  });
+});
+
+describe("memory refs after project / session delete (Milestone AV)", () => {
+  const app = createApp();
+
+  it("clears memory projectId after deleting that project (body/tags stay)", async () => {
+    const project = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AV 已删项目", instruction: "项目指令" }),
+      }),
+    );
+    const keep = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AV 保留项目" }),
+      }),
+    );
+    const session = await json<{ id: string }>(
+      await app.request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id }),
+      }),
+    );
+    const pinned = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "pin",
+          text: `${MARKER} AV 钉住已删项目`,
+          tags: ["av", "project"],
+          projectId: project.id,
+          sessionId: session.id,
+        }),
+      }),
+    );
+    const other = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "pin",
+          text: `${MARKER} AV 钉住保留项目`,
+          tags: ["keep"],
+          projectId: keep.id,
+        }),
+      }),
+    );
+    expect(pinned.projectId).toBe(project.id);
+    expect(pinned.sessionId).toBe(session.id);
+
+    const deleted = await app.request(`/api/projects/${project.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<MemoryNote>(await app.request(`/api/memory/${pinned.id}`));
+    expect(after.projectId).toBeUndefined();
+    expect(after.sessionId).toBe(session.id);
+    expect(after.text).toBe(pinned.text);
+    expect(after.tags).toEqual(["av", "project"]);
+
+    const listed = await json<{ notes: MemoryNote[] }>(await app.request("/api/memory"));
+    expect(listed.notes.find((n) => n.id === pinned.id)?.projectId).toBeUndefined();
+    expect((await json<MemoryNote>(await app.request(`/api/memory/${other.id}`))).projectId).toBe(keep.id);
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("clears memory sessionId after deleting that session (body/tags stay; lastSessionId untouched)", async () => {
+    const session = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    const keep = await json<{ id: string }>(await app.request("/api/sessions", { method: "POST" }));
+    const project = await json<{ id: string }>(
+      await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "AV 会话关联项目" }),
+      }),
+    );
+    const pinned = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "recap",
+          text: `${MARKER} AV 摘要已删会话`,
+          tags: ["recap", "av"],
+          sessionId: session.id,
+          projectId: project.id,
+        }),
+      }),
+    );
+    const other = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "pin",
+          text: `${MARKER} AV 钉住保留会话`,
+          sessionId: keep.id,
+        }),
+      }),
+    );
+    const automation = await json<{ id: string }>(
+      await app.request("/api/automations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "AV 上次会话",
+          prompt: "整理工作区",
+        }),
+      }),
+    );
+    await updateAutomation(automation.id, { lastSessionId: session.id });
+    expect(pinned.sessionId).toBe(session.id);
+
+    const deleted = await app.request(`/api/sessions/${session.id}`, { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+
+    const after = await json<MemoryNote>(await app.request(`/api/memory/${pinned.id}`));
+    expect(after.sessionId).toBeUndefined();
+    expect(after.projectId).toBe(project.id);
+    expect(after.text).toBe(pinned.text);
+    expect(after.tags).toEqual(["recap", "av"]);
+
+    const listed = await json<{ notes: MemoryNote[] }>(await app.request("/api/memory"));
+    expect(listed.notes.find((n) => n.id === pinned.id)?.sessionId).toBeUndefined();
+    expect((await json<MemoryNote>(await app.request(`/api/memory/${other.id}`))).sessionId).toBe(keep.id);
+
+    const still = await json<{ lastSessionId?: string; runtime: string }>(
+      await app.request(`/api/automations/${automation.id}`),
+    );
+    expect(still.lastSessionId).toBe(session.id);
+    expect(still.runtime).toBe("pig");
+    expect(JSON.stringify(after)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
   });
 });

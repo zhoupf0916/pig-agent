@@ -174,6 +174,12 @@ When Tab B is already on `#/memory`, the note list is a **read-only** refresh of
 
 When Tab B is already on `#/memory` with a note open, the same read-only `GET /api/memory` used by Milestone AB is also the source of truth for whether that open id still exists. Another same-host tab that **deletes** the note updates Tab B on focus, visibility, or a short poll — no full page reload. If the list snapshot lacks the open id, rewrite hash / open state first (clear the detail, or switch to the next list row). Do **not** `GET /api/memory/:id` after the list confirms the id is gone (AN-02 nail). Delete still uses the existing `DELETE /api/memory/:id`. List / open-detail catch-up while the note still exists still follow Milestone AB. This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Memory refs after project / session delete (Milestone AV)
+
+Deleting a project or a session clears the matching field on memory notes — `projectId` / `sessionId` — the same unbind as PATCH null. Note body / tags are not rewritten. Automation `lastSessionId` and inbox entries stay put.
+
+When Tab B is already on `#/memory`, the list (and already-open detail) is the existing Milestone AB **read-only** refresh of `GET /api/memory`. Another same-host tab that deletes the referenced project / session updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted project / session, no full page reload, no new sync stack. Open-note-deleted-elsewhere still follows Milestone AQ. Pin / write-summary stay the existing write paths. This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## Experts directory (Milestone AC)
 
 When Tab B is already on `#/experts`, the expert list (and team list) is a **read-only** refresh of the existing `GET /api/experts` plus `GET /api/expert-teams`. Another same-host tab that creates, edits, or deletes an expert — or changes the expert-team list — updates Tab B on focus, visibility, or a short poll — no full page reload. An already-open detail also `GET /api/experts/:id`; that body is **not** force-fetched when the expert is not open. Apply list / team / detail patches in place (no remount). This does **not** add a write path, a public webhook, or dual-write experts / sessions / `events.jsonl`. Session pin / sequential expert-team run stay the existing paths. Default runtime stays **pig**.

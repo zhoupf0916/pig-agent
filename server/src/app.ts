@@ -27,6 +27,7 @@ import { registerMemoryRoutes } from "./routes/memory.ts";
 import { registerSearchRoutes } from "./routes/search.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { publishPersistedEvent } from "./store/events.ts";
+import { clearMemoryRefs } from "./store/memory.ts";
 import { recordSessionBound } from "./store/projects.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
@@ -175,6 +176,7 @@ export function createApp(): Hono {
     runningTurns.delete(c.req.param("id"));
     const ok = await deleteSession(c.req.param("id"));
     if (!ok) return c.json({ error: "Session not found" }, 404);
+    await clearMemoryRefs("sessionId", c.req.param("id"));
     return c.json({ ok: true });
   });
 

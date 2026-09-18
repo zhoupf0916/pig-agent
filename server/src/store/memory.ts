@@ -209,6 +209,22 @@ export async function deleteMemory(id: string): Promise<boolean> {
   return true;
 }
 
+export type MemoryRefField = "sessionId" | "projectId";
+
+/**
+ * Unbind memory notes that still name a deleted session / project.
+ * Same field-null as PATCH; text / tags / the other ref stay put.
+ */
+export async function clearMemoryRefs(field: MemoryRefField, id: string): Promise<void> {
+  const target = id.trim();
+  if (!target) return;
+  const notes = await listMemory(field === "sessionId" ? { sessionId: target } : { projectId: target });
+  for (const note of notes) {
+    if (note[field] !== target) continue;
+    await updateMemory(note.id, { [field]: null });
+  }
+}
+
 function usableTranscript(messages: ChatMessage[]): ChatMessage[] {
   return messages.filter(
     (m) =>

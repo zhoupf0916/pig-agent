@@ -191,6 +191,16 @@ Does **not** change the default runtime (still **本机 Pig**). Read-only `GET /
 - [ ] Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Memory refs after project / session delete (Milestone AV)
+
+Does **not** change the default runtime (still **本机 Pig**). Deleting a project / session clears matching memory fields (`projectId` / `sessionId`). Already-open `#/memory` list / detail is the existing Milestone AB read-only `GET /api/memory` catch-up — no clickable ghost entry, no full page reload, no new sync stack. Note body / tags are not rewritten. Automation `lastSessionId` stays put. Pin / write-summary stay the existing writes. No new write path, no dual-write of memory / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **AV-01** Two workstation tabs on the same host. Tab B is on `#/memory` with a note that has `projectId` (list and/or open detail). Tab A deletes that project — Tab B on focus, visibility, or one short poll no longer shows a clickable ghost entry into the deleted project. No full page refresh
+- [ ] **AV-02** Same after deleting a session (`sessionId` cleared). Note body / tags stay. Automation `lastSessionId` is not rewritten
+- [ ] **AV-03** Header chip still defaults to **本机 Pig**. Milestone O–AU / AB·AQ / L·M·N / W·X unchanged. Pin / summary write semantics unchanged. No dual-write events, no public webhook
+- [ ] **AV-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Automation pins after expert / team / project delete (Milestone AU)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert / team / project clears matching automation fields (`expertId` / `expertTeamId` / `projectId`). Already-open `#/automations` list / detail is the existing Milestone AG read-only `GET /api/automations` catch-up — no ghost name, no full page reload, no new sync stack. Session pin cleanup stays AT / existing project-delete logic. Built-in expert / team delete stays 400. 「立即运行」 / cron / enabled unchanged. No new write path, no dual-write of automations / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
