@@ -1247,3 +1247,217 @@ describe("automation pins after expert / team / project delete (Milestone AU)", 
     stop();
   });
 });
+
+describe("automation lastSessionId after session delete (Milestone AW)", () => {
+  function paintedSessionLink(item: Automation | null) {
+    const label = automationLastSessionLabel(item?.lastSessionId);
+    return {
+      lastSessionId: item?.lastSessionId ?? "",
+      listLabel: label ?? "",
+      openLastSession: item?.lastSessionId ? "打开上次会话" : "",
+    };
+  }
+
+  it("reuses the existing 2s AG list poll and stays on default runtime pig", () => {
+    expect(AUTOMATIONS_LIST_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("list / open detail snapshots drop a cleared lastSessionId without rewriting last-run / pins", () => {
+    const prev = automation({
+      id: "atm_a",
+      lastRunAt: "2026-09-15T08:00:00.000Z",
+      lastSessionId: "ses_gone",
+      lastError: "上一轮失败",
+      expertId: "exp_scout",
+      expertTeamId: "team_coding",
+      projectId: "prj_keep",
+      enabled: true,
+      schedule: "@daily",
+    });
+    const cleared = automation({
+      id: "atm_a",
+      lastRunAt: "2026-09-15T08:00:00.000Z",
+      lastError: "上一轮失败",
+      expertId: "exp_scout",
+      expertTeamId: "team_coding",
+      projectId: "prj_keep",
+      enabled: true,
+      schedule: "@daily",
+    });
+    const list = applyAutomationsListSnapshot([prev], [cleared]);
+    const detail = applyAutomationDetailSnapshot(prev, cleared);
+    const lastRun = applyAutomationLastRunSnapshot(prev, cleared);
+    expect(list[0]?.lastSessionId).toBeUndefined();
+    expect(detail?.lastSessionId).toBeUndefined();
+    expect(lastRun?.lastSessionId).toBeUndefined();
+    expect(list[0]?.lastRunAt).toBe("2026-09-15T08:00:00.000Z");
+    expect(detail?.lastError).toBe("上一轮失败");
+    expect(detail?.expertId).toBe("exp_scout");
+    expect(detail?.expertTeamId).toBe("team_coding");
+    expect(detail?.projectId).toBe("prj_keep");
+    expect(detail?.enabled).toBe(true);
+    expect(detail?.schedule).toBe("@daily");
+    expect(detail?.runtime).toBe("pig");
+    expect(paintedSessionLink(detail)).toEqual({
+      lastSessionId: "",
+      listLabel: "",
+      openLastSession: "",
+    });
+    expect(JSON.stringify({ list, detail, lastRun })).not.toMatch(
+      /ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+  });
+
+  it("Tab B list and open detail drop lastSessionId after Tab A deletes that session", async () => {
+    let server = [
+      automation({
+        id: "atm_a",
+        name: "打开中",
+        lastRunAt: "2026-09-15T08:00:00.000Z",
+        lastSessionId: "ses_gone",
+        lastError: "上一轮失败",
+        expertId: "exp_scout",
+        enabled: true,
+        schedule: "@daily",
+      }),
+      automation({
+        id: "atm_b",
+        name: "其他自动化",
+        lastSessionId: "ses_keep",
+        lastRunAt: "2026-09-15T07:00:00.000Z",
+      }),
+    ];
+    let tabBList = server.map((row) => ({ ...row }));
+    let tabBDetail: Automation | null = automation({
+      id: "atm_a",
+      name: "打开中",
+      lastRunAt: "2026-09-15T08:00:00.000Z",
+      lastSessionId: "ses_gone",
+      lastError: "上一轮失败",
+      expertId: "exp_scout",
+      enabled: true,
+      schedule: "@daily",
+    });
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startAutomationsListSync({
+      fetchList: async () => server.map((row) => ({ ...row })),
+      onList: (next) => {
+        tabBList = applyAutomationsListSnapshot(tabBList, next);
+      },
+      selectedId: "atm_a",
+      fetchSelected: async (id) => {
+        const found = server.find((row) => row.id === id);
+        return found ? { ...found } : null;
+      },
+      onSelected: (next) => {
+        tabBDetail = applyAutomationDetailSnapshot(tabBDetail, next);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(paintedSessionLink(tabBDetail).openLastSession).toBe("打开上次会话");
+    expect(tabBList.find((row) => row.id === "atm_a")?.lastSessionId).toBe("ses_gone");
+
+    // Tab A DELETE /api/sessions/:id cleared lastSessionId on the GET snapshot (no new poller).
+    server = [
+      automation({
+        id: "atm_a",
+        name: "打开中",
+        lastRunAt: "2026-09-15T08:00:00.000Z",
+        lastError: "上一轮失败",
+        expertId: "exp_scout",
+        enabled: true,
+        schedule: "@daily",
+        updatedAt: "2026-09-15T08:20:00.000Z",
+      }),
+      automation({
+        id: "atm_b",
+        name: "其他自动化",
+        lastSessionId: "ses_keep",
+        lastRunAt: "2026-09-15T07:00:00.000Z",
+      }),
+    ];
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail?.lastSessionId).toBeUndefined();
+    expect(tabBDetail?.lastRunAt).toBe("2026-09-15T08:00:00.000Z");
+    expect(tabBDetail?.lastError).toBe("上一轮失败");
+    expect(tabBDetail?.expertId).toBe("exp_scout");
+    expect(tabBDetail?.enabled).toBe(true);
+    expect(tabBDetail?.schedule).toBe("@daily");
+    expect(tabBDetail?.id).toBe("atm_a");
+    expect(paintedSessionLink(tabBDetail).openLastSession).toBe("");
+    expect(paintedSessionLink(tabBDetail).listLabel).toBe("");
+    expect(tabBList.find((row) => row.id === "atm_a")?.lastSessionId).toBeUndefined();
+    expect(tabBList.find((row) => row.id === "atm_b")?.lastSessionId).toBe("ses_keep");
+    expect(JSON.stringify({ list: tabBList, detail: tabBDetail })).not.toMatch(
+      /ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
+
+    const afterPoll = server[0]!;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(tabBDetail?.lastRunAt).toBe("2026-09-15T08:00:00.000Z");
+
+    setVisible(true);
+    await flush();
+    expect(tabBDetail?.lastSessionId).toBeUndefined();
+    focus();
+    await flush();
+    expect(tabBDetail?.name).toBe(afterPoll.name);
+    expect(tabBDetail?.runtime).toBe("pig");
+    stop();
+  });
+
+  it("never treats cleared-lastSessionId snapshots as a place to store secrets and stays GET-only", async () => {
+    const dirty = {
+      ...automation({
+        id: "atm_a",
+        lastRunAt: "2026-09-15T08:00:00.000Z",
+        lastError: "失败 sk-abcdefghijklmnop 与 Bearer tok-abc",
+      }),
+      llmApiKey: "sk-abcdefghijklmnop",
+      cloudToken: "Bearer tok-secret",
+    } as Automation & { llmApiKey: string; cloudToken: string };
+    const applied = applyAutomationsListSnapshot(
+      [automation({ id: "atm_a", lastSessionId: "ses_gone" })],
+      [dirty],
+    );
+    const detail = applyAutomationDetailSnapshot(
+      automation({ id: "atm_a", lastSessionId: "ses_gone" }),
+      dirty,
+    );
+    const raw = JSON.stringify({ list: applied, detail, painted: paintedSessionLink(detail) });
+    expect(raw).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
+    expect(raw).not.toMatch(/PIG_CLOUD_TOKEN|ses_gone/);
+    expect(applied[0]?.lastSessionId).toBeUndefined();
+    expect(detail?.lastSessionId).toBeUndefined();
+    expect(paintedSessionLink(detail).openLastSession).toBe("");
+
+    const fetches: Automation[][] = [];
+    const { clock, tickInterval } = fakeClock(true);
+    const stop = startAutomationsListSync({
+      fetchList: async () => {
+        const next = [automation({ id: "atm_a" })];
+        fetches.push(next);
+        return next;
+      },
+      onList: () => undefined,
+      intervalMs: 50,
+      clock,
+    });
+    await flush();
+    tickInterval();
+    await flush();
+    expect(fetches.length).toBeGreaterThan(0);
+    expect(fetches.every((list) => list[0]?.id === "atm_a")).toBe(true);
+    stop();
+  });
+});

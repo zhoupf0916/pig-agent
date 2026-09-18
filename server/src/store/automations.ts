@@ -221,6 +221,19 @@ export async function clearAutomationPins(
   }
 }
 
+/**
+ * Clear lastSessionId on automations that still name a deleted session.
+ * lastRunAt / lastError / pins / cron / enabled stay put.
+ */
+export async function clearAutomationLastSessionId(sessionId: string): Promise<void> {
+  const target = sessionId.trim();
+  if (!target) return;
+  for (const automation of await listAutomations()) {
+    if (automation.lastSessionId !== target) continue;
+    await updateAutomation(automation.id, { lastSessionId: null });
+  }
+}
+
 export function automationIsDue(automation: Automation, now: Date): boolean {
   if (!automation.enabled) return false;
   return isScheduleDue({

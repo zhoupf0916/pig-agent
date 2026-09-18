@@ -158,6 +158,12 @@ Deleting a **custom** expert, custom expert-team, or a project clears the matchi
 
 When Tab B is already on `#/automations`, the directory (and already-open detail) is the existing Milestone AG **read-only** refresh of `GET /api/automations`. Another same-host tab that deletes the pinned custom expert / team / project updates Tab B on focus, visibility, or a short poll — no ghost name, no full page reload, no new sync stack. Last-run still follows Milestone Z. Open-detail-deleted-elsewhere still follows Milestone AS. 「立即运行」 / cron / enabled stay the existing run path. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. Default runtime stays **pig**.
 
+## Automation lastSessionId after session delete (Milestone AW)
+
+Deleting a session clears `lastSessionId` on automations that still name that session — the same field-null as PATCH. `lastRunAt` / `lastError`, expert / team / project pins, cron, and enabled stay put. Inbox entries stay put. Memory `sessionId` cleanup stays Milestone AV.
+
+When Tab B is already on `#/automations`, the directory (and already-open detail) is the existing Milestone AG **read-only** refresh of `GET /api/automations`. Another same-host tab that deletes that last-run session updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted session, no full page reload, no new sync stack. Last-run field apply still follows Milestone Z. Open-detail-deleted-elsewhere still follows Milestone AS. Pin cleanup still follows Milestone AU. 「立即运行」 / cron / enabled stay the existing run path. This does **not** add a write path, a public webhook, or dual-write automations / sessions / `events.jsonl`. Default runtime stays **pig**.
+
 ## Projects board / assets / members (Milestone AA)
 
 When Tab B is already on `#/projects` with a project open, the board / assets / members sections are a **read-only** refresh of the existing `GET /api/projects` plus `GET /api/projects/:id`. Another same-host tab that changes a todo status, uploads an asset, or invite·accepts a member updates Tab B on focus, visibility, or a short poll — no full page reload. Apply patches only those collections (and list-side name / `updatedAt`) onto the open project; instruction draft / invite token stay put. Detail GET runs only when that project is open. This does **not** add a write path, a public webhook, or dual-write projects / sessions / `events.jsonl`. Invite / transfer stay the existing paths. Default runtime stays **pig**.
@@ -176,7 +182,7 @@ When Tab B is already on `#/memory` with a note open, the same read-only `GET /a
 
 ## Memory refs after project / session delete (Milestone AV)
 
-Deleting a project or a session clears the matching field on memory notes — `projectId` / `sessionId` — the same unbind as PATCH null. Note body / tags are not rewritten. Automation `lastSessionId` and inbox entries stay put.
+Deleting a project or a session clears the matching field on memory notes — `projectId` / `sessionId` — the same unbind as PATCH null. Note body / tags are not rewritten. Inbox entries stay put. Automation `lastSessionId` is Milestone AW.
 
 When Tab B is already on `#/memory`, the list (and already-open detail) is the existing Milestone AB **read-only** refresh of `GET /api/memory`. Another same-host tab that deletes the referenced project / session updates Tab B on focus, visibility, or a short poll — no clickable ghost entry into the deleted project / session, no full page reload, no new sync stack. Open-note-deleted-elsewhere still follows Milestone AQ. Pin / write-summary stay the existing write paths. This does **not** add a write path, a public webhook, or dual-write memory / sessions / `events.jsonl`. Default runtime stays **pig**.
 

@@ -27,6 +27,7 @@ import { registerMemoryRoutes } from "./routes/memory.ts";
 import { registerSearchRoutes } from "./routes/search.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { publishPersistedEvent } from "./store/events.ts";
+import { clearAutomationLastSessionId } from "./store/automations.ts";
 import { clearMemoryRefs } from "./store/memory.ts";
 import { recordSessionBound } from "./store/projects.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
@@ -177,6 +178,7 @@ export function createApp(): Hono {
     const ok = await deleteSession(c.req.param("id"));
     if (!ok) return c.json({ error: "Session not found" }, 404);
     await clearMemoryRefs("sessionId", c.req.param("id"));
+    await clearAutomationLastSessionId(c.req.param("id"));
     return c.json({ ok: true });
   });
 
