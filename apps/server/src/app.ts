@@ -281,7 +281,7 @@ export function createApp(): Hono {
       return c.json({ error: "没有可重试的消息。", localRetry: "unavailable" }, 400);
     }
 
-    if (session.remoteState && session.remoteRunId) {
+    if (session.remoteState && session.remoteRunId && !session.remoteFollowUpPending) {
       try {await reconcileRemoteSession(session);} catch {return c.json({error:"先恢复控制面连接并核验原运行，避免重复执行"},409);}
       if (isRemoteActive(session.remoteState)) return c.json({error:"原远端任务仍在运行，请查看进度或取消"},409);
       if (session.remoteState === "succeeded") {await saveSession(session);return c.json({error:"原远端任务已完成，已恢复结果，无需重试"},409);}

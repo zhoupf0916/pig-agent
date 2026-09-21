@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const directory = await mkdtemp(join(tmpdir(), "pig-plane-ui-"));
@@ -138,16 +138,80 @@ try {
       await request(`/api/remote/v1/runs/${completed.remoteRunId}/artifacts`)
     ).artifacts.some((f: any) => f.path === "cloud-proof.txt"),
   );
+  const firstRun = await request(
+    `/api/remote/v1/runs/${completed.remoteRunId}`,
+  );
+  const follow = await app.request(`/api/sessions/${session.id}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      content: "继续在上一轮工作区执行",
+      clientMessageId: randomUUID(),
+    }),
+  });
+  assert.equal(follow.status, 200);
+  await follow.text();
+  const continued = await getSession(session.id);
+  assert.equal(continued?.remoteState, "succeeded");
+  assert.notEqual(continued?.remoteRunId, completed.remoteRunId);
+  assert.equal(continued?.messages.filter((m) => m.role === "user").length, 2);
+  const imported = await request(
+    `/api/remote/import/${firstRun.conversation_id}`,
+    "POST",
+  );
+  const restored = await request(`/api/sessions/${imported.id}`);
+  assert.equal(restored.remoteRunId, continued?.remoteRunId);
+  assert.equal(
+    restored.messages.filter((m: any) => m.role === "user").length,
+    2,
+  );
+  const staged = await request(
+    `/api/remote/stage-artifacts/${continued?.remoteRunId}`,
+    "POST",
+  );
+  await assert.rejects(
+    readFile(join(workspace, "cloud-proof.txt")),
+    "Staging must not write local files",
+  );
+  const review = await request(`/api/sessions/${staged.id}/workbench`);
+  assert.ok(review.operations.every((o: any) => o.status === "pending"));
+  const proof = review.operations.find(
+    (o: any) => o.args.path === "cloud-proof.txt",
+  );
+  assert.ok(proof);
+  await writeFile(
+    join(workspace, "cloud-proof.txt"),
+    "local-change-after-preview",
+  );
+  await request(
+    `/api/sessions/${staged.id}/workbench/${proof.id}/approve`,
+    "POST",
+    undefined,
+    409,
+  );
+  assert.equal(
+    await readFile(join(workspace, "cloud-proof.txt"), "utf8"),
+    "local-change-after-preview",
+  );
   // Retry a confirmed cancelled run as a fresh attempt, without changing user message identity.
-  const cancelled=await request(`/api/remote/v1/runs/${run.remoteRunId}`);
-  assert.equal(cancelled.state,"cancelled");
-  await saveSession({...completed,status:"idle",remoteRunId:run.remoteRunId,remoteState:"cancelled"});
-  const retry=await app.request(`/api/sessions/${session.id}/retry`,{method:"POST",headers:{Origin:"http://127.0.0.1:8797"}});
-  assert.equal(retry.status,200);await retry.text();
-  const retried=await getSession(session.id);
-  assert.equal(retried?.remoteState,"succeeded");
-  assert.notEqual(retried?.remoteRunId,completed.remoteRunId);
-  assert.notEqual(retried?.remoteRunId,run.remoteRunId);
+  const cancelled = await request(`/api/remote/v1/runs/${run.remoteRunId}`);
+  assert.equal(cancelled.state, "cancelled");
+  await saveSession({
+    ...completed,
+    status: "idle",
+    remoteRunId: run.remoteRunId,
+    remoteState: "cancelled",
+  });
+  const retry = await app.request(`/api/sessions/${session.id}/retry`, {
+    method: "POST",
+    headers: { Origin: "http://127.0.0.1:8797" },
+  });
+  assert.equal(retry.status, 200);
+  await retry.text();
+  const retried = await getSession(session.id);
+  assert.equal(retried?.remoteState, "succeeded");
+  assert.notEqual(retried?.remoteRunId, completed.remoteRunId);
+  assert.notEqual(retried?.remoteRunId, run.remoteRunId);
   assert.ok(retried?.remoteRequestKey);
   console.log(
     "PASS: unified workbench remote schedule CRUD/run, per-session location, disconnected client survival, authoritative recovery and deduplicated transcript/artifacts",

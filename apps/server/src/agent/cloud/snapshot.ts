@@ -124,10 +124,12 @@ export function packWorkspaceSnapshot(root: string): CloudWorkspaceSnapshot {
         continue;
       }
       if (st.size > MAX_SNAPSHOT_FILE_BYTES) {
+        truncated = true;
         skipped.push(childRel);
         continue;
       }
       if (Buffer.byteLength(childRel, "utf8") > USTAR_NAME_MAX) {
+        truncated = true;
         skipped.push(childRel);
         continue;
       }

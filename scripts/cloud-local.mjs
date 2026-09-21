@@ -21,11 +21,14 @@ if (command === "setup") {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   try {
     await access(file);
+    const existing=await readFile(file,"utf8");
+    if (!/^ENCRYPTION_KEY=/m.test(existing)) await writeFile(file,existing.trimEnd()+"\nENCRYPTION_KEY="+randomBytes(32).toString("hex")+"\n",{mode:0o600});
     console.log("Existing credentials preserved:", file);
   } catch {
     const credentials = Object.fromEntries(
       [
         "DB_PASSWORD",
+        "ENCRYPTION_KEY",
         "ADMIN_TOKEN",
         "MEMBER_TOKEN",
         "MEMBER2_TOKEN",

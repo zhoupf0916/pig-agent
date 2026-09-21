@@ -10,7 +10,35 @@ export async function migrate() {
     await client.query("SELECT pg_advisory_xact_lock(71839021)");
     await client.query(`
     CREATE TABLE IF NOT EXISTS principals (id text PRIMARY KEY, name text NOT NULL, role text NOT NULL CHECK(role IN ('admin','member')), token_hash text UNIQUE NOT NULL);
+    ALTER TABLE principals ADD COLUMN IF NOT EXISTS enabled boolean NOT NULL DEFAULT true;
+    ALTER TABLE principals ADD COLUMN IF NOT EXISTS daily_call_limit int NOT NULL DEFAULT 1000;
+    CREATE TABLE IF NOT EXISTS invitations(token_hash text PRIMARY KEY,name text NOT NULL,expires_at timestamptz NOT NULL);
+    CREATE TABLE IF NOT EXISTS auth_sessions(id text PRIMARY KEY,owner_id text NOT NULL REFERENCES principals(id),token_hash text UNIQUE NOT NULL,expires_at timestamptz NOT NULL);
+    CREATE TABLE IF NOT EXISTS model_channels(id text PRIMARY KEY,name text NOT NULL,base_url text NOT NULL,model text NOT NULL,secret text NOT NULL,enabled boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now());
+    CREATE UNIQUE INDEX IF NOT EXISTS one_active_channel ON model_channels(enabled) WHERE enabled;
+    CREATE TABLE IF NOT EXISTS model_usage(id bigserial PRIMARY KEY,owner_id text NOT NULL REFERENCES principals(id),run_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+    CREATE INDEX IF NOT EXISTS usage_owner_time ON model_usage(owner_id,created_at);
     CREATE TABLE IF NOT EXISTS runs (id text PRIMARY KEY, owner_id text NOT NULL REFERENCES principals(id), request_key text, input jsonb NOT NULL, state text NOT NULL DEFAULT 'queued', worker_id text, lease_until timestamptz, attempt_token text, model_calls int NOT NULL DEFAULT 0, error text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(owner_id,request_key));
+    CREATE TABLE IF NOT EXISTS platform_settings(key text PRIMARY KEY,value jsonb NOT NULL);
+    ALTER TABLE runs ADD COLUMN IF NOT EXISTS execution_profile text NOT NULL DEFAULT 'standard';
+    CREATE OR REPLACE FUNCTION pin_run_profile() RETURNS trigger AS $$
+    BEGIN NEW.execution_profile := COALESCE((SELECT value #>> '{}' FROM platform_settings WHERE key='executionProfile'),'standard'); RETURN NEW; END;
+    $$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS pin_run_profile ON runs;
+    CREATE TRIGGER pin_run_profile BEFORE INSERT ON runs FOR EACH ROW EXECUTE FUNCTION pin_run_profile();
+    CREATE TABLE IF NOT EXISTS execution_attempts(id text PRIMARY KEY,run_id text NOT NULL REFERENCES runs(id),worker_id text NOT NULL,resources jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE IF NOT EXISTS conversations (
+      id text PRIMARY KEY, owner_id text NOT NULL REFERENCES principals(id), title text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    );
+    ALTER TABLE runs ADD COLUMN IF NOT EXISTS conversation_id text REFERENCES conversations(id);
+    ALTER TABLE runs ADD COLUMN IF NOT EXISTS parent_run_id text REFERENCES runs(id);
+    CREATE UNIQUE INDEX IF NOT EXISTS conversation_active_run ON runs(conversation_id)
+      WHERE state IN ('queued','preparing','running','cancelling');
+    CREATE TABLE IF NOT EXISTS workspace_versions (
+      run_id text PRIMARY KEY REFERENCES runs(id), conversation_id text NOT NULL REFERENCES conversations(id),
+      snapshot jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+    );
     CREATE TABLE IF NOT EXISTS schedules (
       id text PRIMARY KEY, owner_id text NOT NULL REFERENCES principals(id), request_key text,
       name text NOT NULL, input jsonb NOT NULL, cron text, timezone text NOT NULL,
@@ -40,7 +68,7 @@ export async function migrate() {
     ]) {
       if (!token) throw Error("Missing bootstrap credential");
       await client.query(
-        "INSERT INTO principals VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET token_hash=$4",
+        "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET token_hash=$4",
         [id, name, role, hash(token)],
       );
     }

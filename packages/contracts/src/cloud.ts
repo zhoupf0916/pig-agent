@@ -140,6 +140,8 @@ export type CloudRunSummary = {
   state: CloudRunState;
   prompt: string;
   owner_id?: string;
+  conversation_id?: string;
+  parent_run_id?: string;
   error?: string;
   created_at: string;
   updated_at?: string;

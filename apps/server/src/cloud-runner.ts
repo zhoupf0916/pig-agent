@@ -6,6 +6,7 @@ import { runAgent } from "./agent/runtime.ts";
 import { normalizeSettings } from "./store/settings.ts";
 import {
   extractWorkspaceSnapshot,
+  packWorkspaceSnapshot,
   shouldSkipCloudHandoffName,
 } from "./agent/cloud/snapshot.ts";
 import type { Session } from "./types.ts";
@@ -15,6 +16,8 @@ const token = process.env.RUN_TOKEN || "";
 delete process.env.RUN_TOKEN;
 const emit = (value: unknown) =>
   process.stdout.write(JSON.stringify(value) + "\n");
+const abort = new AbortController();
+process.on("SIGTERM", () => abort.abort());
 try {
   await mkdir("/workspace", { recursive: true });
   const response = await fetch(gateway + "/task", {
@@ -42,12 +45,12 @@ try {
     messages.at(-1)?.content !== input.prompt
   )
     messages.push({
-      id: "prompt",
+      id: "prompt:" + id,
       role: "user",
       content: input.prompt,
       createdAt: now,
     });
-  const deadline = AbortSignal.timeout(210000);
+  const deadline = AbortSignal.any([abort.signal, AbortSignal.timeout(Math.min(585,Math.max(30,Number(process.env.RUN_TIMEOUT_SECONDS)||210))*1000)]);
   const result = await runAgent({
     session: {
       id,
@@ -69,7 +72,7 @@ try {
     emit: (event) => emit({ kind: "event", event }),
     memoryPins: [],
     projectInstruction:
-      "You are running inside an isolated cloud container. The workspace is /workspace. Changes only affect this task snapshot. Network access is restricted.",
+      "You are running inside an isolated cloud container. The workspace is /workspace. The control plane preserves the workspace between conversation turns. Network access is restricted.",
   });
   if (deadline.aborted) throw new Error("容器任务超过执行时限");
   const files: Array<{ path: string; content: string }> = [];
@@ -104,6 +107,7 @@ try {
     ok: !result.lastError,
     error: result.lastError,
     files,
+    snapshot: packWorkspaceSnapshot("/workspace"),
   });
 } catch (error) {
   emit({
@@ -111,6 +115,7 @@ try {
     ok: false,
     error: error instanceof Error ? error.message : "Runner failed",
     files: [],
+    snapshot: (() => { try { return packWorkspaceSnapshot("/workspace"); } catch { return undefined; } })(),
   });
   process.exitCode = 1;
 }

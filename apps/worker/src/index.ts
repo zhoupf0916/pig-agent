@@ -98,7 +98,8 @@ async function cleanupNetwork(id: string) {
   }).catch(() => {});
   await docker("DELETE", `/networks/${id}`).catch(() => {});
 }
-async function execute(job: { id: string; token: string }) {
+async function execute(job: { id: string; token: string; resources?: {memoryMiB:number;cpu:number;pids:number;timeoutSeconds:number} }) {
+  const resource=job.resources || {memoryMiB:512,cpu:1,pids:128,timeoutSeconds:240};
   let eventError: unknown;
   let network = "";
   let container = "",
@@ -121,7 +122,7 @@ async function execute(job: { id: string; token: string }) {
         if (
           r.state === "cancelling" ||
           r.state === "expired" ||
-          Date.now() - started > 240000
+          Date.now() - started > resource.timeoutSeconds * 1000
         ) {
           leaseLost = r.state === "expired";
           await stop();
@@ -154,6 +155,7 @@ async function execute(job: { id: string; token: string }) {
         User: "1000:1000",
         Env: [
           `RUN_TOKEN=${job.token}`,
+          `RUN_TIMEOUT_SECONDS=${Math.max(30,resource.timeoutSeconds-15)}`,
           "GATEWAY_URL=http://gateway:8891",
           "PIG_DESKTOP=1",
           "PIG_APP_ROOT=/app",
@@ -170,9 +172,9 @@ async function execute(job: { id: string; token: string }) {
           ReadonlyRootfs: true,
           CapDrop: ["ALL"],
           SecurityOpt: ["no-new-privileges:true"],
-          Memory: 512 * 1024 * 1024,
-          NanoCpus: 1000000000,
-          PidsLimit: 128,
+          Memory: resource.memoryMiB * 1024 * 1024,
+          NanoCpus: Math.round(resource.cpu * 1000000000),
+          PidsLimit: resource.pids,
           Tmpfs: {
             "/workspace": "rw,noexec,nosuid,size=64m,uid=1000,gid=1000",
             "/tmp": "rw,nosuid,size=64m,uid=1000,gid=1000",

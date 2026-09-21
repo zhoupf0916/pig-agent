@@ -38,6 +38,7 @@ export function SettingsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const primedOpen = useRef(false);
+  const [invite, setInvite] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("");
 
   useEffect(() => {
@@ -198,7 +199,20 @@ export function SettingsModal({
                   placeholder="http://127.0.0.1:8080"
                 />
               </Field>
-              <Field label="控制面 Token（可选；只放本机，勿提交）">
+              <Field label="首次加入：管理员提供的一次性邀请码">
+                <input className="field" type="password" value={invite} onChange={e=>setInvite(e.target.value)} placeholder="填写上方控制面地址后兑换" autoComplete="off" />
+                <button type="button" className="btn-ghost mt-2" disabled={saving || !invite.trim()} onClick={async()=>{
+                  setSaving(true);setError(null);
+                  try {
+                    const response=await fetch("/api/remote/accept-invite",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({baseUrl:form.cloudBaseUrl,invite:invite.trim()})});
+                    const data=await response.json();if(!response.ok)throw Error(data.error);
+                    const next={...form,cloudMode:"remote" as const,cloudToken:data.token};
+                    setForm(next);await onSave(next);setInvite("");setConnectionStatus(`已加入：${data.account.name}。访问会话有效期 30 天。`);
+                    if(window.pigDesktop)setForm({...next,cloudToken:""});
+                  }catch(e){setError(e instanceof Error?e.message:"加入失败");}finally{setSaving(false);}
+                }}>兑换邀请并连接</button>
+              </Field>
+              <Field label="控制面 Token（已有账号可直接填写）">
                 <input
                   type="password"
                   value={form.cloudToken}

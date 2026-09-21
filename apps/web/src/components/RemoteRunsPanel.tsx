@@ -22,9 +22,11 @@ async function remote(path: string, init?: RequestInit) {
 export function RemoteRunsPanel({
   runId,
   onClose,
+  onOpenSession,
 }: {
   runId?: string;
   onClose: () => void;
+  onOpenSession?: (id: string) => void;
 }) {
   const [runs, setRuns] = useState<CloudRunSummary[]>([]);
   const [selected, setSelected] = useState(runId || "");
@@ -117,7 +119,10 @@ export function RemoteRunsPanel({
               {mode === "mock" ? " · 当前为模拟模型" : ""}
             </p>
           </div>
-          <button className="btn-ghost shrink-0 whitespace-nowrap" onClick={onClose}>
+          <button
+            className="btn-ghost shrink-0 whitespace-nowrap"
+            onClick={onClose}
+          >
             关闭
           </button>
         </header>
@@ -181,6 +186,37 @@ export function RemoteRunsPanel({
                     </button>
                   )}
                 </div>
+                {detail.conversation_id && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="btn-ghost"
+                      onClick={async () => {
+                        try {
+                          const r = await fetch(
+                            `/api/remote/import/${detail.conversation_id}`,
+                            { method: "POST" },
+                          );
+                          const data = await r.json();
+                          if (!r.ok) throw Error(data.error);
+                          onOpenSession?.(data.id);
+                        } catch (e) {
+                          setError(String(e));
+                        }
+                      }}
+                    >
+                      在工作台继续会话
+                    </button>
+                    {detail.state === "succeeded" && (
+                      <a
+                        className="btn-ghost"
+                        href={`/api/remote/v1/conversations/${detail.conversation_id}/workspace/${detail.id}`}
+                        download
+                      >
+                        下载工作区版本
+                      </a>
+                    )}
+                  </div>
+                )}
                 <p className="whitespace-pre-wrap text-sm">{detail.prompt}</p>
                 {detail.error && (
                   <p role="alert" className="text-danger">
@@ -208,6 +244,24 @@ export function RemoteRunsPanel({
             {artifacts.length > 0 && (
               <div className="border-t border-ink-300 pt-3">
                 <h4 className="mb-2 text-sm font-medium">成果文件</h4>
+                <button
+                  className="btn-ghost mb-2"
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(
+                        `/api/remote/stage-artifacts/${selected}`,
+                        { method: "POST" },
+                      );
+                      const data = await r.json();
+                      if (!r.ok) throw Error(data.error);
+                      onOpenSession?.(data.id);
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  审阅导入到本地（批准后写入）
+                </button>
                 {artifacts.map((file) => (
                   <a
                     key={file.id}

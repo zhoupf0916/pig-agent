@@ -37,6 +37,68 @@
           <span id="mode"></span>
         </div>
         <div id="counts" class="cards"></div>
+        <h2>账号与配额</h2>
+        <form id="invite-form" class="panel">
+          <input
+            id="invite-name"
+            placeholder="新账号名称"
+            required
+            maxlength="80"
+          /><button>创建 24 小时邀请</button
+          ><output id="invite-result"></output>
+        </form>
+        <label
+          ><input id="show-disabled" type="checkbox" /> 显示已禁用账号</label
+        >
+        <div id="accounts" class="panel"></div>
+        <h2>模型渠道</h2>
+        <p>
+          密钥加密保存，仅网关使用。启用渠道后远端任务使用真实模型；停用全部渠道则使用部署默认模型。
+        </p>
+        <form id="channel-form" class="panel">
+          <input
+            id="channel-name"
+            placeholder="渠道名称"
+            required
+            maxlength="80"
+          />
+          <input
+            id="channel-base"
+            type="url"
+            placeholder="https://api.deepseek.com/v1"
+            required
+          />
+          <input
+            id="channel-model"
+            placeholder="deepseek-chat"
+            required
+            maxlength="100"
+          />
+          <input
+            id="channel-key"
+            type="password"
+            placeholder="模型 API Key"
+            required
+            autocomplete="off"
+          />
+          <button>加密保存渠道</button>
+        </form>
+        <div id="channels" class="panel"></div>
+        <h2>执行资源</h2>
+        <form id="resource-form" class="panel">
+          <label
+            >新任务容器规格
+            <select id="resource-profile">
+              <option value="compact">轻量 · 0.5 CPU / 256 MiB / 2 分钟</option>
+              <option value="standard">标准 · 1 CPU / 512 MiB / 4 分钟</option>
+              <option value="large">扩展 · 2 CPU / 1024 MiB / 10 分钟</option>
+            </select></label
+          ><button>应用到后续任务</button>
+          <p>
+            固定受控镜像，容器非
+            root、只读根文件系统、独立网络；已运行任务保持原规格。
+          </p>
+        </form>
         <h2>执行节点</h2>
         <div id="workers" class="panel"></div>
         <h2>最近任务</h2>

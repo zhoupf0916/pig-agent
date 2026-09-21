@@ -29,7 +29,11 @@
     "cloud:status": "node scripts/cloud-local.mjs status",
     "cloud:logs": "node scripts/cloud-local.mjs logs",
     "cloud:smoke": "node scripts/smoke-cloud.mjs",
-    "cloud:smoke:schedules": "node scripts/smoke-cloud-schedules.mjs"
+    "cloud:smoke:schedules": "node scripts/smoke-cloud-schedules.mjs",
+    "cloud:smoke:conversations": "node scripts/smoke-cloud-conversations.mjs",
+    "cloud:smoke:platform": "node scripts/smoke-cloud-platform.mjs",
+    "cloud:backup": "node scripts/cloud-backup.mjs",
+    "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore"
   },
   "engines": {
     "node": ">=22.13"
