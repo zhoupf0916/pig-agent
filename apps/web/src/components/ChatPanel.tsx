@@ -1,15 +1,45 @@
+import { InlineRemoteActivity } from "./InlineRemoteActivity";
+import type { RemoteActivity } from "../lib/remote-activity";
 import { WorkbenchPanel } from "./WorkbenchPanel";
-import { ArrowUp, FileText, FolderOpen, Sparkles, Check, Loader2, Pin, Play, Square, StickyNote, Terminal, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUp,
+  FileText,
+  FolderOpen,
+  Sparkles,
+  Check,
+  Loader2,
+  Pin,
+  Play,
+  Square,
+  StickyNote,
+  Terminal,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { streamingStatusLabel } from "../lib/create-run-progress";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
-import type { ChatMessage, ExecutionSurface, Expert, ExpertTeam, LiveTool, PlanStep, Session, TeamRunMember } from "../types";
+import type {
+  ChatMessage,
+  ExecutionSurface,
+  Expert,
+  ExpertTeam,
+  LiveTool,
+  PlanStep,
+  Session,
+  TeamRunMember,
+} from "../types";
 import { HandoffDialog } from "./HandoffDialog";
 import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
+  configurationOpen = false,
+  executionControls,
+  workspaceRoot,
+  onOpenSettings,
+  onOpenArtifacts,
+  remoteActivity,
   initializing = false,
   executionSurface,
   onOpenRemote,
@@ -34,6 +64,12 @@ export function ChatPanel({
   onHandoffDone,
   onOpenMemory,
 }: {
+  configurationOpen?: boolean;
+  executionControls?: ReactNode;
+  workspaceRoot?: string;
+  onOpenSettings?: () => void;
+  onOpenArtifacts?: () => void;
+  remoteActivity?: RemoteActivity;
   initializing?: boolean;
   executionSurface?: ExecutionSurface;
   onOpenRemote?: () => void;
@@ -87,184 +123,293 @@ export function ChatPanel({
           status: "pending" as const,
         };
       });
-  const canChain = Boolean(pinnedTeam && pinnedTeam.mode === "chain" && !session?.expertId);
+  const canChain = Boolean(
+    pinnedTeam && pinnedTeam.mode === "chain" && !session?.expertId,
+  );
   const canContinue = Boolean(
     canChain &&
-      session?.teamRun &&
-      session.teamRun.members.some(
-        (m) => m.status === "pending" || m.status === "error" || m.status === "cancelled",
-      ) &&
-      session.teamRun.status !== "running",
+    session?.teamRun &&
+    session.teamRun.members.some(
+      (m) =>
+        m.status === "pending" ||
+        m.status === "error" ||
+        m.status === "cancelled",
+    ) &&
+    session.teamRun.status !== "running",
   );
   const canStartTeam =
     canChain &&
     !streaming &&
     (Boolean(draft.trim()) ||
       canContinue ||
-      Boolean(session?.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))));
+      Boolean(
+        session?.messages.some(
+          (m) => m.role === "user" && !m.content.startsWith("[harness]"),
+        ),
+      ));
 
   const visible = (session?.messages ?? []).filter(
     (m) => m.role !== "system" && !m.content.startsWith("[harness]"),
   );
   const tools = useMemo(
-    () => (liveTools.length > 0 ? liveTools : toolsFromMessages(session?.messages ?? [])),
+    () =>
+      liveTools.length > 0
+        ? liveTools
+        : toolsFromMessages(session?.messages ?? []),
     [liveTools, session?.messages],
   );
 
+  const empty = visible.length === 0 && !streaming;
+  const composer = (
+    <Composer
+      draft={draft}
+      streaming={streaming || session?.status === "running"}
+      disabled={initializing}
+      onDraft={onDraft}
+      onSend={onSend}
+      onStop={onStop}
+    />
+  );
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-ink-50">
-      {session && (
-        <details className="border-b border-ink-300">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-4">
-            <span className="truncate text-sm font-medium text-ink-800">{session.title}</span>
-            <span className="shrink-0 text-xs text-ink-500">任务配置 ···</span>
-          </summary>
-        <div className="chat-context flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-6 py-2">
-          <label className="flex items-center gap-2">
-            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
-            <select
-              className="field max-w-[160px] py-1 text-xs"
-              value={session.projectId ?? ""}
-              onChange={(e) => onBindProject(e.target.value || null)}
-            >
-              <option value="">未绑定</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">专家</span>
-            <select
-              className="field max-w-[180px] py-1 text-xs"
-              value={session.expertId ?? ""}
-              onChange={(e) => onBindExpert(e.target.value || null)}
-            >
-              <option value="">未绑定</option>
-              {experts.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <span className="text-meta uppercase tracking-[0.16em] text-ink-500">小队</span>
-            <select
-              className="field max-w-[160px] py-1 text-xs"
-              value={session.expertTeamId ?? ""}
-              onChange={(e) => onBindTeam(e.target.value || null)}
-            >
-              <option value="">未绑定</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {(expertName || projectName || pinnedTeam) && (
-            <span className="text-xs text-ink-500">
-              {expertName && pinnedTeam
-                ? "已钉选单个专家，小队仅作元数据"
-                : pinnedTeam && pinnedTeam.mode === "chain"
-                  ? "小队按顺序各跑一轮（同会话）"
-                  : expertName && projectName
-                    ? "专家指令先于项目指令注入"
-                    : expertName
-                      ? "专家指令将注入本会话系统提示"
-                      : projectName
-                        ? "项目指令将注入本会话系统提示"
-                        : "小队指令将注入本会话系统提示"}
+    <section className={`conversation ${empty ? "is-empty" : ""}`}>
+      {configurationOpen && (
+        <section className="task-configuration" aria-label="任务配置面板">
+          <div className="configuration-heading">
+            <strong>本任务配置</strong>
+            <span>运行期间不可切换执行位置</span>
+          </div>
+          <div className="execution-options">{executionControls}</div>
+          <div className="workspace-context">
+            <FolderOpen size={16} />
+            <span title={workspaceRoot}>
+              {executionSurface?.kind === "cloud-remote"
+                ? "远端工作区 · 控制面保存版本"
+                : workspaceRoot || "尚未选择工作区"}
             </span>
-          )}
-          {canChain && (
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={!canStartTeam}
-              onClick={onTeamRun}
-            >
-              <Play size={13} />
-              {canContinue && !draft.trim() ? "继续小队" : "顺序执行小队"}
+            <button className="text-action" onClick={onOpenSettings}>
+              工作区设置
             </button>
-          )}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {memoryStatus && <span className="text-xs text-ink-500">{memoryStatus}</span>}
-            <button type="button" className="btn-ghost" onClick={() => setPinOpen(true)}>
-              <Pin size={13} />
-              钉住笔记
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={recapBusy || !session.messages.some((m) => m.role === "user" || m.role === "assistant")}
-              onClick={() => {
-                void (async () => {
-                  setRecapBusy(true);
-                  setMemoryStatus(null);
-                  try {
-                    const note = await api.sessionRecap(session.id);
-                    setMemoryStatus("已写入回合摘要");
-                    onOpenMemory?.(note.id);
-                  } catch (err) {
-                    setMemoryStatus(err instanceof Error ? err.message : String(err));
-                  } finally {
-                    setRecapBusy(false);
-                  }
-                })();
-              }}
-            >
-              <StickyNote size={13} />
-              写摘要
-            </button>
-            {session.projectId && (
-              <button type="button" className="btn-ghost" onClick={() => setHandoffOpen(true)}>
-                转交到收件箱
+          </div>
+        </section>
+      )}
+      {session && configurationOpen && (
+        <div>
+          <fieldset
+            disabled={initializing || streaming}
+            className="chat-context flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-6 py-2"
+          >
+            <label className="flex items-center gap-2">
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                项目
+              </span>
+              <select
+                className="field max-w-[160px] py-1 text-xs"
+                value={session.projectId ?? ""}
+                onChange={(e) => onBindProject(e.target.value || null)}
+              >
+                <option value="">未绑定</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                专家
+              </span>
+              <select
+                className="field max-w-[180px] py-1 text-xs"
+                value={session.expertId ?? ""}
+                onChange={(e) => onBindExpert(e.target.value || null)}
+              >
+                <option value="">未绑定</option>
+                {experts.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                小队
+              </span>
+              <select
+                className="field max-w-[160px] py-1 text-xs"
+                value={session.expertTeamId ?? ""}
+                onChange={(e) => onBindTeam(e.target.value || null)}
+              >
+                <option value="">未绑定</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(expertName || projectName || pinnedTeam) && (
+              <span className="text-xs text-ink-500">
+                {expertName && pinnedTeam
+                  ? "已钉选单个专家，小队仅作元数据"
+                  : pinnedTeam && pinnedTeam.mode === "chain"
+                    ? "小队按顺序各跑一轮（同会话）"
+                    : expertName && projectName
+                      ? "专家指令先于项目指令注入"
+                      : expertName
+                        ? "专家指令将注入本会话系统提示"
+                        : projectName
+                          ? "项目指令将注入本会话系统提示"
+                          : "小队指令将注入本会话系统提示"}
+              </span>
+            )}
+            {canChain && (
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={!canStartTeam}
+                onClick={onTeamRun}
+              >
+                <Play size={13} />
+                {canContinue && !draft.trim() ? "继续小队" : "顺序执行小队"}
               </button>
             )}
-          </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {memoryStatus && (
+                <span className="text-xs text-ink-500">{memoryStatus}</span>
+              )}
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setPinOpen(true)}
+              >
+                <Pin size={13} />
+                钉住笔记
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={
+                  recapBusy ||
+                  !session.messages.some(
+                    (m) => m.role === "user" || m.role === "assistant",
+                  )
+                }
+                onClick={() => {
+                  void (async () => {
+                    setRecapBusy(true);
+                    setMemoryStatus(null);
+                    try {
+                      const note = await api.sessionRecap(session.id);
+                      setMemoryStatus("已写入回合摘要");
+                      onOpenMemory?.(note.id);
+                    } catch (err) {
+                      setMemoryStatus(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    } finally {
+                      setRecapBusy(false);
+                    }
+                  })();
+                }}
+              >
+                <StickyNote size={13} />
+                写摘要
+              </button>
+              {session.projectId && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setHandoffOpen(true)}
+                >
+                  转交到收件箱
+                </button>
+              )}
+            </div>
+          </fieldset>
         </div>
-        </details>
       )}
-      {pinnedTeam && teamMembers.length > 0 && (
-        <TeamPipeline
-          teamName={session?.teamRun?.teamName ?? pinnedTeam.name}
-          members={teamMembers}
-          status={session?.teamRun?.status}
-        />
-      )}
-      <StepStrip steps={session?.steps ?? []} />
-      {session && <WorkbenchPanel key={session.id} sessionId={session.id} remote={executionSurface?.kind === "cloud-remote"} remoteRequireApproval={session.remoteRequireApproval} onOpenRemote={onOpenRemote} running={streaming} onResume={onResume} onRefresh={onRefresh} onDraft={onDraft} />}
-      <div ref={transcriptRef} onScroll={() => {
-        const el = transcriptRef.current;
-        if (!el) return;
-        const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-        followLatest.current = near;
-        setAwayFromLatest(!near);
-      }} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        {!session && (
-          <EmptyState
-            title="今天，让什么想法落地？"
-            body="直接描述目标，发送后会自动新建任务。规划、执行与成果，都在这里。"
-          />
+      <div
+        ref={transcriptRef}
+        onScroll={() => {
+          const el = transcriptRef.current;
+          if (!el) return;
+          const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          followLatest.current = near;
+          setAwayFromLatest(!near);
+        }}
+        className="transcript"
+      >
+        {empty && (
+          <div className="new-task-center">
+            <div className="new-task-heading">
+              <span className="eyebrow">新任务</span>
+              <h2>想完成什么工作？</h2>
+              <p>描述目标，Pig 会执行并交付可核验的成果。</p>
+            </div>
+            <div className="new-task-workspace">
+              <FolderOpen size={16} />
+              <span title={workspaceRoot}>
+                {executionSurface?.kind === "cloud-remote"
+                  ? "远端工作区"
+                  : workspaceRoot?.split("/").filter(Boolean).pop() ||
+                    "选择工作区"}
+              </span>
+              <button className="text-action" onClick={onOpenSettings}>
+                更改
+              </button>
+            </div>
+            {composer}
+            <div className="new-task-configuration">{executionControls}</div>
+            <EmptyState title="" body="" onChoose={onDraft} />
+          </div>
         )}
-        {session && visible.length === 0 && !streaming && (
-          <EmptyState
-            title="把下一件事，交给 Pig。"
-            body="整理文件、探索问题，或完成一份报告。告诉我你想做什么。"
-            onChoose={onDraft}
-          />
-        )}
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div
+          className={`conversation-content mx-auto flex w-full max-w-3xl flex-col gap-4 ${empty ? "empty-controls" : ""}`}
+        >
+          {pinnedTeam && teamMembers.length > 0 && (
+            <TeamPipeline
+              teamName={session?.teamRun?.teamName ?? pinnedTeam.name}
+              members={teamMembers}
+              status={session?.teamRun?.status}
+            />
+          )}
+          <StepStrip steps={session?.steps ?? []} />
+          {session && executionSurface?.kind !== "cloud-remote" && (
+            <WorkbenchPanel
+              key={session.id}
+              sessionId={session.id}
+              remote={false}
+              remoteRequireApproval={session.remoteRequireApproval}
+              onOpenRemote={onOpenRemote}
+              running={streaming}
+              onResume={onResume}
+              onRefresh={onRefresh}
+              onDraft={onDraft}
+            />
+          )}
+
           {interleave(visible, tools).map((item) =>
             item.kind === "message" ? (
               <MessageBlock key={item.message.id} message={item.message} />
             ) : (
-              <ToolCard key={item.tool.id} tool={item.tool} />
+              <ToolCard
+                key={item.tool.id}
+                tool={item.tool}
+                awaitingApproval={remoteActivity?.approvals.some(
+                  (a) => a.state === "pending" && a.call_id === item.tool.id,
+                )}
+              />
             ),
+          )}
+          {!empty && session?.remoteRunId && remoteActivity && (
+            <InlineRemoteActivity
+              key={session.remoteRunId}
+              activity={remoteActivity}
+              runId={session.remoteRunId}
+              onOpenDetails={onOpenRemote || (() => {})}
+            />
           )}
           {streaming && tools.every((t) => t.done) && (
             <div className="flex items-center gap-2 text-xs text-ink-500">
@@ -272,19 +417,39 @@ export function ChatPanel({
               {streamingStatusLabel(session?.steps ?? [])}
             </div>
           )}
+          {!!session?.artifacts.length && !streaming && (
+            <button className="result-summary" onClick={onOpenArtifacts}>
+              <FileText size={19} />
+              <span>
+                <strong>{session.artifacts.length} 项成果可核验</strong>
+                <small>
+                  {session.remoteRunId
+                    ? "远端版本 · 预览、下载或显式导入"
+                    : "本机工作区 · 文件与变更"}
+                </small>
+              </span>
+              <span>查看成果 →</span>
+            </button>
+          )}
           <div ref={endRef} />
         </div>
       </div>
-      {awayFromLatest && <div className="flex justify-center py-1"><button className="btn-ghost rounded-full border border-ink-300 bg-panel" onClick={() => { followLatest.current = true; setAwayFromLatest(false); endRef.current?.scrollIntoView({ block: "end" }); }}>回到最新消息 ↓</button></div>}
+      {awayFromLatest && (
+        <div className="flex justify-center py-1">
+          <button
+            className="btn-ghost rounded-full border border-ink-300 bg-panel"
+            onClick={() => {
+              followLatest.current = true;
+              setAwayFromLatest(false);
+              endRef.current?.scrollIntoView({ block: "end" });
+            }}
+          >
+            回到最新消息 ↓
+          </button>
+        </div>
+      )}
 
-      <Composer
-        draft={draft}
-        streaming={streaming}
-        disabled={initializing}
-        onDraft={onDraft}
-        onSend={onSend}
-        onStop={onStop}
-      />
+      {!empty && composer}
       {handoffOpen && session?.projectId && (
         <HandoffDialog
           projectId={session.projectId}
@@ -337,7 +502,9 @@ function toolsFromMessages(messages: ChatMessage[]): LiveTool[] {
       const card = byId.get(m.toolCallId);
       if (card) {
         card.done = true;
-        card.ok = m.toolOk ?? !/^Sandbox blocked|^HTTP fetch blocked|^Error\b/i.test(m.content);
+        card.ok =
+          m.toolOk ??
+          !/^Sandbox blocked|^HTTP fetch blocked|^Error\b/i.test(m.content);
         card.output = m.content;
         card.durationMs = m.toolDurationMs;
       }
@@ -349,13 +516,20 @@ function toolsFromMessages(messages: ChatMessage[]): LiveTool[] {
 function interleave(
   messages: ChatMessage[],
   tools: LiveTool[],
-): Array<{ kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }> {
+): Array<
+  { kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }
+> {
   const used = new Set<string>();
-  const out: Array<{ kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }> =
-    [];
+  const out: Array<
+    { kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }
+  > = [];
   for (const message of messages) {
     if (message.role === "tool") continue;
-    if (message.role === "assistant" && !message.content && message.toolCalls?.length) {
+    if (
+      message.role === "assistant" &&
+      !message.content &&
+      message.toolCalls?.length
+    ) {
       for (const tc of message.toolCalls) {
         const tool = tools.find((t) => t.id === tc.id);
         if (tool) {
@@ -374,7 +548,10 @@ function interleave(
         }
       }
     }
-    if (message.role === "user" || (message.role === "assistant" && message.content)) {
+    if (
+      message.role === "user" ||
+      (message.role === "assistant" && message.content)
+    ) {
       out.push({ kind: "message", message });
     }
   }
@@ -398,11 +575,15 @@ function TeamPipeline({
   return (
     <div className="border-b border-ink-400 bg-panel px-6 py-3">
       <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
-        <span className="uppercase tracking-[0.16em]">小队流水线 · {teamName}</span>
+        <span className="uppercase tracking-[0.16em]">
+          小队流水线 · {teamName}
+        </span>
         <span>
           {done}/{members.length} 完成
           {running ? ` · ${running} 进行中` : ""}
-          {status && status !== "idle" && status !== "running" ? ` · ${status}` : ""}
+          {status && status !== "idle" && status !== "running"
+            ? ` · ${status}`
+            : ""}
         </span>
       </div>
       <ol className="flex flex-wrap gap-2">
@@ -427,32 +608,28 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   const done = steps.filter((s) => s.status === "done").length;
   const pending = steps.filter((s) => s.status === "pending").length;
   return (
-    <div className="border-b border-ink-400 bg-panel px-6 py-3">
-      <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
-        <span className="uppercase tracking-[0.16em]">步骤</span>
+    <details className="step-summary">
+      <summary>
+        <span>执行步骤</span>
         <span>
           {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
-          {pending ? ` · ${pending} 待处理` : ""}
         </span>
-      </div>
-      <ol className="flex flex-wrap gap-2">
+      </summary>
+      <ol>
         {steps.map((step, i) => (
-          <li
-            key={step.id}
-            title={step.detail}
-            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(step.status)}`}
-          >
-            <span className="font-mono text-[12px] text-ink-600">{i + 1}</span>
+          <li key={step.id} className={tone(step.status)}>
+            <span>{i + 1}</span>
             {step.title}
           </li>
         ))}
       </ol>
-    </div>
+    </details>
   );
 }
 
 function tone(status: PlanStep["status"]): string {
-  if (status === "running") return "border-accent bg-accent-soft text-accent-mute";
+  if (status === "running")
+    return "border-accent bg-accent-soft text-accent-mute";
   if (status === "done") return "border-success bg-success-soft text-success";
   if (status === "error") return "border-danger bg-danger-soft text-danger";
   return "border-ink-400 bg-panel text-ink-700";
@@ -472,31 +649,45 @@ function MessageBlock({ message }: { message: ChatMessage }) {
   const mine = message.role === "user";
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[92%] rounded-[18px] px-5 py-4 text-body ${
-          mine
-            ? "bg-accent-soft text-ink-800"
-            : "bg-panel text-ink-800"
-        }`}
-      >
+      <div className={`message-body ${mine ? "from-user" : "from-agent"}`}>
         {mine ? (
           <div className="whitespace-pre-wrap">{message.content}</div>
         ) : (
-          <MarkdownView text={message.content || " "} />
+          <MarkdownView
+            text={(message.content || " ").replace(
+              "请打开「远端运行记录」审批",
+              "请在下方审批卡片中确认",
+            )}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function ToolCard({ tool }: { tool: LiveTool }) {
+function ToolCard({
+  tool,
+  awaitingApproval = false,
+}: {
+  tool: LiveTool;
+  awaitingApproval?: boolean;
+}) {
   const summary = summarizeArgs(tool.arguments);
-  const awaitingReview = tool.output?.startsWith("待批准") || tool.output?.startsWith("前序变更等待");
-  const disposition = awaitingReview ? "待批准" : tool.output?.startsWith("undone:") ? "已撤销" : tool.output?.startsWith("rejected:") ? "已拒绝" : undefined;
+  const awaitingReview =
+    awaitingApproval ||
+    tool.output?.startsWith("待批准") ||
+    tool.output?.startsWith("前序变更等待");
+  const disposition = awaitingReview
+    ? "待批准"
+    : tool.output?.startsWith("undone:")
+      ? "已撤销"
+      : tool.output?.startsWith("rejected:")
+        ? "已拒绝"
+        : undefined;
   return (
     <details
       className="rounded-xl border border-ink-300 bg-panel"
-      open={!tool.done || !tool.ok}
+      open={tool.done && tool.ok === false}
     >
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta text-ink-700">
         <Terminal size={13} className="text-accent-mute" />
@@ -504,15 +695,21 @@ function ToolCard({ tool }: { tool: LiveTool }) {
         <span className="truncate text-ink-600">{summary}</span>
         <span className="ml-auto flex items-center gap-2 text-meta uppercase tracking-wider">
           {tool.durationMs !== undefined && (
-            <span className="normal-case text-ink-600">{formatDuration(tool.durationMs)}</span>
+            <span className="normal-case text-ink-600">
+              {formatDuration(tool.durationMs)}
+            </span>
           )}
           {!tool.done && (
             <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-medium text-accent-mute">
               <Loader2 size={11} className="animate-spin" />
-              进行中
+              {awaitingApproval ? "待批准" : "进行中"}
             </span>
           )}
-          {tool.done && disposition && <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">{disposition}</span>}
+          {tool.done && disposition && (
+            <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">
+              {disposition}
+            </span>
+          )}
           {tool.done && tool.ok && !disposition && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 font-medium text-success">
               <Check size={11} />
@@ -555,11 +752,19 @@ function Composer({
         <textarea
           value={draft}
           disabled={disabled || streaming}
-          placeholder={disabled ? "正在加载工作台…" : "描述目标，例如：整理工作区并写一份摘要 README"}
+          placeholder={
+            disabled
+              ? "正在加载工作台…"
+              : "描述目标，例如：整理工作区并写一份摘要 README"
+          }
           rows={2}
           onChange={(e) => onDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
               e.preventDefault();
               onSend();
             }
@@ -570,6 +775,7 @@ function Composer({
           <button
             type="button"
             onClick={onStop}
+            disabled={disabled}
             className="mb-1 inline-flex items-center gap-1 rounded-btn bg-danger px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
           >
             <Square size={12} />
@@ -589,33 +795,57 @@ function Composer({
         )}
       </div>
       <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
-        Enter 发送 · Shift+Enter 换行 · 请核对重要操作与交付结果
+        Enter 发送 · Shift+Enter 换行
       </p>
     </div>
   );
 }
 
-function EmptyState({ title, body, onChoose }: { title: string; body: string; onChoose?: (value: string) => void }) {
+function EmptyState({
+  title,
+  body,
+  onChoose,
+}: {
+  title: string;
+  body: string;
+  onChoose?: (value: string) => void;
+}) {
   const suggestions = [
-    { icon: FolderOpen, title: "整理工作区", detail: "先了解文件，再制定整理计划", prompt: "查看当前工作区的文件结构，提出整理建议，先不要修改文件。" },
-    { icon: FileText, title: "写一份报告", detail: "从现有资料中提炼重点", prompt: "阅读当前工作区中的文档，整理一份中文摘要，并标明引用的文件。" },
-    { icon: Sparkles, title: "探索项目", detail: "读懂项目，找到下一步", prompt: "分析当前工作区的项目，介绍主要功能，并列出值得改进的三个方向。" },
+    {
+      icon: FolderOpen,
+      title: "整理工作区",
+      detail: "先了解文件，再制定整理计划",
+      prompt: "查看当前工作区的文件结构，提出整理建议，先不要修改文件。",
+    },
+    {
+      icon: FileText,
+      title: "写一份报告",
+      detail: "从现有资料中提炼重点",
+      prompt: "阅读当前工作区中的文档，整理一份中文摘要，并标明引用的文件。",
+    },
+    {
+      icon: Sparkles,
+      title: "探索项目",
+      detail: "读懂项目，找到下一步",
+      prompt: "分析当前工作区的项目，介绍主要功能，并列出值得改进的三个方向。",
+    },
   ];
   return (
-    <div className="welcome mx-auto max-w-2xl pb-10 text-center">
-      <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-[18px] bg-accent-soft text-accent"><Sparkles size={26} strokeWidth={1.5} /></div>
-      <div className="mb-3 text-[11px] font-semibold tracking-[0.22em] text-accent">PIG AGENT · 工作台</div>
-      <h2 className="text-[32px] font-semibold tracking-tight text-ink-800">{title}</h2>
-      <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-ink-500">{body}</p>
-      {onChoose && <div className="mt-8 grid gap-3 lg:grid-cols-3">
-        {suggestions.map(({ icon: Icon, title: label, detail, prompt }) => (
-          <button key={label} className="welcome-card group" onClick={() => onChoose(prompt)}>
-            <Icon size={19} className="mb-4 text-accent" strokeWidth={1.5} />
-            <div className="text-sm font-medium text-ink-800">{label}</div>
-            <div className="mt-1 text-xs leading-5 text-ink-500">{detail}</div>
-          </button>
-        ))}
-      </div>}
+    <div className="task-suggestions">
+      {onChoose && (
+        <div className="suggestion-grid">
+          {suggestions.map(({ icon: Icon, title: label, detail, prompt }) => (
+            <button
+              key={label}
+              className="suggestion-button"
+              onClick={() => onChoose(prompt)}
+            >
+              <Icon size={19} className="text-accent" strokeWidth={1.5} />
+              <div className="text-sm font-medium text-ink-800">{label}</div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

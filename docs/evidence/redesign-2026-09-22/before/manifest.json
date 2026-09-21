@@ -1,0 +1,830 @@
+{
+  "at": "2026-09-21T17:56:18.365Z",
+  "base": "http://127.0.0.1:8799",
+  "fixtureIds": [
+    "ses_2df271a864dfd08c",
+    "ses_d18b8a0c3c215be4",
+    "ses_fbb29e140c7e65ba",
+    "ses_2e47d0e444d04a8a",
+    "ses_16920437120cdc1f",
+    "ses_db89d352f50d6c1e",
+    "ses_bbbc0002d9d53ee6",
+    "ses_a1e492d834d1790c",
+    "ses_6b65441071cd7bbc",
+    "ses_fc174390d440e58e",
+    "ses_1235791b954a9b01",
+    "ses_82856598359d9828",
+    "ses_238d9680205200a7",
+    "ses_9f4b301232c9afaf",
+    "ses_2ec6f7354105190d"
+  ],
+  "realSessionId": "ses_0801a8e1abefe761",
+  "realArtifact": "PIG_CLOUD_CONTAINER_OK",
+  "errors": [],
+  "captures": [
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "UI fixture task list, real empty session",
+      "file": "empty-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "settings",
+      "kind": "real",
+      "file": "settings-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_2df271a864dfd08c",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "UI fixture",
+      "file": "long-content-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_d18b8a0c3c215be4",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 122,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 122,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "real mock container; may reach approval during viewport sweep",
+      "file": "executing-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 226.796875,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "real",
+      "file": "approval-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "result",
+      "kind": "real",
+      "file": "result-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "error",
+      "kind": "real browser network fault injection",
+      "file": "error-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 73,
+        "textareaY": 773
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 73,
+        "textareaY": 673
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "real",
+      "file": "recovery-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8799/#/sessions/ses_0801a8e1abefe761",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 131,
+        "textareaY": 731
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 69
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 69
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 56
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "headerHeight": 69
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "headerHeight": 69
+      }
+    },
+    {
+      "state": "admin-runners",
+      "kind": "real cluster; baseline admin has no dark support",
+      "file": "admin-runners-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "url": "http://127.0.0.1:8892/admin/#workers",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "headerHeight": 56
+      }
+    }
+  ]
+}

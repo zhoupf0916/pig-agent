@@ -43,6 +43,15 @@ export async function reconcileRemoteSession(session: Session): Promise<void> {
     if (event.type !== "status" && event.type !== "error")
       applyRemoteEvent(session, event);
   }
+  if (!isRemoteActive(remote.state)) {
+    const { artifacts } = await planeJson<{ artifacts: Array<{ id: string; path: string }> }>(
+      `/v1/runs/${encodeURIComponent(session.remoteRunId)}/artifacts`,
+    );
+    for (const artifact of artifacts) {
+      const snapshot = session.artifacts.find(a => a.path === artifact.path && a.source?.runId === session.remoteRunId);
+      if (snapshot) snapshot.source = { kind: "remote", runId: session.remoteRunId, artifactId: artifact.id };
+    }
+  }
   if (transcript?.length) session.messages = transcript;
   session.remoteRequireApproval=remote.require_approval;
   session.remoteState = remote.state;

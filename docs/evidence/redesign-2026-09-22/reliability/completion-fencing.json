@@ -1,0 +1,10 @@
+{
+  "at": "2026-09-21T18:37:08.499Z",
+  "checks": [
+    "A registration replay after B cannot replace B or invalidate its active run",
+    "Concurrent completion across two control planes writes one artifact; exact replay succeeds; changed payload and wrong token rejected",
+    "Concurrent cancellation and finish serialize; replay preserves winning terminal state and single artifact",
+    "Cancel before completion cannot become succeeded",
+    "Concurrent replacements have one winner; superseded generation cannot return"
+  ]
+}

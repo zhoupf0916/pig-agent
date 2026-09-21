@@ -116,6 +116,18 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
           [workerId],
         )
       ).rows[0];
+      const seen = await client.query(
+        "SELECT 1 FROM worker_generations WHERE worker_id=$1 AND instance_id=$2",
+        [workerId, instanceId],
+      );
+      if (seen.rowCount && old?.instance_id !== instanceId) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "Worker generation expired" }, 409);
+      }
+      await client.query(
+        "INSERT INTO worker_generations(worker_id,instance_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+        [workerId, instanceId],
+      );
       if (old && old.instance_id !== instanceId)
         await client.query(
           `UPDATE runs SET state='failed',error='执行节点已重启；为避免重复副作用，请核验后重新提交',attempt_token=NULL,lease_until=NULL,updated_at=now() WHERE worker_id=$1 AND state IN ('preparing','running','cancelling')`,

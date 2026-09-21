@@ -1,0 +1,646 @@
+{
+  "at": "2026-09-21T18:26:53.822Z",
+  "realSessionId": "ses_cfaf69c0bdb701f4",
+  "executionFixtureId": "ses_408914a9d6cb287c",
+  "captures": [
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "empty",
+      "kind": "Explicit UI fixture title/list; actual empty session",
+      "file": "empty-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "long-content",
+      "kind": "Explicit fixture long Chinese / Markdown / code / table",
+      "file": "long-content-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "executing",
+      "kind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json",
+      "file": "executing-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "approval",
+      "kind": "Real mock container pending authorized write",
+      "file": "approval-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "result",
+      "kind": "Real authorized remote artifact exact-content download",
+      "file": "result-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": true,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "error",
+      "kind": "Real browser network fault injection; last known task retained",
+      "file": "error-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "headerHeight": 60,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    },
+    {
+      "state": "recovery",
+      "kind": "Same real task after connection restored",
+      "file": "recovery-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "headerHeight": 56,
+        "inspector": false,
+        "primaryText": "15px"
+      }
+    }
+  ],
+  "errors": [],
+  "checks": [
+    "single row header 60px desktop/56px mobile",
+    "no empty inspector",
+    "current-task inline approval visible on mobile",
+    "exact remote download",
+    "network failure and recovery",
+    "refresh restore"
+  ]
+}

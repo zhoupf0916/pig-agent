@@ -1,5 +1,6 @@
+import { useDialog } from "../lib/use-dialog";
 import { Pin, Plus, StickyNote, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatTime } from "../lib/format";
 import {
@@ -27,6 +28,11 @@ export function MemoryPanel({
   onOpenSession: (sessionId: string) => void;
   onOpenProject: (projectId: string) => void;
 }) {
+  const draftBaseline = useRef({ id: "", value: "" });
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const catalogDialog = useDialog(catalogOpen, () => setCatalogOpen(false));
+  useEffect(() => { if (selectedId) setCatalogOpen(false); }, [selectedId]);
   const [notes, setNotes] = useState<MemoryNote[]>([]);
   const [detail, setDetail] = useState<MemoryNote | null>(null);
   const [filter, setFilter] = useState<MemoryKind | "all">("all");
@@ -88,6 +94,10 @@ export function MemoryPanel({
 
   useEffect(() => {
     if (!detail) return;
+    const incoming = JSON.stringify([detail.text, (detail.tags ?? []).join(", ")]);
+    const current = JSON.stringify([draftText, draftTags]);
+    if (draftBaseline.current.id === detail.id && current !== draftBaseline.current.value && current !== incoming) return;
+    draftBaseline.current = { id: detail.id, value: incoming };
     setDraftText(detail.text);
     setDraftTags((detail.tags ?? []).join(", "));
   }, [detail]);
@@ -141,16 +151,23 @@ export function MemoryPanel({
   };
 
   return (
-    <section className="flex min-w-0 flex-1 overflow-hidden bg-ink-50">
-      <aside className="flex w-[260px] shrink-0 flex-col border-r border-ink-300 bg-ink-100">
-        <div className="flex items-center justify-between px-4 pb-3 pt-4">
+    <section className="resource-page" aria-label="记忆">
+      <header className="resource-header"><div><h2>记忆</h2><p>在这台设备保留决定与上下文</p></div><button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)} aria-expanded={catalogOpen}>记忆目录 <span>{notes.length}</span></button></header>
+      {catalogOpen && <button className="resource-scrim" aria-label="关闭记忆目录" onClick={() => setCatalogOpen(false)} />}
+      <div ref={catalogDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="记忆目录" hidden={!catalogOpen} className="resource-catalog">
+        <div className="resource-catalog-heading"><h3>记忆目录</h3><button type="button" className="btn-quiet" onClick={() => setCatalogOpen(false)}>关闭</button></div>
+        <input className="field resource-catalog-search" aria-label="搜索记忆" placeholder="搜索记忆" value={catalogQuery} onChange={e => setCatalogQuery(e.target.value)} />
+
+        {catalogQuery && !notes.some(row => row.text.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())) && <p role="status" className="resource-catalog-empty">没有匹配的记忆</p>}
+        <div className="resource-catalog-intro">
           <div>
             <div className="text-meta uppercase tracking-[0.16em] text-ink-500">记忆</div>
             <div className="mt-0.5 text-sm font-medium text-ink-800">本机笔记</div>
           </div>
         </div>
+        {error && <p role="alert" className="resource-error">{error}</p>}
         <form
-          className="space-y-2 px-3 pb-3"
+          className="resource-create"
           onSubmit={(e) => {
             e.preventDefault();
             void saveCreate();
@@ -189,13 +206,13 @@ export function MemoryPanel({
           {visible.length === 0 && (
             <p className="px-2 pt-6 text-center text-xs text-ink-500">还没有记忆。钉住一条，或在工作台写回合摘要。</p>
           )}
-          {visible.map((note) => {
+          {visible.filter(row => row.text.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())).map((note) => {
             const active = note.id === selectedId;
             return (
               <button
                 key={note.id}
                 type="button"
-                onClick={() => onSelect(note.id)}
+                onClick={() => { setCatalogOpen(false); onSelect(note.id); }}
                 className={`w-full rounded-card px-2.5 py-2 text-left ${
                   active ? "bg-accent-soft text-ink-800" : "text-ink-700 hover:bg-ink-200"
                 }`}
@@ -209,15 +226,16 @@ export function MemoryPanel({
             );
           })}
         </div>
-      </aside>
+      </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
+      <div className="resource-content">
+        {error && <p role="alert" className="resource-error">{error}</p>}
         {status && <p className="mb-3 text-xs text-ink-500">{status}</p>}
         {!detail && (
-          <div className="flex h-full flex-col items-center justify-center text-ink-500">
+          <div className="resource-empty">
             <Pin size={28} className="mb-3 text-ink-400" />
             <p className="text-sm">选择或钉住一条本机记忆</p>
+          <button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)}>钉住记忆</button>
           </div>
         )}
         {detail && (

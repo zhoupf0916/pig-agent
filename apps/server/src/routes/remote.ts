@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { newId, nowIso } from "../util.ts";
 import {
   loadWorkbench,
   saveWorkbench,
@@ -11,7 +12,7 @@ import { planeJson } from "../control-plane/client.ts";
 import { getSession, saveSession } from "../store/sessions.ts";
 import { reconcileRemoteSession } from "../control-plane/run-state.ts";
 import type { Session } from "../types.ts";
-import { planeFetch } from "../control-plane/client.ts";
+import { planeFetch, createPlaneClient } from "../control-plane/client.ts";
 
 /** Narrow same-origin bridge for the shared Web/Electron UI; no arbitrary URL proxy. */
 export function registerRemoteRoutes(app: Hono): void {
@@ -20,10 +21,12 @@ export function registerRemoteRoutes(app: Hono): void {
     if (!/^run_[a-zA-Z0-9]+$/.test(id))
       return c.json({ error: "运行标识无效" }, 400);
     try {
-      const run = await planeJson<{ state: string }>(`/v1/runs/${id}`);
+      const settings = await loadSettings();
+      const plane = createPlaneClient(settings);
+      const run = await plane.json<{ state: string }>(`/v1/runs/${id}`);
       if (!["succeeded", "failed", "cancelled"].includes(run.state))
         return c.json({ error: "请等待远端运行结束" }, 409);
-      const { artifacts } = await planeJson<{
+      const { artifacts } = await plane.json<{
         artifacts: Array<{ id: string; path: string; size: number }>;
       }>(`/v1/runs/${id}/artifacts`);
       if (!artifacts.length || artifacts.length > 100)
@@ -32,18 +35,23 @@ export function registerRemoteRoutes(app: Hono): void {
       for (const artifact of artifacts) {
         if (!/^[a-zA-Z0-9_-]+$/.test(artifact.id))
           throw Error("Invalid artifact");
-        const r = await planeFetch(`/v1/runs/${id}/artifacts/${artifact.id}`);
+        const r = await plane.fetch(`/v1/runs/${id}/artifacts/${artifact.id}`);
         if (!r.ok) throw Error("Artifact unavailable");
         const content = await r.text();
         if (content.length > 200000) throw Error("Artifact too large");
         files.push({ path: artifact.path, content });
       }
-      const settings = await loadSettings(),
-        session = await createSession();
+      const session = await createSession();
       session.executionTarget = "local";
       session.engine = "pig";
       session.deliveryMode = true;
       session.title = "审阅远端成果 · " + id.slice(-8);
+      session.messages.push({
+        id: newId("msg"),
+        role: "assistant",
+        content: `已从远端运行 ${id} 提取 ${files.length} 份成果，生成独立的本机变更单。请核对下方文件差异和目标工作区；批准之前不会写入本机。远端快照保持不变。`,
+        createdAt: nowIso(),
+      });
       const state = await loadWorkbench(session.id, settings.workspaceRoot);
       state.policy.review = true;
       state.policy.shell = "host";
@@ -138,8 +146,12 @@ export function registerRemoteRoutes(app: Hono): void {
   app.all("/api/remote/*", async (c) => {
     const path = c.req.path.slice("/api/remote".length);
     const allowed =
-      (c.req.method === "GET" && /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals$/.test(path)) ||
-      (c.req.method === "POST" && /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals\/[a-zA-Z0-9_-]+\/decision$/.test(path)) ||
+      (c.req.method === "GET" &&
+        /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals$/.test(path)) ||
+      (c.req.method === "POST" &&
+        /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals\/[a-zA-Z0-9_-]+\/decision$/.test(
+          path,
+        )) ||
       (c.req.method === "GET" &&
         /^\/v1\/(spaces(?:\/[a-zA-Z0-9_-]+\/members)?|shared-projects(?:\/[a-zA-Z0-9_-]+\/runs)?)$/.test(
           path,

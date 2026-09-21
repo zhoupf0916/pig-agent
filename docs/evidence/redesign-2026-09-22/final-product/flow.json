@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-21T18:42:15.122Z",
+  "ok": true,
+  "model": "isolated mock",
+  "sessionId": "ses_8346d3ee75b93a14",
+  "checks": [
+    "real browser creation and inline remote approval without leaving task",
+    "authorized remote artifact download matches exact container content",
+    "reload preserves remote task identity and conversation",
+    "follow-up uses next run automatically and preserves remote workspace",
+    "rejected operation fails explicitly; user-triggered retry returns to approval and succeeds",
+    "cancel from current task reaches confirmed cancelled state",
+    "no browser runtime errors"
+  ],
+  "errors": []
+}

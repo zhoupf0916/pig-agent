@@ -1,3 +1,4 @@
+import { useDialog } from "../lib/use-dialog";
 import { Play, Plus, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
@@ -30,8 +31,13 @@ export function AutomationsPanel({
   onOpenSession: (sessionId: string) => void;
   onOpenRemoteRun: (id: string) => void;
 }) {
+  const draftBaseline = useRef({ id: "", value: "" });
   const createKey = useRef({ body: "", key: crypto.randomUUID() });
   const runKey = useRef({ id: "", key: crypto.randomUUID() });
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const catalogDialog = useDialog(catalogOpen, () => setCatalogOpen(false));
+  useEffect(() => { if (selectedId) setCatalogOpen(false); }, [selectedId]);
   const [items, setItems] = useState<Automation[]>([]);
   const [detail, setDetail] = useState<Automation | null>(null);
   const [target, setTarget] = useState<"local" | "remote">("local");
@@ -116,6 +122,9 @@ export function AutomationsPanel({
 
   useEffect(() => {
     if (!detail) return;
+    const incoming = JSON.stringify({ name: detail.name, prompt: detail.prompt, schedule: detail.schedule ?? "", expertId: detail.expertId ?? "", expertTeamId: detail.expertTeamId ?? "", projectId: detail.projectId ?? "" });
+    if (draftBaseline.current.id === detail.id && JSON.stringify(draft) !== draftBaseline.current.value && JSON.stringify(draft) !== incoming) return;
+    draftBaseline.current = { id: detail.id, value: incoming };
     setDraft({
       name: detail.name,
       prompt: detail.prompt,
@@ -162,9 +171,15 @@ export function AutomationsPanel({
   };
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-50 md:flex-row">
-      <aside className="flex max-h-[280px] w-full shrink-0 flex-col border-b border-ink-300 bg-ink-100 md:max-h-none md:w-[240px] md:border-b-0 md:border-r">
-        <div className="flex items-center justify-between px-4 pb-3 pt-4">
+    <section className="resource-page" aria-label="自动化">
+      <header className="resource-header"><div><h2>自动化</h2><p>安排重复任务，追踪每一次运行</p></div><button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)} aria-expanded={catalogOpen}>自动化目录 <span>{items.length}</span></button></header>
+      {catalogOpen && <button className="resource-scrim" aria-label="关闭自动化目录" onClick={() => setCatalogOpen(false)} />}
+      <div ref={catalogDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="自动化目录" hidden={!catalogOpen} className="resource-catalog">
+        <div className="resource-catalog-heading"><h3>自动化目录</h3><button type="button" className="btn-quiet" onClick={() => setCatalogOpen(false)}>关闭</button></div>
+        <input className="field resource-catalog-search" aria-label="搜索自动化" placeholder="搜索自动化" value={catalogQuery} onChange={e => setCatalogQuery(e.target.value)} />
+
+        {catalogQuery && !items.some(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())) && <p role="status" className="resource-catalog-empty">没有匹配的自动化</p>}
+        <div className="resource-catalog-intro">
           <div>
             <div className="text-meta uppercase tracking-[0.16em] text-ink-500">
               自动化
@@ -174,8 +189,9 @@ export function AutomationsPanel({
             </div>
           </div>
         </div>
+        {error && <p role="alert" className="resource-error">{error}</p>}
         <form
-          className="space-y-2 px-3 pb-3"
+          className="resource-create"
           onSubmit={(e) => {
             e.preventDefault();
             if (creating || !name.trim() || !prompt.trim()) return;
@@ -244,14 +260,14 @@ export function AutomationsPanel({
           </button>
         </form>
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
-          {items.map((item) => {
+          {items.filter(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())).map((item) => {
             const active = item.id === selectedId;
             const listError = automationLastErrorLabel(item.lastError);
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelect(item.id)}
+                onClick={() => { setCatalogOpen(false); onSelect(item.id); }}
                 className={`w-full rounded-card px-2.5 py-2 text-left ${
                   active
                     ? "bg-accent-soft text-ink-800"
@@ -287,14 +303,15 @@ export function AutomationsPanel({
             );
           })}
         </div>
-      </aside>
+      </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
+      <div className="resource-content">
+        {error && <p role="alert" className="resource-error">{error}</p>}
         {!detail && (
-          <div className="flex h-full flex-col items-center justify-center text-ink-500">
+          <div className="resource-empty">
             <Workflow size={28} className="mb-3 text-ink-400" />
             <p className="text-sm">选择或新建一个自动化</p>
+          <button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)}>新建自动化</button>
           </div>
         )}
         {detail && (

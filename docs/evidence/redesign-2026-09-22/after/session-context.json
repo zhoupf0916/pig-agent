@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-21T18:42:34.078Z",
+  "checks": [
+    "delayed real cancel response cannot reopen previous task",
+    "delayed actual project binding updates A only and never replaces visible B",
+    "delayed task detail GET disables old-task send and execution configuration until B loads",
+    "explicit pending-message transport fixture: A streaming does not give B a stop button or block B composer; stopping A aborts A request only",
+    "mobile inspector moves focus, contains keyboard traversal, Escape closes and restores opener",
+    "mobile navigation contains focus and restores trigger on Escape"
+  ],
+  "errors": []
+}

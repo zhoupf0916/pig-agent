@@ -1,0 +1,22 @@
+{
+  "issue": "Strict Runner failover test got HTTP 502 when a control service stopped; Docker forwarded the vanished alias to host fake-IP DNS, resolving an external 198.18 address.",
+  "before": {
+    "unknownService": "pig-never-a-service",
+    "address": "198.18.0.165",
+    "failoverRun": "run_b4d6f86c8e014bc6bf2acbcace407ebd",
+    "approvalStatus": 502
+  },
+  "after": {
+    "unknownServiceResponse": "SERVFAIL (no external fallback)",
+    "topology": "internal control; control planes also egress; proxy also ingress with loopback-only DNS fallback",
+    "strictProtocolScenarios": 14,
+    "runnerFaultDurationMs": 59140,
+    "completionFaultScenarios": [
+      "normal",
+      "503 before commit",
+      "lost response after commit"
+    ],
+    "completionResult": "all succeeded, one artifact, exact content, acknowledged"
+  },
+  "requestSemantics": "No non_idempotent proxy retry enabled; existing strict approval POST assertion unchanged"
+}

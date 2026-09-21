@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
 
 /** Keep keyboard navigation in a modal and return focus to its opener. */
-export function useDialog(open: boolean, onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null);
+export function useDialog<T extends HTMLElement = HTMLDivElement>(
+  open: boolean,
+  onClose: () => void,
+) {
+  const ref = useRef<T>(null);
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
@@ -49,7 +52,12 @@ export function useDialog(open: boolean, onClose: () => void) {
     dialog.addEventListener("keydown", keydown);
     return () => {
       dialog.removeEventListener("keydown", keydown);
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected && previous.getClientRects().length)
+        previous.focus();
+      else
+        document
+          .querySelector<HTMLElement>("[data-navigation-trigger]")
+          ?.focus();
     };
   }, [open]);
   return ref;

@@ -1,0 +1,378 @@
+{
+  "at": "2026-09-21T18:17:26.325Z",
+  "checks": [
+    "项目 real API create and selected detail",
+    "project todo created",
+    "项目 catalog search and mobile selection",
+    "专家 real API create and selected detail",
+    "专家 catalog search and mobile selection",
+    "自动化 real API create and selected detail",
+    "自动化 catalog search and mobile selection",
+    "记忆 real API create and selected detail",
+    "记忆 catalog search and mobile selection",
+    "search actual records and open project"
+  ],
+  "captures": [
+    {
+      "state": "page-projects",
+      "file": "page-projects-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-projects",
+      "file": "page-projects-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-projects",
+      "file": "page-projects-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-projects",
+      "file": "page-projects-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-projects",
+      "file": "page-projects-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-projects",
+      "file": "page-projects-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-experts",
+      "file": "page-experts-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-automations",
+      "file": "page-automations-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440,
+        "contentWidth": 1196
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280,
+        "contentWidth": 1036
+      }
+    },
+    {
+      "state": "page-memory",
+      "file": "page-memory-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390,
+        "contentWidth": 390
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-1440x900-light.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-1280x800-light.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-390x844-light.png",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-1440x900-dark.png",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1440,
+        "scrollWidth": 1440
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-1280x800-dark.png",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 1280,
+        "scrollWidth": 1280
+      }
+    },
+    {
+      "state": "page-search",
+      "file": "page-search-390x844-dark.png",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "viewport": 390,
+        "scrollWidth": 390
+      }
+    }
+  ],
+  "errors": [],
+  "fixtureNames": {
+    "项目": "[验收] 发布准备 mubkhzvf",
+    "专家": "[验收] 交付审查 mubkhzvf",
+    "自动化": "[验收] 手动检查 mubkhzvf",
+    "记忆": "[验收] 所有发布必须核对成果来源 mubkhzvf"
+  }
+}

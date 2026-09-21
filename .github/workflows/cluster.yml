@@ -11,6 +11,9 @@ on:
       - 'infra/cluster/**'
       - 'scripts/*cluster*'
       - 'scripts/*product*'
+      - 'scripts/*completion*'
+      - 'scripts/*artifact*'
+      - 'scripts/redesign/**'
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/cluster.yml'
@@ -30,6 +33,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm cluster:up
       - run: pnpm cluster:smoke
+      - name: Completion delivery and generation fencing
+        run: |
+          node scripts/smoke-cluster-migration.mjs
+          node scripts/smoke-completion-fencing.mjs
+          node scripts/smoke-completion-delivery.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm product:smoke
         env:
@@ -40,8 +48,11 @@ jobs:
           name: product-acceptance-evidence
           path: |
             data/cluster-local/evidence/*.json
+            data/acceptance-redesign/completion-fencing.json
+            data/acceptance-redesign/finish-fault.json
             data/product-evidence/*.png
             data/product-evidence/*.json
+            data/redesign-evidence/after/session-context.json
           retention-days: 14
       - if: failure()
         run: pnpm cluster:logs

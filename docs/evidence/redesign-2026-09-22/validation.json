@@ -1,0 +1,36 @@
+{
+  "reviewDate": "2026-09-22",
+  "timezone": "Asia/Shanghai",
+  "unitTests": {
+    "command": "pnpm test",
+    "passed": 632,
+    "files": 93,
+    "durationSeconds": 3.44,
+    "startedAtLocalTime": "02:39:08",
+    "source": "Actual final log /tmp/pig-redesign-tests-final.log"
+  },
+  "controlPlaneAndRunnerTypecheck": "passed",
+  "desktopBuild": "passed; bundle-size warning retained",
+  "desktopSmoke": "Final latest-source fresh start and restart passed again",
+  "liveUpgrade": {
+    "web": "8797 navigation checked without browser runtime errors",
+    "desktopVersion": "0.3.0",
+    "settingsHashes": "preserved",
+    "userTasksPreserved": 9,
+    "source": "Parent integrator actual validation report"
+  },
+  "combinedProductSmoke": {
+    "result": "passed, exit 0",
+    "lastAdminCheckAt": "2026-09-21T18:42:39.638Z",
+    "adminChecks": 16,
+    "base": "isolated workbench8798 + cluster8892",
+    "scope": "core real container flow, settings/navigation/offline, creation races, run following, context6, remote artifact source/version/download/import, admin"
+  },
+  "scope": "Local development and isolated mock containers. No production capacity or exactly-once claim.",
+  "cluster": {
+    "protocolScenarios": 14,
+    "realRunnerFaultDurationMs": 59140,
+    "finalState": "zero execution containers and networks",
+    "dnsFault": "original strict assertion retained and passed after topology/resolver/config-mount correction"
+  }
+}

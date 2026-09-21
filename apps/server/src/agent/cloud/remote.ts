@@ -170,7 +170,9 @@ export async function runRemoteCloudAgent(options: {
           const mapped =
             event.type === "error"
               ? { ...event, message: formatCloudRemoteError(event.message) }
-              : event;
+              : event.type === "artifact"
+                ? { ...event, artifact: { ...event.artifact, source: { kind: "remote" as const, runId } } }
+                : event;
           if (!handedOff) {
             progress.handoffToStream();
             handedOff = true;
@@ -414,7 +416,7 @@ export function applyRemoteEvent(session: Session, event: AgentEvent): void {
   if (event.type === "artifact") {
     session.artifacts = [
       ...session.artifacts.filter((a) => a.path !== event.artifact.path),
-      event.artifact,
+      { ...event.artifact, source: { kind: "remote", runId: session.remoteRunId || event.artifact.source?.runId || "" } },
     ];
     return;
   }
@@ -432,7 +434,10 @@ export function applyRemoteEvent(session: Session, event: AgentEvent): void {
     session.status = event.session.status;
     session.messages = event.session.messages;
     session.steps = event.session.steps;
-    session.artifacts = event.session.artifacts;
+    session.artifacts = event.session.artifacts.map(artifact => ({
+      ...artifact,
+      source: artifact.source ?? { kind: "remote", runId: keep ?? event.session.remoteRunId ?? "" },
+    }));
     session.lastError = event.session.lastError;
     session.remoteRunId = keep ?? event.session.remoteRunId;
   }

@@ -74,6 +74,14 @@ try {
   await command("apps/web/scripts/smoke-product-ui.mjs");
   await command("apps/web/scripts/smoke-session-creation.mjs");
   await command("apps/web/scripts/smoke-remote-following.mjs");
+  await command("scripts/redesign/session-context.mjs", {
+    PIG_WORKBENCH_URL: base,
+    PIG_TEST_DATA_DIR: env.DATA_DIR,
+  });
+  await command("scripts/smoke-artifact-provenance.mjs", {
+    PIG_REVIEW_BASE: base,
+    PIG_REVIEW_EVIDENCE: "data/product-evidence",
+  });
   await command("apps/admin/smoke-ui.mjs", { ADMIN_UI_MUTATE: "1" });
   console.log(
     "PASS: product browser acceptance; evidence in data/product-evidence.",

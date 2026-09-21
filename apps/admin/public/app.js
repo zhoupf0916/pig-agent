@@ -52,7 +52,61 @@ function feedback(message) {
     $("feedback").hidden = true;
   }, 7000);
 }
+function setNavOpen(open) {
+  document.body.classList.toggle("nav-open", open);
+  $("nav-backdrop").hidden = !open;
+  $("nav-toggle").setAttribute("aria-expanded", String(open));
+  document.querySelector(".workspace").inert = open && innerWidth <= 700;
+  $("admin-sidebar").inert = !open && innerWidth <= 700;
+  if (open) $("navigation").querySelector("a[aria-current]")?.focus();
+}
+function applyTheme(value) {
+  document.documentElement.dataset.theme = value;
+  localStorage.setItem("pig.admin.theme", value);
+  $("theme-toggle").textContent = value === "dark" ? "切换浅色" : "切换深色";
+}
+applyTheme(
+  localStorage.getItem("pig.admin.theme") === "dark" ? "dark" : "light",
+);
+$("theme-toggle").onclick = () =>
+  applyTheme(
+    document.documentElement.dataset.theme === "dark" ? "light" : "dark",
+  );
+$("nav-toggle").onclick = () =>
+  setNavOpen(!document.body.classList.contains("nav-open"));
+$("nav-backdrop").onclick = () => setNavOpen(false);
+$("navigation").addEventListener("click", (event) => {
+  if (event.target.closest("a")) {
+    setNavOpen(false);
+    window.scrollTo({ top: 0 });
+  }
+});
+window.addEventListener("keydown", (e) => {
+  if (!document.body.classList.contains("nav-open")) return;
+  if (e.key === "Escape") {
+    setNavOpen(false);
+    $("nav-toggle").focus();
+  }
+  if (e.key === "Tab") {
+    const controls = [
+      ...$("admin-sidebar").querySelectorAll("a,button"),
+    ].filter((el) => el.getClientRects().length);
+    const first = controls[0],
+      last = controls.at(-1);
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last?.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first?.focus();
+    }
+  }
+});
+window.addEventListener("resize", () => {
+  if (innerWidth > 700 || !document.body.classList.contains("nav-open")) setNavOpen(false);
+});
 function navigate() {
+  window.scrollTo({ top: 0 });
   const page = location.hash.slice(1) || "overview";
   const valid = [
     "overview",
@@ -64,6 +118,15 @@ function navigate() {
   ].includes(page)
     ? page
     : "overview";
+  $("page-title").textContent = {
+    overview: "运行概览",
+    runs: "任务与日志",
+    workers: "Runner 集群",
+    settings: "执行与模型",
+    accounts: "账号与配额",
+    audit: "计划与审计",
+  }[valid];
+  setNavOpen(false);
   for (const e of document.querySelectorAll("[data-view]"))
     e.hidden = e.dataset.view !== valid;
   for (const e of document.querySelectorAll("[data-page]")) {
@@ -134,8 +197,21 @@ function renderOverview() {
     counts = Object.fromEntries(
       overview.counts.map((x) => [x.state, Number(x.count)]),
     );
+  const availableNodes = overview.workers.filter(
+    (w) => w.online && w.enabled && !w.draining,
+  );
+  const freeSlots = availableNodes.reduce(
+    (sum, w) =>
+      sum +
+      Math.max(
+        0,
+        Math.min(w.capacity, w.reported_capacity ?? w.capacity) -
+          Number(w.active),
+      ),
+    0,
+  );
   const cards = [
-    ["等待执行", counts.queued || 0, "队列中的任务"],
+    ["等待执行", counts.queued || 0, "当前排队任务"],
     [
       "正在执行",
       (counts.running || 0) +
@@ -143,9 +219,11 @@ function renderOverview() {
         (counts.cancelling || 0),
       "准备、执行及停止中的任务",
     ],
-    ["已完成", counts.succeeded || 0, "累计成功运行"],
-    ["失败", counts.failed || 0, "累计失败运行"],
+    ["可接单节点", availableNodes.length, "在线且未排空"],
+    ["空闲槽位", freeSlots, "节点容量，仍受全局并发限制"],
   ];
+  $("history-counts").textContent =
+    `历史累计：完成 ${counts.succeeded || 0} · 失败 ${counts.failed || 0} · 取消 ${counts.cancelled || 0}。累计失败不代表当前告警。`;
   $("counts").replaceChildren(
     ...cards.map(([title, count, caption]) => {
       const e = node("div");
@@ -178,14 +256,14 @@ function renderOverview() {
       "muted",
     ),
   );
-  const offline = overview.workers.filter((w) => !w.online).length;
+  const offline = overview.workers.filter((w) => !w.online && w.enabled).length;
   $("attention").replaceChildren(
     node(
       "p",
       offline
-        ? `${offline} 个 Runner 已离线`
+        ? `${offline} 个启用中的 Runner 已离线，需要检查`
         : overview.workers.length
-          ? "所有已注册 Runner 心跳正常"
+          ? "已启用 Runner 心跳正常；历史停用节点不计入当前异常"
           : "尚未注册 Runner",
     ),
     node(
@@ -265,39 +343,94 @@ function renderRuns() {
     $("runs").append(row);
   }
 }
+const workerExpanded = new Set();
 function renderWorkers() {
   if (
     $("workers").contains(document.activeElement) &&
     document.activeElement?.tagName === "SELECT"
   )
     return;
+  const focusRow =
+    document.activeElement?.closest(".worker-row")?.dataset.workerId;
+  const focusText =
+    document.activeElement?.tagName === "BUTTON"
+      ? document.activeElement.textContent
+      : null;
+  const query = $("worker-search").value.trim().toLowerCase(),
+    filter = $("worker-state").value;
+  const all = snapshot.overview.workers;
+  const workers = all
+    .filter(
+      (w) =>
+        `${w.id} ${(w.profiles || []).join(" ")}`
+          .toLowerCase()
+          .includes(query) &&
+        (filter === "all" ||
+          (filter === "online" && w.online) ||
+          (filter === "offline" && !w.online) ||
+          (filter === "available" && w.online && w.enabled && !w.draining) ||
+          (filter === "draining" && (w.draining || !w.enabled))),
+    )
+    .sort(
+      (a, b) => Number(b.online) - Number(a.online) || a.id.localeCompare(b.id),
+    );
+  $("worker-count").textContent = `${workers.length} / ${all.length} 个节点`;
   $("workers").replaceChildren(
-    ...snapshot.overview.workers.map((w) => {
-      const card = node("article", "", "panel"),
-        heading = node("div", "", "worker-heading");
-      heading.append(
-        node("h2", w.id),
-        badge(
-          w.online ? "online" : "offline",
-          w.online ? (w.draining || !w.enabled ? "排空中" : "在线") : "离线",
-        ),
+    ...workers.map((w) => {
+      const row = node("details", "", "worker-row");
+      row.dataset.workerId = w.id;
+      row.open = workerExpanded.has(w.id);
+      row.ontoggle = () =>
+        row.open ? workerExpanded.add(w.id) : workerExpanded.delete(w.id);
+      const summary = node("summary"),
+        identity = node("div", "", "worker-identity");
+      identity.append(
+        node("strong", w.id),
+        node("small", (w.profiles || []).join(" · ") || "未上报规格"),
       );
-      const meta = node("dl", "", "worker-meta"),
-        effective = Math.min(w.capacity, w.reported_capacity ?? w.capacity);
+      const effective = Math.min(w.capacity, w.reported_capacity ?? w.capacity),
+        stat = node("div", "", "worker-stat");
+      stat.append(
+        node("span", `${w.active} / ${effective}`),
+        node("small", "任务 / 有效槽位"),
+      );
+      const heartbeat = node(
+        "span",
+        dates(w.seen_at),
+        "worker-heartbeat muted",
+      );
+      summary.append(
+        identity,
+        badge(
+          !w.online
+            ? "offline"
+            : w.draining || !w.enabled
+              ? "draining"
+              : "online",
+          !w.online
+            ? "离线"
+            : w.draining || !w.enabled
+              ? "排空 / 停用"
+              : "在线",
+        ),
+        stat,
+        heartbeat,
+        node("span", "详情", "worker-more muted"),
+      );
+      const detail = node("div", "", "worker-detail"),
+        meta = node("dl", "", "worker-meta");
       for (const [label, value] of [
-        ["任务 / 有效容量", `${w.active} / ${effective}`],
+        ["当前任务 / 有效槽位", `${w.active} / ${effective}`],
         ["上报容量", String(w.reported_capacity ?? w.capacity)],
         ["最近心跳", dates(w.seen_at)],
-        ["支持规格", w.profiles?.length ? w.profiles.join(" / ") : "未上报"],
+        ["节点代次", w.instance_id || "未上报"],
+        ["接单状态", w.enabled && !w.draining ? "允许接单" : "停止接收新任务"],
+        ["支持规格", (w.profiles || []).join(" / ") || "未上报"],
       ]) {
         const pair = node("div");
         pair.append(node("dt", label), node("dd", value));
         meta.append(pair);
       }
-      const meter = node("div", "", "meter"),
-        fill = node("span");
-      fill.style.width = `${Math.min(100, (Number(w.active) / Math.max(1, effective)) * 100)}%`;
-      meter.append(fill);
       const actions = node("div", "", "worker-actions"),
         label = node("label", "配置并发槽位"),
         slots = node("select");
@@ -335,14 +468,30 @@ function renderWorkers() {
           ),
         ),
       );
-      card.append(heading, meta, meter, actions);
-      return card;
+      detail.append(meta, actions);
+      row.append(summary, detail);
+      return row;
     }),
   );
-  if (!snapshot.overview.workers.length)
+  if (!workers.length)
     $("workers").append(
-      empty("暂无 Runner 注册。启动连接此控制面的 Worker 后，节点会自动出现。"),
+      empty(
+        all.length
+          ? "没有符合筛选条件的节点。可切换到全部节点查看历史记录。"
+          : "暂无 Runner 注册。启动连接此控制面的 Runner 后，节点会自动出现。",
+      ),
     );
+  if (focusRow) {
+    const row = [...$("workers").children].find(
+      (row) => row.dataset.workerId === focusRow,
+    );
+    const target = focusText
+      ? [...(row?.querySelectorAll("button") || [])].find(
+          (button) => button.textContent === focusText,
+        )
+      : null;
+    (target || row?.querySelector("summary"))?.focus({ preventScroll: true });
+  }
 }
 function renderAccounts() {
   if (
@@ -605,6 +754,8 @@ async function refresh() {
     };
     connected(true);
     $("connection").textContent = "● 控制面已连接";
+    $("connection").dataset.state = "online";
+    $("connection").title = "控制面已连接";
     $("updated").textContent =
       `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
     renderOverview();
@@ -621,10 +772,14 @@ async function refresh() {
       token = "";
       sessionStorage.removeItem("pig.cloud.token");
       $("connection").textContent = "需要重新登录";
+      $("connection").dataset.state = "offline";
+      $("connection").title = "需要重新登录";
       showError("访问令牌无效、已过期或没有管理员权限，请重新连接。");
     } else {
       connectionError = true;
       $("connection").textContent = "连接中断 · 正在自动重试";
+      $("connection").dataset.state = "offline";
+      $("connection").title = "连接中断 · 正在自动重试";
       showError(
         `平台数据更新失败：${e.message}。已显示的数据可能不是最新状态。`,
       );
@@ -645,10 +800,11 @@ async function updateDetail(id) {
   if (detailBusy) return;
   detailBusy = true;
   try {
-    const [data, logs, attempts] = await Promise.all([
+    const [data, logs, attempts, artifactData] = await Promise.all([
       api(`/v1/runs/${id}`),
       api(`/v1/runs/${id}/eventlog`),
       api(`/v1/runs/${id}/attempts`),
+      api(`/v1/runs/${id}/artifacts`),
     ]);
     if (selectedRun !== id || !$("run-dialog").open) return;
     const r = data.run || data;
@@ -659,6 +815,7 @@ async function updateDetail(id) {
       r.model_calls,
       logs.events?.at(-1)?.seq,
       attempts.attempts.length,
+      artifactData.artifacts.map((a) => a.id),
     ]);
     if (version === detailVersion) return;
     const container = node("div");
@@ -681,6 +838,65 @@ async function updateDetail(id) {
     }
     container.append(meta);
     if (r.error) container.append(node("p", r.error, "notice error"));
+    const results = node("section", "", "detail-artifacts");
+    results.append(node("h2", "成果 · 远端已保存版本"));
+    if (!artifactData.artifacts.length)
+      results.append(empty("此次运行没有已保存的成果文件。"));
+    for (const artifact of artifactData.artifacts) {
+      const row = node("div", "", "artifact-row"),
+        actions = node("div", "", "actions");
+      const preview = node("pre", "", "artifact-preview");
+      preview.hidden = true;
+      const load = async (source, download) => {
+        const before = generation;
+        source.disabled = true;
+        try {
+          const response = await fetch(
+            `/v1/runs/${encodeURIComponent(id)}/artifacts/${encodeURIComponent(artifact.id)}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: AbortSignal.timeout(15000),
+            },
+          );
+          if (!response.ok)
+            throw Error(`成果不可用（HTTP ${response.status}）`);
+          const content = await response.text();
+          if (
+            before !== generation ||
+            selectedRun !== id ||
+            !$("run-dialog").open
+          )
+            return;
+          if (download) {
+            const url = URL.createObjectURL(
+              new Blob([content], { type: "text/plain;charset=utf-8" }),
+            );
+            const link = node("a");
+            link.href = url;
+            link.download = artifact.path.split("/").pop();
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          } else {
+            preview.textContent = content;
+            preview.hidden = false;
+          }
+        } catch (error) {
+          if (before === generation && selectedRun === id) {
+            preview.textContent = error.message;
+            preview.hidden = false;
+          }
+        } finally {
+          if (source.isConnected) source.disabled = false;
+        }
+      };
+      actions.append(
+        button("预览", (b) => load(b, false)),
+        button("下载成果", (b) => load(b, true)),
+      );
+      row.append(node("span", artifact.path), actions);
+      results.append(row, preview);
+    }
+    container.append(results);
     const logHeading = node("div", "", "section-heading");
     logHeading.append(
       node("h2", "执行日志 · 最近 200 条"),
@@ -870,6 +1086,12 @@ for (const id of ["resource-form", "policy-form"])
   $(id).oninput = () => dirtyForms.add(id);
 $("show-disabled").onchange = () => {
   if (snapshot) renderAccounts();
+};
+$("worker-search").oninput = () => {
+  if (snapshot) renderWorkers();
+};
+$("worker-state").onchange = () => {
+  if (snapshot) renderWorkers();
 };
 $("run-search").oninput = () => {
   if (snapshot) renderRuns();
