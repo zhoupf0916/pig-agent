@@ -231,6 +231,17 @@ Does **not** change the default runtime (still **本机 Pig**). After AZ clears 
 - [ ] **BB-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
 
+## Open todo highlight after todo delete (Milestone BF)
+
+Does **not** change the default runtime (still **本机 Pig**). An already-open `#/projects/:id?todo=` highlight is the existing Milestone AA read-only `GET /api/projects` / `:id` catch-up — after another tab deletes that todo, this page confirms the id is absent from the detail snapshot and clears `?todo=` without a full page reload, without a new poller, and without a `GET` of the deleted todo id. The board row is already gone via AA. Asset / message / session-ref cleanup stay AZ / BA / BB. Inbox / memory / automation / team / skill cleanup stay AX / AV / AW / AY / BE. No new write path, no dual-write of projects / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.
+
+- [ ] **BF-01** Two workstation tabs on the same host. Tab B is on `#/projects/:id?todo=` with that todo highlighted. Tab A deletes that todo — Tab B on focus, visibility, or one short poll confirms the todo is absent via the existing AA project-detail snapshot and clears the `?todo=` highlight. No full page refresh
+- [ ] **BF-02** Do **not** `GET` the deleted todo id. No new poller. The board row is already gone via AA; only the open highlight / query is cleared
+- [ ] **BF regression** Open project A, then navigate to project B with a valid `?todo=` while B's detail is loading. A's stale detail must not clear B's highlight. Only B's own detail may confirm deletion; preserve any `?asset=` parameter
+- [ ] **BF-03** Header chip still defaults to **本机 Pig**. Milestone O–BE / AA·AZ / L·M·N / W·X unchanged. Do not touch asset / messages / AZ / BA / BB / BE. No new sync stack / webhook
+- [ ] **BF-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
+- [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change
+
 ## Team expertIds after custom expert delete (Milestone AY)
 
 Does **not** change the default runtime (still **本机 Pig**). Deleting a custom expert drops that id from every team's `expertIds`. Already-open `#/experts` team list is the existing Milestone AC read-only `GET /api/expert-teams` catch-up — no ghost member, no full page reload, no new sync stack. Workbench 专家 / 小队 pin-dropdown catalogs reuse Milestone AK. Empty teams are **not** auto-deleted. Built-in expert delete stays 400. Sequential team-run for remaining members unchanged. Session pin cleanup stays AT; automation pin cleanup stays AU. No new write path, no dual-write of experts / sessions / `events.jsonl`, no public webhook. Not a credentials vault / connector / multi-agent / sandbox change.

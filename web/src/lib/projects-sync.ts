@@ -6,6 +6,7 @@ import type {
   ProjectSummary,
   ProjectTodo,
 } from "../types";
+import { projectsHash } from "./hash";
 import {
   browserSessionListClock,
   type SessionListSyncClock,
@@ -222,6 +223,48 @@ export function paintedOpenAssetPreviewSourceSession(
   const sessionId = normalizeProjectText(asset?.sourceSessionId);
   if (!sessionId) return null;
   return { sessionId, label: "打开来源会话" };
+}
+
+/**
+ * When the AA project-detail snapshot still lists this todo, keep ?todo=.
+ * When it is gone, return undefined so the caller strips the query highlight.
+ * Does not GET /api/projects/:id/todos/:todoId.
+ */
+export function nextOpenTodoHighlight(
+  todoId: string | null | undefined,
+  todos: Array<{ id: string }> | null | undefined,
+): string | undefined {
+  if (!todoId) return undefined;
+  if (!todos) return todoId;
+  if (todos.some((item) => item.id === todoId)) return todoId;
+  return undefined;
+}
+
+/** Only the selected project's snapshot can confirm its highlighted todo is gone. */
+export function shouldClearOpenTodoHighlight(
+  projectId: string | undefined,
+  todoId: string | undefined,
+  detail: Pick<Project, "id" | "todos"> | null,
+): boolean {
+  return Boolean(
+    projectId && todoId && detail?.id === projectId &&
+    nextOpenTodoHighlight(todoId, detail.todos) !== todoId,
+  );
+}
+
+/**
+ * Rewrite `#/projects/:id?todo=` after the AA snapshot confirms the id is gone.
+ * Keeps optional ?asset=. Same hash when the todo is still listed.
+ */
+export function nextOpenTodoHighlightHash(
+  projectId: string,
+  extra: { assetId?: string; todoId?: string | null },
+  todos: Array<{ id: string }> | null | undefined,
+): string {
+  return projectsHash(projectId, {
+    assetId: extra.assetId,
+    todoId: nextOpenTodoHighlight(extra.todoId, todos),
+  });
 }
 
 /**

@@ -7,6 +7,9 @@ import {
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
   nextOpenProjectId,
+  nextOpenTodoHighlight,
+  nextOpenTodoHighlightHash,
+  shouldClearOpenTodoHighlight,
   paintedOpenAssetPreviewSourceSession,
   PROJECTS_SYNC_POLL_MS,
   projectDetailSyncKey,
@@ -1532,6 +1535,162 @@ describe("open asset preview after source session delete (Milestone BB)", () => 
     expect(selectedFetches.length).toBeGreaterThan(beforeFocus);
     expect(tabBPreview?.sourceArtifactPath).toBe("notes/brief.md");
     expect(JSON.stringify(tabBPreview)).not.toMatch(/ses_gone|sk-|Bearer |DEEPSEEK_API_KEY/);
+    stop();
+  });
+});
+
+describe("open todo highlight after todo deleted elsewhere (Milestone BF)", () => {
+  it("keeps the destination todo highlight while the previous project's detail is still rendered", () => {
+    const previous = project({ id: "prj_a", todos: [] });
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", previous)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", null)).toBe(false);
+    expect(shouldClearOpenTodoHighlight(undefined, "td_b", previous)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_a", undefined, previous)).toBe(false);
+    const destination = project({ id: "prj_b", todos: [todoRow({ id: "td_b" })] });
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", destination)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", { ...destination, todos: [] })).toBe(true);
+  });
+
+  function todoRow(
+    overrides: Partial<Project["todos"][number]> & { id: string },
+  ): Project["todos"][number] {
+    return {
+      id: overrides.id,
+      title: overrides.title ?? "写 brief",
+      status: overrides.status ?? "todo",
+      createdAt: overrides.createdAt ?? "2026-09-14T12:00:00.000Z",
+      updatedAt: overrides.updatedAt ?? "2026-09-14T12:00:00.000Z",
+      sessionId: overrides.sessionId,
+    };
+  }
+
+  it("reuses the existing 2s AA poll and stays on default runtime pig", () => {
+    expect(PROJECTS_SYNC_POLL_MS).toBe(2_000);
+    expect(describeExecutionSurface({ runtime: "pig" }).runtime).toBe("pig");
+    expect(describeExecutionSurface({ runtime: "nope" }).runtime).toBe("pig");
+  });
+
+  it("clears ?todo= from the AA snapshot without a per-todo GET", () => {
+    const todos = [todoRow({ id: "td_keep", title: "留下" })];
+    expect(nextOpenTodoHighlight("td_gone", todos)).toBeUndefined();
+    expect(nextOpenTodoHighlight("td_keep", todos)).toBe("td_keep");
+    expect(nextOpenTodoHighlight(undefined, todos)).toBeUndefined();
+    expect(nextOpenTodoHighlight("td_gone", undefined)).toBe("td_gone");
+    expect(nextOpenTodoHighlightHash("prj_a", { todoId: "td_gone" }, todos)).toBe("#/projects/prj_a");
+    expect(
+      nextOpenTodoHighlightHash("prj_a", { assetId: "ast_9", todoId: "td_gone" }, todos),
+    ).toBe("#/projects/prj_a?asset=ast_9");
+    expect(
+      nextOpenTodoHighlightHash("prj_a", { assetId: "ast_9", todoId: "td_keep" }, todos),
+    ).toBe("#/projects/prj_a?asset=ast_9&todo=td_keep");
+    expect(JSON.stringify(todos)).not.toMatch(/sk-|Bearer |DEEPSEEK_API_KEY/);
+  });
+
+  it("Tab B clears ?todo= after Tab A deletes that todo via the existing AA detail GET", async () => {
+    const listServer = [listRow({ id: "prj_a", todoCount: 2 })];
+    let detailServer: ProjectDetailSyncFields = {
+      id: "prj_a",
+      name: "协作空间",
+      updatedAt: "2026-09-14T12:00:00.000Z",
+      todos: [todoRow({ id: "td_gone", title: "高亮待办" }), todoRow({ id: "td_keep", title: "留下" })],
+      assets: [],
+      members: [
+        {
+          id: "mem_owner",
+          userId: "user_local",
+          displayName: "本机用户",
+          role: "owner",
+          joinedAt: "2026-09-14T12:00:00.000Z",
+        },
+      ],
+      invites: [],
+    };
+    let tabBList = [summary({ id: "prj_a", todoCount: 2 })];
+    let tabBDetail: Project | null = project({
+      id: "prj_a",
+      instruction: "本地草稿指令",
+      todos: detailServer.todos,
+    });
+    let tabBTodoHighlight: string | undefined = "td_gone";
+    let tabBHash = nextOpenTodoHighlightHash(
+      "prj_a",
+      { todoId: tabBTodoHighlight },
+      tabBDetail.todos,
+    );
+    const selectedFetches: string[] = [];
+    const todoDetailGets: string[] = [];
+    const { clock, tickInterval, setVisible, focus } = fakeClock(true);
+
+    const stop = startProjectsSync({
+      fetchList: async () => listServer.map((s) => ({ ...s })),
+      onList: (next) => {
+        tabBList = applyProjectsListSnapshot(tabBList, next);
+      },
+      selectedId: "prj_a",
+      fetchSelected: async (id) => {
+        selectedFetches.push(id);
+        return {
+          ...detailServer,
+          todos: detailServer.todos.map((t) => ({ ...t })),
+          assets: detailServer.assets.map((a) => ({ ...a })),
+          members: detailServer.members.map((m) => ({ ...m })),
+          invites: [...detailServer.invites],
+        };
+      },
+      onSelected: (next) => {
+        tabBDetail = applyProjectDetailSnapshot(tabBDetail, next);
+        tabBTodoHighlight = nextOpenTodoHighlight(tabBTodoHighlight, next.todos);
+        tabBHash = nextOpenTodoHighlightHash("prj_a", { todoId: tabBTodoHighlight }, next.todos);
+      },
+      intervalMs: 50,
+      clock,
+    });
+
+    await flush();
+    expect(tabBHash).toBe("#/projects/prj_a?todo=td_gone");
+    expect(tabBTodoHighlight).toBe("td_gone");
+    expect(tabBDetail?.todos.map((t) => t.id)).toEqual(["td_gone", "td_keep"]);
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+
+    // Tab A DELETE /api/projects/:id/todos/:todoId — board snapshot drops the row (no new poller).
+    listServer[0] = listRow({ id: "prj_a", todoCount: 1, updatedAt: "2026-09-15T08:00:00.000Z" });
+    detailServer = {
+      ...detailServer,
+      updatedAt: "2026-09-15T08:00:00.000Z",
+      todos: [todoRow({ id: "td_keep", title: "留下" })],
+    };
+    tickInterval();
+    await flush();
+
+    expect(tabBDetail?.todos.map((t) => t.id)).toEqual(["td_keep"]);
+    expect(tabBTodoHighlight).toBeUndefined();
+    expect(tabBHash).toBe("#/projects/prj_a");
+    expect(tabBHash).not.toContain("todo=");
+    expect(tabBDetail?.instruction).toBe("本地草稿指令");
+    expect(selectedFetches.every((id) => id === "prj_a")).toBe(true);
+    expect(todoDetailGets).toEqual([]);
+    expect(tabBList[0]?.id).toBe("prj_a");
+
+    const afterPoll = selectedFetches.length;
+    setVisible(false);
+    tickInterval();
+    await flush();
+    expect(selectedFetches.length).toBe(afterPoll);
+
+    setVisible(true);
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(afterPoll);
+    expect(tabBTodoHighlight).toBeUndefined();
+    expect(tabBHash).toBe("#/projects/prj_a");
+
+    const beforeFocus = selectedFetches.length;
+    focus();
+    await flush();
+    expect(selectedFetches.length).toBeGreaterThan(beforeFocus);
+    expect(tabBDetail?.todos.some((t) => t.id === "td_gone")).toBe(false);
+    expect(JSON.stringify({ hash: tabBHash, detail: tabBDetail })).not.toMatch(
+      /sk-|Bearer |DEEPSEEK_API_KEY/,
+    );
     stop();
   });
 });
