@@ -82,6 +82,8 @@ export type Session = {
    * IDLE user turns prefer `POST /v1/runs/:id/follow-ups`.
    */
   remoteRunId?: string;
+  /** Stable key for an explicit retry attempt; retained across uncertain submissions. */
+  remoteRequestKey?: string;
   /** Optional local expert / playbook pinned to this session. */
   expertId?: string;
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */

@@ -15,7 +15,7 @@ export function ExecutionPicker({
 }) {
   const target =
     session.executionTarget ||
-    (settings?.runtime === "cloud" ? "remote" : "local");
+    (settings?.runtime === "cloud" ? (settings.cloudMode === "remote" ? "remote" : "stub") : "local");
   const engine =
     session.engine || (settings?.runtime === "codex" ? "codex" : "pig");
   return (
@@ -32,13 +32,14 @@ export function ExecutionPicker({
           })
         }
       >
+        {target === "stub" && <option value="stub" disabled>本地隔离（兼容）</option>}
         <option value="local">本地执行</option>
         <option value="remote">远端容器</option>
       </select>
       <select
         className="field !w-auto text-xs"
         aria-label="执行引擎"
-        disabled={disabled || target === "remote"}
+        disabled={disabled || target !== "local"}
         value={engine}
         onChange={(e) =>
           onChange({

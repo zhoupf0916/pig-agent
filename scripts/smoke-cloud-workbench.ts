@@ -138,6 +138,17 @@ try {
       await request(`/api/remote/v1/runs/${completed.remoteRunId}/artifacts`)
     ).artifacts.some((f: any) => f.path === "cloud-proof.txt"),
   );
+  // Retry a confirmed cancelled run as a fresh attempt, without changing user message identity.
+  const cancelled=await request(`/api/remote/v1/runs/${run.remoteRunId}`);
+  assert.equal(cancelled.state,"cancelled");
+  await saveSession({...completed,status:"idle",remoteRunId:run.remoteRunId,remoteState:"cancelled"});
+  const retry=await app.request(`/api/sessions/${session.id}/retry`,{method:"POST",headers:{Origin:"http://127.0.0.1:8797"}});
+  assert.equal(retry.status,200);await retry.text();
+  const retried=await getSession(session.id);
+  assert.equal(retried?.remoteState,"succeeded");
+  assert.notEqual(retried?.remoteRunId,completed.remoteRunId);
+  assert.notEqual(retried?.remoteRunId,run.remoteRunId);
+  assert.ok(retried?.remoteRequestKey);
   console.log(
     "PASS: unified workbench remote schedule CRUD/run, per-session location, disconnected client survival, authoritative recovery and deduplicated transcript/artifacts",
   );

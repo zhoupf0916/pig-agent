@@ -109,7 +109,7 @@ export async function runRemoteCloudAgent(options: {
       const created = await fetchUntilHeaders(
         fetchFn,
         `${base}${CLOUD_CREATE_RUN_PATH}`,
-        { method: "POST", headers: {...headers,"Idempotency-Key":`${session.id}:${session.messages.filter(m=>m.role === "user").at(-1)?.id || "initial"}`}, body: JSON.stringify(body) },
+        { method: "POST", headers: {...headers,"Idempotency-Key":session.remoteRequestKey || `${session.id}:${session.messages.filter(m=>m.role === "user").at(-1)?.id || "initial"}`}, body: JSON.stringify(body) },
         signal,
         timeoutMs,
       );

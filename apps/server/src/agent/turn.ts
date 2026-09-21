@@ -67,6 +67,7 @@ export function prepareUserMessage(session: Session, content: string, clientMess
   session.status = "running";
   session.lastError = undefined;
   session.remoteRetry = undefined;
+  session.remoteRequestKey = undefined;
   session.localRetry = undefined;
   return userMsg;
 }
@@ -90,7 +91,10 @@ export async function runSessionTurn(
 ): Promise<Session> {
   const settings = await loadSettings();
   const runtime = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
-  session.executionTarget = runtime === "cloud" && (session.executionTarget === "remote" || settings.cloudMode === "remote") ? "remote" : "local";
+  if (runtime === "cloud") {
+    if (session.executionTarget === "remote" || settings.cloudMode === "remote") session.executionTarget = "remote";
+    else delete session.executionTarget; // Legacy local-stub stays on its existing adapter.
+  } else session.executionTarget = "local";
   session.engine = runtime === "codex" ? "codex" : "pig";
   if (session.executionTarget === "remote") settings.cloudMode = "remote";
   await saveSession(session);

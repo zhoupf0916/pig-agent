@@ -1,5 +1,6 @@
 import { reconcileRemoteSession, isRemoteActive } from "./control-plane/run-state.ts";
 import { planeJson } from "./control-plane/client.ts";
+import { newId } from "./util.ts";
 import { registerRemoteRoutes } from "./routes/remote.ts";
 import { registerConnectionTest } from "./routes/connection-test.ts";
 import { registerWorkbenchRoutes } from "./routes/workbench.ts";
@@ -280,7 +281,17 @@ export function createApp(): Hono {
       return c.json({ error: "没有可重试的消息。", localRetry: "unavailable" }, 400);
     }
 
-    const pigDelivery = (await loadSettings()).runtime === "pig";
+    if (session.remoteState && session.remoteRunId) {
+      try {await reconcileRemoteSession(session);} catch {return c.json({error:"先恢复控制面连接并核验原运行，避免重复执行"},409);}
+      if (isRemoteActive(session.remoteState)) return c.json({error:"原远端任务仍在运行，请查看进度或取消"},409);
+      if (session.remoteState === "succeeded") {await saveSession(session);return c.json({error:"原远端任务已完成，已恢复结果，无需重试"},409);}
+      // An explicit retry after a confirmed terminal failure is a new attempt.
+      session.remoteRequestKey = newId("retry");
+      delete session.remoteRunId;
+      delete session.remoteState;
+    }
+    const defaults = await loadSettings();
+    const pigDelivery = session.executionTarget ? session.executionTarget === "local" && (session.engine || "pig") === "pig" : defaults.runtime === "pig";
     if (pigDelivery) session.deliveryMode = true;
     // Pig resumes checkpoints; other runtimes retain their existing retry protocol.
     if (!session.remoteRetry && !pigDelivery) {
