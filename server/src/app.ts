@@ -1,3 +1,5 @@
+import { registerWorkbenchRoutes } from "./routes/workbench.ts";
+import { loadWorkbench } from "./store/workbench.ts";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -75,6 +77,8 @@ export function createApp(): Hono {
       exposeHeaders: ["Last-Event-ID"],
     }),
   );
+
+  registerWorkbenchRoutes(app);
 
   app.get("/api/health", (c) => c.json({ ok: true, name: "pig-agent" }));
 
@@ -224,12 +228,23 @@ export function createApp(): Hono {
       return c.json({ error: "没有可重试的消息。", localRetry: "unavailable" }, 400);
     }
 
-    // Remote L keeps transcript for follow-up / create-run. Local pig/codex rewind
-    // to the last user goal so 重试本轮 does not duplicate-insert the message.
-    if (!session.remoteRetry) {
+    const pigDelivery = (await loadSettings()).runtime === "pig";
+    if (pigDelivery) session.deliveryMode = true;
+    // Pig resumes checkpoints; other runtimes retain their existing retry protocol.
+    if (!session.remoteRetry && !pigDelivery) {
       rewindToLastUserGoal(session);
     }
 
+    if (pigDelivery) {
+      const settings = await loadSettings();
+      const state = await loadWorkbench(id, settings.workspaceRoot);
+      if (state.operations.some((op) => op.status === "pending" || op.status === "applying" || op.status === "error")) return c.json({ error: "请先处理待批准或待核对的操作。" }, 409);
+      const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
+      for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) {
+        const op = state.operations.find((item) => item.callId === call.id);
+        session.messages.push({ id: `recovered_${call.id}`, role: "tool", toolCallId: call.id, toolOk: op?.status === "applied", content: op?.output ?? "执行被中断，结果未知；先检查磁盘，不要直接重放修改或命令。", createdAt: new Date().toISOString() });
+      }
+    }
     session.status = "running";
     session.lastError = undefined;
     session.remoteRetry = undefined;
@@ -244,7 +259,7 @@ export function createApp(): Hono {
           data: JSON.stringify(event),
         });
       };
-      await runSessionTurn(session, { onEvent });
+      await runSessionTurn(session, { onEvent, teamAction: session.teamRun ? "continue" : undefined });
     });
   });
 
@@ -266,6 +281,7 @@ export function createApp(): Hono {
     if (parsed.data.clientMessageId && session.messages.some((m) => m.id === parsed.data.clientMessageId)) {
       return c.json({ error: "这条消息已接收，请查看会话结果，不要重复发送。" }, 409);
     }
+    session.deliveryMode = true;
     const userMsg = prepareUserMessage(session, parsed.data.content, parsed.data.clientMessageId);
     await saveSession(session);
 

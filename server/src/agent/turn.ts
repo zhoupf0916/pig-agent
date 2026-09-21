@@ -88,6 +88,7 @@ export async function runSessionTurn(
 ): Promise<Session> {
   const settings = await loadSettings();
   const runtime = hooks.runtime ?? settings.runtime;
+  if (runtime === "pig") session.deliveryMode = true;
   const controller = new AbortController();
   runningTurns.set(session.id, controller);
 

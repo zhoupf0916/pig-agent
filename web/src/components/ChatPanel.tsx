@@ -1,3 +1,4 @@
+import { WorkbenchPanel } from "./WorkbenchPanel";
 import { ArrowUp, FileText, FolderOpen, Sparkles, Check, Loader2, Pin, Play, Square, StickyNote, Terminal, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
@@ -19,6 +20,8 @@ export function ChatPanel({
   teams,
   expertName,
   onDraft,
+  onResume,
+  onRefresh,
   onSend,
   onStop,
   onTeamRun,
@@ -38,6 +41,8 @@ export function ChatPanel({
   teams: ExpertTeam[];
   expertName?: string;
   onDraft: (v: string) => void;
+  onResume: () => void;
+  onRefresh: () => void;
   onSend: () => void;
   onStop: () => void;
   onTeamRun: () => void;
@@ -218,6 +223,7 @@ export function ChatPanel({
         />
       )}
       <StepStrip steps={session?.steps ?? []} />
+      {session && <WorkbenchPanel key={session.id} sessionId={session.id} running={streaming} onResume={onResume} onRefresh={onRefresh} onDraft={onDraft} />}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {!session && (
           <EmptyState
@@ -463,6 +469,8 @@ function MessageBlock({ message }: { message: ChatMessage }) {
 
 function ToolCard({ tool }: { tool: LiveTool }) {
   const summary = summarizeArgs(tool.arguments);
+  const awaitingReview = tool.output?.startsWith("待批准") || tool.output?.startsWith("前序变更等待");
+  const disposition = awaitingReview ? "待批准" : tool.output?.startsWith("undone:") ? "已撤销" : tool.output?.startsWith("rejected:") ? "已拒绝" : undefined;
   return (
     <details
       className="rounded-xl border border-ink-300 bg-panel"
@@ -482,13 +490,14 @@ function ToolCard({ tool }: { tool: LiveTool }) {
               进行中
             </span>
           )}
-          {tool.done && tool.ok && (
+          {tool.done && disposition && <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">{disposition}</span>}
+          {tool.done && tool.ok && !disposition && (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 font-medium text-success">
               <Check size={11} />
               成功
             </span>
           )}
-          {tool.done && !tool.ok && (
+          {tool.done && !tool.ok && !disposition && (
             <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 font-medium text-danger">
               <X size={11} />
               失败

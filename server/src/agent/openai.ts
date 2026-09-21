@@ -1,6 +1,9 @@
 import type { ChatMessage, ToolCall } from "../types.ts";
 import { TOOL_DEFINITIONS } from "./tools.ts";
 
+export type TokenUsage = { prompt_tokens: number; completion_tokens: number };
+type CompletionOptions = { signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number };
+
 export type LlmSettings = {
   llmBaseUrl: string;
   llmApiKey: string;
@@ -38,6 +41,7 @@ export function toOpenAiMessages(
         return {
           role: "assistant",
           content: m.content || null,
+          ...(m.reasoningContent !== undefined ? { reasoning_content: m.reasoningContent } : {}),
           tool_calls: m.toolCalls.map((tc) => ({
             id: tc.id,
             type: "function",
@@ -52,7 +56,7 @@ export function toOpenAiMessages(
           content: m.content,
         };
       }
-      return { role: m.role, content: m.content };
+      return { role: m.role, content: m.content, ...(m.role === "assistant" && m.reasoningContent !== undefined ? { reasoning_content: m.reasoningContent } : {}) };
     });
 }
 
@@ -64,11 +68,8 @@ type Attempt = {
 export async function complete(
   settings: LlmSettings,
   messages: ChatMessage[],
-  options: {
-    signal?: AbortSignal;
-    onDelta?: (text: string) => void;
-  } = {},
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  options: CompletionOptions = {},
+): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
   const attempts: Attempt[] = [
     { stream: true, parallelTools: true },
     { stream: true, parallelTools: false },
@@ -95,9 +96,9 @@ export async function complete(
 async function completeOnce(
   settings: LlmSettings,
   messages: ChatMessage[],
-  options: { signal?: AbortSignal; onDelta?: (text: string) => void },
+  options: CompletionOptions,
   attempt: Attempt,
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
   const url = `${normalizeBaseUrl(settings.llmBaseUrl)}/chat/completions`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -114,6 +115,15 @@ async function completeOnce(
     stream: attempt.stream,
     temperature: 0.2,
   };
+  // New DeepSeek thinking turns require complete reasoning replay, including tool turns.
+  // Historical transcripts without that field can safely resume in non-thinking mode.
+  const providerHost = new URL(settings.llmBaseUrl).hostname;
+  if (providerHost === "api.deepseek.com") {
+    if (messages.some((m) => m.role === "assistant" && m.toolCalls?.length && m.reasoningContent === undefined)) body.thinking = { type: "disabled" };
+    body.messages = toOpenAiMessages(messages).map((m) => m.role === "assistant" ? { ...m, reasoning_content: m.reasoning_content ?? "" } : m);
+  }
+  if (options.maxOutputTokens) body.max_tokens = options.maxOutputTokens;
+  if (attempt.stream && attempt.parallelTools && options.onUsage) body.stream_options = { include_usage: true };
   if (attempt.parallelTools) {
     body.parallel_tool_calls = true;
   }
@@ -148,13 +158,14 @@ async function completeOnce(
     if (!response.body) {
       throw new LlmError("LLM returned an empty body", response.status, true);
     }
-    return consumeStream(response.body, options.onDelta);
+    return consumeStream(response.body, options.onDelta, options.onUsage);
   }
 
   const json = (await response.json()) as {
     choices?: Array<{
       message?: {
         content?: string | null;
+        reasoning_content?: string;
         tool_calls?: Array<{
           id?: string;
           function?: { name?: string; arguments?: string };
@@ -162,6 +173,8 @@ async function completeOnce(
       };
     }>;
   };
+  const usage = (json as { usage?: TokenUsage }).usage;
+  if (usage) options.onUsage?.(usage);
   return fromMessage(json.choices?.[0]?.message, options.onDelta);
 }
 
@@ -181,6 +194,7 @@ function fromMessage(
   message:
     | {
         content?: string | null;
+        reasoning_content?: string;
         tool_calls?: Array<{
           id?: string;
           function?: { name?: string; arguments?: string };
@@ -188,7 +202,7 @@ function fromMessage(
       }
     | undefined,
   onDelta?: (text: string) => void,
-): { content: string; toolCalls: ToolCall[] } {
+): { content: string; toolCalls: ToolCall[]; reasoningContent?: string } {
   const content = typeof message?.content === "string" ? message.content : "";
   if (content) onDelta?.(content);
   const toolCalls: ToolCall[] = (message?.tool_calls ?? [])
@@ -201,17 +215,19 @@ function fromMessage(
           : JSON.stringify(tc.function?.arguments ?? {}),
     }))
     .filter((tc) => tc.name);
-  return { content, toolCalls };
+  return { content, toolCalls, ...(message?.reasoning_content ? { reasoningContent: message.reasoning_content } : {}) };
 }
 
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
   onDelta?: (text: string) => void,
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  onUsage?: (usage: TokenUsage) => void,
+): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let reasoningContent = "";
   const toolAcc = new Map<number, { id: string; name: string; arguments: string }>();
 
   const flushLine = (line: string) => {
@@ -226,16 +242,20 @@ async function consumeStream(
     } catch {
       return;
     }
+    const usage = (parsed as { usage?: TokenUsage }).usage;
+    if (usage) onUsage?.(usage);
     const choice = (parsed as { choices?: Array<Record<string, unknown>> }).choices?.[0];
     if (!choice) return;
     const delta = (choice.delta ?? choice.message ?? {}) as {
       content?: string | null;
+      reasoning_content?: string;
       tool_calls?: Array<{
         index?: number;
         id?: string;
         function?: { name?: string; arguments?: string };
       }>;
     };
+    if (typeof delta.reasoning_content === "string") reasoningContent += delta.reasoning_content;
     if (typeof delta.content === "string" && delta.content) {
       content += delta.content;
       onDelta?.(delta.content);
@@ -276,5 +296,5 @@ async function consumeStream(
     }))
     .filter((tc) => tc.name);
 
-  return { content, toolCalls };
+  return { content, toolCalls, ...(reasoningContent ? { reasoningContent } : {}) };
 }

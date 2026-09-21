@@ -650,7 +650,7 @@ export function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await streamRetry(session.id, applyEvent, controller.signal);
+      await streamRetry(session.id, (event, seq) => { if (activeIdRef.current === session.id) applyEvent(event, seq); }, controller.signal);
     } catch (err) {
       if (controller.signal.aborted) {
         setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
@@ -1004,6 +1004,8 @@ export function App() {
               teams={expertTeams}
               expertName={experts.find((e) => e.id === session?.expertId)?.name}
               onDraft={onDraftChange}
+              onResume={() => void retry()}
+              onRefresh={() => { if (activeId) void loadSession(activeId); void refreshTree(); }}
               onSend={() => void send()}
               onStop={() => void stop()}
               onTeamRun={() => void startTeamRun()}

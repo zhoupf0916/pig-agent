@@ -1,3 +1,4 @@
+import { loadWorkbench } from "../store/workbench.ts";
 import { getExpertTeam, resolveTeamMemberPlaybook } from "../store/experts.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
 import { saveSession } from "../store/sessions.ts";
@@ -200,6 +201,17 @@ export async function runSequentialTeamTurn(
       break;
     }
 
+    if (current.deliveryMode && hooks.runtime === "pig") {
+      const workbench = await loadWorkbench(current.id, hooks.settings.workspaceRoot);
+      if (workbench.operations.some((op) => op.status === "pending" || op.status === "applying") || current.lastError) {
+        const row = current.teamRun?.members[i];
+        if (row) { row.status = "pending"; row.detail = current.lastError ?? "等待审阅变更"; }
+        if (current.teamRun) current.teamRun.status = "idle";
+        current.status = "idle";
+        emitTeamRun(current, hooks.emit);
+        break;
+      }
+    }
     if (current.status === "error") {
       const row = current.teamRun?.members[i];
       if (row) {

@@ -1,3 +1,4 @@
+import { dockerCommand } from "./docker.ts";
 import { spawn } from "node:child_process";
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -80,6 +81,9 @@ export type ArtifactPatch = Partial<Pick<Artifact, "fromPath" | "before" | "afte
 
 export type ToolContext = {
   workspaceRoot: string;
+  shellMode?: "host" | "docker";
+  dockerImage?: string;
+  dockerNetwork?: boolean;
   artifacts: Artifact[];
   recordArtifact: (path: string, action: ArtifactAction, extra?: ArtifactPatch) => void;
   signal?: AbortSignal;
@@ -337,6 +341,7 @@ export async function executeTool(
   rawArgs: unknown,
   ctx: ToolContext,
 ): Promise<ToolResult> {
+  if (ctx.signal?.aborted) throw new Error("Aborted");
   const args = asObject(rawArgs);
   switch (name) {
     case "update_plan":
@@ -704,32 +709,40 @@ async function runShell(
     stderr: string;
     timedOut: boolean;
   }>((resolvePromise) => {
-    const child = spawn(trimmed, {
+    const container = ctx.shellMode === "docker" ? dockerCommand(ctx.workspaceRoot, trimmed, ctx.dockerImage ?? "node:22-alpine", ctx.dockerNetwork === true) : undefined;
+    const child = container?.child ?? spawn(trimmed, {
       cwd: ctx.workspaceRoot,
       shell: true,
+      detached: process.platform !== "win32",
       env,
       windowsHide: true,
     });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1500);
-    }, timeout);
-    const onAbort = () => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1500);
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const killProcess = (signal: NodeJS.Signals) => {
+      try {
+        if (!container && process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+        else child.kill(signal);
+      } catch { /* process has already exited */ }
     };
+    const terminate = () => {
+      container?.cleanup();
+      killProcess("SIGTERM");
+      killTimer ??= setTimeout(() => killProcess("SIGKILL"), 1500);
+      killTimer.unref();
+    };
+    const timer = setTimeout(() => { timedOut = true; terminate(); }, timeout);
+    const onAbort = terminate;
     ctx.signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
-      if (stdout.length > MAX_SHELL_CHARS * 2) child.kill("SIGTERM");
+      if (stdout.length > MAX_SHELL_CHARS * 2) terminate();
     });
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
-      if (stderr.length > MAX_SHELL_CHARS * 2) child.kill("SIGTERM");
+      if (stderr.length > MAX_SHELL_CHARS * 2) terminate();
     });
     const finish = (payload: {
       code: number | null;
@@ -739,6 +752,8 @@ async function runShell(
       timedOut: boolean;
     }) => {
       clearTimeout(timer);
+      clearTimeout(killTimer);
+      container?.cleanup();
       ctx.signal?.removeEventListener("abort", onAbort);
       resolvePromise(payload);
     };
@@ -765,6 +780,7 @@ async function runShell(
     stdout: capText(result.stdout, MAX_SHELL_CHARS),
     stderr: capText(result.stderr, MAX_SHELL_CHARS),
   };
+  if (result.code !== 0 || result.timedOut || ctx.signal?.aborted) throw new Error(JSON.stringify(payload, null, 2));
   return { output: JSON.stringify(payload, null, 2) };
 }
 

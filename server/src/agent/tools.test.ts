@@ -129,8 +129,7 @@ describe("workspace tools", () => {
     expect(payload.stdout).toContain(root);
     expect(payload.stdout).toContain("a.txt");
 
-    const failed = await executeTool("run_shell", { command: "exit 7" }, ctx(root));
-    expect(JSON.parse(failed.output).exit_code).toBe(7);
+    await expect(executeTool("run_shell", { command: "exit 7" }, ctx(root))).rejects.toThrow('"exit_code": 7');
   });
 
   it("rejects obvious path-escaping and dangerous shell commands", async () => {

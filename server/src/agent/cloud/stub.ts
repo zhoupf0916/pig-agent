@@ -69,6 +69,8 @@ export async function runStubCloudAgent(options: {
     const result = await runAgent({
       session: {
         ...session,
+        // Local-cloud has its own workspace lifecycle; host review is Pig-only.
+        deliveryMode: false,
         steps: session.steps.filter((step) => !isLocalStubProgressStep(step)),
       },
       settings: stubSettings,

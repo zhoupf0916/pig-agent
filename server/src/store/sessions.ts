@@ -17,6 +17,7 @@ export async function createSession(
   const session: Session = {
     id: newId("ses"),
     title: "新任务",
+    deliveryMode: true,
     createdAt: ts,
     updatedAt: ts,
     status: "idle",
