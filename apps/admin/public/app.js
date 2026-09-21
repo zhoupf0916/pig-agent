@@ -91,6 +91,22 @@ async function refresh() {
                 "PATCH",
               );
             row.append(toggle, revoke, limit, save);
+            if (a.enabled && a.role === "member") {
+              const login = node("button", "新设备登录 / 续期");
+              login.onclick = async () => {
+                try {
+                  const data = await api("/v1/admin/invitations", {
+                    method: "POST",
+                    body: JSON.stringify({ name: a.name, accountId: a.id }),
+                  });
+                  $("invite-result").textContent =
+                    `${a.name} 登录邀请码（24 小时有效）：${data.invite}`;
+                } catch (e) {
+                  $("error").textContent = e.message;
+                }
+              };
+              row.append(login);
+            }
             return row;
           }),
       );

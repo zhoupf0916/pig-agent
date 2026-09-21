@@ -13,6 +13,7 @@ export async function migrate() {
     ALTER TABLE principals ADD COLUMN IF NOT EXISTS enabled boolean NOT NULL DEFAULT true;
     ALTER TABLE principals ADD COLUMN IF NOT EXISTS daily_call_limit int NOT NULL DEFAULT 1000;
     CREATE TABLE IF NOT EXISTS invitations(token_hash text PRIMARY KEY,name text NOT NULL,expires_at timestamptz NOT NULL);
+    ALTER TABLE invitations ADD COLUMN IF NOT EXISTS owner_id text REFERENCES principals(id);
     CREATE TABLE IF NOT EXISTS auth_sessions(id text PRIMARY KEY,owner_id text NOT NULL REFERENCES principals(id),token_hash text UNIQUE NOT NULL,expires_at timestamptz NOT NULL);
     CREATE TABLE IF NOT EXISTS model_channels(id text PRIMARY KEY,name text NOT NULL,base_url text NOT NULL,model text NOT NULL,secret text NOT NULL,enabled boolean NOT NULL DEFAULT false,created_at timestamptz NOT NULL DEFAULT now());
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_channel ON model_channels(enabled) WHERE enabled;

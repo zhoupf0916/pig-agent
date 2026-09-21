@@ -68,12 +68,24 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
         await client.query("ROLLBACK");
         return c.json({ error: "邀请已失效或已使用" }, 401);
       }
-      const account = "user_" + id(),
+      const account = invite.owner_id || "user_" + id(),
         token = randomBytes(32).toString("hex");
-      await client.query(
-        "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,'member',$3)",
-        [account, invite.name, hash(randomBytes(32).toString("hex"))],
-      );
+      if (invite.owner_id) {
+        const existing = (
+          await client.query(
+            "SELECT enabled,role FROM principals WHERE id=$1 FOR UPDATE",
+            [account],
+          )
+        ).rows[0];
+        if (!existing?.enabled || existing.role !== "member") {
+          await client.query("ROLLBACK");
+          return c.json({ error: "账号已停用或不支持邀请登录" }, 401);
+        }
+      } else
+        await client.query(
+          "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,'member',$3)",
+          [account, invite.name, hash(randomBytes(32).toString("hex"))],
+        );
       await client.query(
         "INSERT INTO auth_sessions(id,owner_id,token_hash,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
         [id(), account, hash(token)],
@@ -131,14 +143,27 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
   );
   app.post("/v1/admin/invitations", async (c) => {
     const body = z
-      .object({ name: z.string().trim().min(1).max(80) })
+      .object({
+        name: z.string().trim().min(1).max(80),
+        accountId: z.string().max(100).optional(),
+      })
       .strict()
       .safeParse(await c.req.json());
     if (!body.success) return c.json({ error: "请输入账号名称" }, 400);
+    if (
+      body.data.accountId &&
+      !(
+        await db.query(
+          "SELECT id FROM principals WHERE id=$1 AND enabled AND role='member'",
+          [body.data.accountId],
+        )
+      ).rowCount
+    )
+      return c.json({ error: "只能邀请启用的普通账号登录" }, 400);
     const invite = randomBytes(32).toString("hex");
     await db.query(
-      "INSERT INTO invitations(token_hash,name,expires_at) VALUES($1,$2,now()+interval '24 hours')",
-      [hash(invite), body.data.name],
+      "INSERT INTO invitations(token_hash,name,expires_at,owner_id) VALUES($1,$2,now()+interval '24 hours',$3)",
+      [hash(invite), body.data.name, body.data.accountId || null],
     );
     await db.query(
       "INSERT INTO audit(actor,action) VALUES($1,'create-invitation')",
@@ -179,6 +204,10 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
       }
       if (body.data.revokeSessions || body.data.enabled === false)
         await client.query("DELETE FROM auth_sessions WHERE owner_id=$1", [
+          c.req.param("id"),
+        ]);
+      if (body.data.revokeSessions || body.data.enabled === false)
+        await client.query("DELETE FROM invitations WHERE owner_id=$1", [
           c.req.param("id"),
         ]);
       await client.query("INSERT INTO audit(actor,action) VALUES($1,$2)", [

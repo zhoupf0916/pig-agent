@@ -210,6 +210,7 @@ export async function runRemoteCloudAgent(options: {
     return session;
   } catch (err) {
     releaseHeldUserAbort(eventsHold);
+    if (err && typeof err === "object" && "followUpRejected" in err && err.followUpRejected) delete session.remoteFollowUpPending;
     let aborted = isUserAbort(err, signal);
     let cancelState = "";
     if (aborted && !runId && createSubmitted) {aborted=false;err=Error("远端提交结果尚未确认，请先查看远端运行记录；重试会复用请求标识");}
@@ -322,7 +323,7 @@ async function postFollowUp(
     );
     if (res.ok) return readRunId(await res.json()) || runId;
     if (res.status === 404 || res.status === 410) return "expired";
-    throw Error(`远端追加请求失败（HTTP ${res.status}），未创建替代运行`);
+    throw Object.assign(Error(`远端追加请求失败（HTTP ${res.status}），未创建替代运行`), {followUpRejected:res.status<500});
   } catch (err) {
     if (isUserAbort(err, signal)) {
       throw err instanceof Error ? err : new Error("Aborted");

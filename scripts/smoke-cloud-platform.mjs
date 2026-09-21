@@ -59,6 +59,17 @@ try {
       accepted.account.id,
     );
   }
+  const renewal = await req("/v1/admin/invitations", {
+    body: { name: accounts[0].account.name, accountId: accounts[0].account.id },
+    status: 201,
+  });
+  const device = await req("/auth/accept-invite", {
+    body: { invite: renewal.invite },
+    token: "",
+    status: 201,
+  });
+  assert.equal(device.account.id, accounts[0].account.id);
+  assert.notEqual(device.token, accounts[0].token);
   const created = await Promise.all(
     accounts.map((a) =>
       req("/v1/runs", {
