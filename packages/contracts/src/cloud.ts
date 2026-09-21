@@ -125,3 +125,24 @@ export class CloudRuntimeError extends Error {
     this.code = code;
   }
 }
+
+/** Local control-plane v1 API; distinct from the workstation's session status. */
+export type CloudRunState =
+  | "queued"
+  | "preparing"
+  | "running"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed";
+export type CloudRunSummary = {
+  id: string;
+  state: CloudRunState;
+  prompt: string;
+  owner_id?: string;
+  error?: string;
+  created_at: string;
+  updated_at?: string;
+  model_calls: number;
+};
+export type CloudArtifactSummary = { id: string; path: string; size: number };

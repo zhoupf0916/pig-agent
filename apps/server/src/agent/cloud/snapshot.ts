@@ -163,7 +163,7 @@ export function packWorkspaceSnapshot(root: string): CloudWorkspaceSnapshot {
 
 /** Unpack a snapshot into destRoot. Path escapes and skip-rule names are refused. */
 export function extractWorkspaceSnapshot(snapshot: CloudWorkspaceSnapshot, destRoot: string): string[] {
-  const tar = gunzipSync(Buffer.from(snapshot.data, "base64"));
+  const tar = gunzipSync(Buffer.from(snapshot.data, "base64"), { maxOutputLength: MAX_SNAPSHOT_BYTES + MAX_SNAPSHOT_FILES * 1024 + 1024 });
   const files: string[] = [];
   let offset = 0;
   while (offset + TAR_BLOCK <= tar.length) {
@@ -171,16 +171,19 @@ export function extractWorkspaceSnapshot(snapshot: CloudWorkspaceSnapshot, destR
     offset += TAR_BLOCK;
     if (header.every((b) => b === 0)) break;
     const name = readTarString(header, 0, 100);
-    const size = parseInt(readTarString(header, 124, 12), 8) || 0;
+    const rawSize = readTarString(header, 124, 12);
+    if (!/^[0-7]+$/.test(rawSize)) throw new Error("Invalid snapshot size field");
+    const size = parseInt(rawSize, 8);
     const typeflag = String.fromCharCode(header[156] ?? 0);
     const data = tar.subarray(offset, offset + size);
     offset += size + padding(size);
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_SNAPSHOT_FILE_BYTES || data.length !== size) throw new Error("Invalid snapshot file size");
+    if (files.length >= MAX_SNAPSHOT_FILES) throw new Error("Too many snapshot files");
     if (!name) continue;
     if (name.includes("..") || name.startsWith("/") || name.includes("\\")) {
       throw new Error("Snapshot path escape refused");
     }
-    const base = name.split("/").pop() ?? name;
-    if (shouldSkipCloudHandoffName(base)) {
+    if (name.split("/").some(shouldSkipCloudHandoffName)) {
       throw new Error(`Snapshot contained a skipped path: ${name}`);
     }
     if (typeflag !== "0" && typeflag !== "\0") continue;

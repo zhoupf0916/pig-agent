@@ -15,6 +15,12 @@
 
 具体范围与限制见 [交付链路](docs/delivery-loop.md)、[功能参考](docs/workbench-reference.md)。当前没有多租户云端、账号计费或跨设备云同步。
 
+## 本机 Docker 云平台（开发预览）
+
+执行 `pnpm cloud:up` 会构建并启动 PostgreSQL、云端 API、模型网关和 Worker，真实任务在独立容器执行。用户入口为 [云工作台](http://127.0.0.1:8890/cloud)，管理员入口为 [管理后台](http://127.0.0.1:8890/admin/)，访问令牌在本机 `data/cloud-local/access.txt`。
+
+当前默认模拟模型，用于验证容器执行、事件、产物和故障恢复；尚未接入公开注册或完整云会话同步。详见 [本地云平台运行与验收](docs/local-cloud.md) 和 [分阶段扩展计划](docs/platform-expansion-plan.md)。个人模型密钥不会自动配置到平台。
+
 ## 桌面版（macOS 内测）
 
 Electron 打包了界面和本地 Node 服务，使用者无需安装 Node.js 或 pnpm。首次打开后：

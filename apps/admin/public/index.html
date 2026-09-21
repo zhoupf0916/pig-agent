@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pig Cloud · 管理后台</title>
+    <link rel="stylesheet" href="/admin/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>P / Pig Cloud</strong><span>管理后台 · 本地内测</span
+      ><a href="/cloud">用户工作台 ↗</a><button id="logout">退出</button>
+    </header>
+    <main>
+      <section id="login">
+        <h1>管理执行平台</h1>
+        <p>
+          使用 data/cloud-local/access.txt
+          中的管理员令牌。后台操作会写入审计记录。
+        </p>
+        <form id="login-form">
+          <input
+            id="token"
+            type="password"
+            placeholder="管理员访问令牌"
+            required
+          /><button>连接平台</button>
+        </form>
+      </section>
+      <p id="error" role="alert"></p>
+      <section id="dashboard" hidden>
+        <div class="heading">
+          <div>
+            <small>PLATFORM OVERVIEW</small>
+            <h1>运行概览</h1>
+          </div>
+          <span id="mode"></span>
+        </div>
+        <div id="counts" class="cards"></div>
+        <h2>执行节点</h2>
+        <div id="workers" class="panel"></div>
+        <h2>最近任务</h2>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>账号</th>
+                <th>状态</th>
+                <th>模型调用</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="runs"></tbody>
+          </table>
+        </div>
+        <h2>操作审计</h2>
+        <div id="audit" class="panel"></div>
+        <h2>任务详情</h2>
+        <pre id="detail" class="panel">选择任务查看详情</pre>
+      </section>
+    </main>
+    <script type="module" src="/admin/app.js"></script>
+  </body>
+</html>
