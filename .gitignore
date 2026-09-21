@@ -13,3 +13,8 @@ coverage
 web/dist
 server/dist
 *.tsbuildinfo
+
+desktop-dist/
+release/
+
+apps/desktop/assets/AppIcon.iconset/

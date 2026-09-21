@@ -36,9 +36,9 @@ BF 原实现会在项目切换后的首轮渲染中，用上一项目尚未更�
 export TMPDIR="$(cd "$TMPDIR" && pwd -P)"
 export DATA_DIR="$(mktemp -d "$TMPDIR/pig-bf-tests-XXXXXX")"
 node node_modules/vitest/vitest.mjs run --no-file-parallelism
-node node_modules/typescript/bin/tsc -p server/tsconfig.json --noEmit
-node node_modules/typescript/bin/tsc -p web/tsconfig.json --noEmit
-node node_modules/vite/bin/vite.js build --config web/vite.config.ts
+node node_modules/typescript/bin/tsc -p apps/server/tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p apps/web/tsconfig.json --noEmit
+pnpm --filter @pig-agent/web build
 ```
 
 ## 交付状态

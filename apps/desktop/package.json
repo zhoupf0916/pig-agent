@@ -1,0 +1,19 @@
+{
+  "name": "@pig-agent/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.cjs",
+  "description": "Local-first AI agent workstation for desktop and web",
+  "author": "Pig Agent contributors",
+  "scripts": {
+    "build": "pnpm --workspace-root build && node ../../scripts/build-desktop.mjs",
+    "dev": "pnpm build && electron .",
+    "pack": "pnpm build && electron-builder --config ../../electron-builder.yml --mac --dir",
+    "dist": "pnpm build && electron-builder --config ../../electron-builder.yml --mac"
+  },
+  "devDependencies": {
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  }
+}
