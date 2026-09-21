@@ -237,6 +237,7 @@ Does **not** change the default runtime (still **本机 Pig**). An already-open 
 
 - [ ] **BF-01** Two workstation tabs on the same host. Tab B is on `#/projects/:id?todo=` with that todo highlighted. Tab A deletes that todo — Tab B on focus, visibility, or one short poll confirms the todo is absent via the existing AA project-detail snapshot and clears the `?todo=` highlight. No full page refresh
 - [ ] **BF-02** Do **not** `GET` the deleted todo id. No new poller. The board row is already gone via AA; only the open highlight / query is cleared
+- [ ] **BF regression** Open project A, then navigate to project B with a valid `?todo=` while B's detail is loading. A's stale detail must not clear B's highlight. Only B's own detail may confirm deletion; preserve any `?asset=` parameter
 - [ ] **BF-03** Header chip still defaults to **本机 Pig**. Milestone O–BE / AA·AZ / L·M·N / W·X unchanged. Do not touch asset / messages / AZ / BA / BB / BE. No new sync stack / webhook
 - [ ] **BF-04** Copy / JSON never show `sk-…` / `Bearer` / `DEEPSEEK_API_KEY` in plaintext. Automated: `pnpm test` + `pnpm typecheck`
 - [ ] This is **not** a credentials vault, connector, multi-agent parallelism, public webhook, or sandbox change

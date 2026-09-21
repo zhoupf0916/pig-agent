@@ -7,7 +7,7 @@ import {
   applyProjectDetailSnapshot,
   applyProjectsListSnapshot,
   nextOpenProjectId,
-  nextOpenTodoHighlight,
+  shouldClearOpenTodoHighlight,
   shouldFetchProjectDetail,
   startProjectsSync,
 } from "../lib/projects-sync";
@@ -110,7 +110,7 @@ export function ProjectsPanel({
         setPreviewAsset((prev) => applyOpenAssetPreviewSnapshot(prev, next));
         // BF: AA detail snapshot is the source of truth for ?todo= — no GET of the deleted id.
         const openTodo = highlightTodoIdRef.current;
-        if (openTodo && nextOpenTodoHighlight(openTodo, next.todos) !== openTodo) {
+        if (shouldClearOpenTodoHighlight(selectedId, openTodo, next)) {
           onSelectProject(selectedId, { assetId: highlightAssetIdRef.current });
         }
       },
@@ -128,8 +128,7 @@ export function ProjectsPanel({
   }, [detail, highlightAssetId]);
 
   useEffect(() => {
-    if (!detail || !highlightTodoId) return;
-    if (nextOpenTodoHighlight(highlightTodoId, detail.todos) === highlightTodoId) return;
+    if (!shouldClearOpenTodoHighlight(selectedId, highlightTodoId, detail)) return;
     onSelectProject(selectedId, { assetId: highlightAssetId });
   }, [detail, highlightTodoId, highlightAssetId, selectedId]);
 

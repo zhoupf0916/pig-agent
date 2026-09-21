@@ -9,6 +9,7 @@ import {
   nextOpenProjectId,
   nextOpenTodoHighlight,
   nextOpenTodoHighlightHash,
+  shouldClearOpenTodoHighlight,
   paintedOpenAssetPreviewSourceSession,
   PROJECTS_SYNC_POLL_MS,
   projectDetailSyncKey,
@@ -1539,6 +1540,17 @@ describe("open asset preview after source session delete (Milestone BB)", () => 
 });
 
 describe("open todo highlight after todo deleted elsewhere (Milestone BF)", () => {
+  it("keeps the destination todo highlight while the previous project's detail is still rendered", () => {
+    const previous = project({ id: "prj_a", todos: [] });
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", previous)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", null)).toBe(false);
+    expect(shouldClearOpenTodoHighlight(undefined, "td_b", previous)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_a", undefined, previous)).toBe(false);
+    const destination = project({ id: "prj_b", todos: [todoRow({ id: "td_b" })] });
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", destination)).toBe(false);
+    expect(shouldClearOpenTodoHighlight("prj_b", "td_b", { ...destination, todos: [] })).toBe(true);
+  });
+
   function todoRow(
     overrides: Partial<Project["todos"][number]> & { id: string },
   ): Project["todos"][number] {

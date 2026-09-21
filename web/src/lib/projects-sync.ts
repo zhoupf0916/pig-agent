@@ -240,6 +240,18 @@ export function nextOpenTodoHighlight(
   return undefined;
 }
 
+/** Only the selected project's snapshot can confirm its highlighted todo is gone. */
+export function shouldClearOpenTodoHighlight(
+  projectId: string | undefined,
+  todoId: string | undefined,
+  detail: Pick<Project, "id" | "todos"> | null,
+): boolean {
+  return Boolean(
+    projectId && todoId && detail?.id === projectId &&
+    nextOpenTodoHighlight(todoId, detail.todos) !== todoId,
+  );
+}
+
 /**
  * Rewrite `#/projects/:id?todo=` after the AA snapshot confirms the id is gone.
  * Keeps optional ?asset=. Same hash when the todo is still listed.
