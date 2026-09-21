@@ -68,7 +68,9 @@ export function resolveInWorkspace(
 }
 
 export function toRel(workspaceRoot: string, absolutePath: string): string {
-  const rel = relative(workspaceRoot, absolutePath);
+  // resolveInWorkspace returns canonical paths, including for new/deleted files.
+  // The configured root may be an alias (e.g. /var -> /private/var on macOS).
+  const rel = relative(normalizeWorkspaceRoot(workspaceRoot), absolutePath);
   return rel === "" ? "." : rel.split(sep).join("/");
 }
 

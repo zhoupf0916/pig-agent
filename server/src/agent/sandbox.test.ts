@@ -2,13 +2,24 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SandboxError, resolveInWorkspace } from "./sandbox.ts";
+import { SandboxError, resolveInWorkspace, toRel } from "./sandbox.ts";
 
 function tempWorkspace(): string {
   return mkdtempSync(join(tmpdir(), "pig-agent-ws-"));
 }
 
 describe("resolveInWorkspace", () => {
+  it("keeps artifact paths relative when the configured workspace is a symlink", () => {
+    const root = tempWorkspace();
+    const alias = join(tempWorkspace(), "workspace");
+    symlinkSync(root, alias);
+    writeFileSync(join(root, "note.md"), "hi");
+    expect(toRel(alias, resolveInWorkspace(alias, "note.md", { mustExist: true }))).toBe("note.md");
+    expect(toRel(alias, resolveInWorkspace(alias, "new.md"))).toBe("new.md");
+    expect(toRel(alias, resolveInWorkspace(alias, ".", { mustExist: true }))).toBe(".");
+    expect(() => resolveInWorkspace(alias, "../outside.md")).toThrow(SandboxError);
+  });
+
   it("resolves a relative file inside the root", () => {
     const root = tempWorkspace();
     writeFileSync(join(root, "note.md"), "hi");
