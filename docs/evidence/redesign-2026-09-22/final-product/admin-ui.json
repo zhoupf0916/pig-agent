@@ -1,7 +1,7 @@
 {
   "ok": true,
   "base": "http://127.0.0.1:8892",
-  "testedAt": "2026-09-21T18:42:39.638Z",
+  "testedAt": "2026-09-21T18:55:50.342Z",
   "mutation": true,
   "checks": [
     "invalid login",

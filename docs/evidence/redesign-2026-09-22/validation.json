@@ -20,11 +20,13 @@
     "source": "Parent integrator actual validation report"
   },
   "combinedProductSmoke": {
-    "result": "passed, exit 0",
-    "lastAdminCheckAt": "2026-09-21T18:42:39.638Z",
+    "result": "fresh mkdtemp data directory run passed, exit 0",
+    "lastAdminCheckAt": "2026-09-21T18:55:50.342Z",
     "adminChecks": 16,
     "base": "isolated workbench8798 + cluster8892",
-    "scope": "core real container flow, settings/navigation/offline, creation races, run following, context6, remote artifact source/version/download/import, admin"
+    "scope": "core real container flow, settings/navigation/offline, creation races, run following, context6, remote artifact source/version/download/import, admin",
+    "coreFlowChecks": 8,
+    "dataIsolation": "Every product run gets a fresh temporary DATA_DIR forwarded through PIG_TEST_DATA_DIR. F2 uses this run flow sessionId and authoritative successful conversation runs."
   },
   "scope": "Local development and isolated mock containers. No production capacity or exactly-once claim.",
   "cluster": {
@@ -32,5 +34,12 @@
     "realRunnerFaultDurationMs": 59140,
     "finalState": "zero execution containers and networks",
     "dnsFault": "original strict assertion retained and passed after topology/resolver/config-mount correction"
+  },
+  "ciFollowup": {
+    "initialHead": "866edf8",
+    "initialOutcome": "Cluster job exposed a fixture precondition: recovered conversation after explicit retry had only one successful version; repeated local data had let F2 select another older session.",
+    "correction": "Keep all version/content assertions; add actual follow-up and approval after retry to create two successful versions in the current recovered conversation. Fresh directory and explicit session selection prevent old-data fallback.",
+    "currentState": "Fresh local full suite passed; CI rerun pending.",
+    "productionCodeChangedForThisFix": false
   }
 }

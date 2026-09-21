@@ -1,11 +1,11 @@
 {
-  "at": "2026-09-21T18:44:01.747Z",
+  "at": "2026-09-21T18:57:11.955Z",
   "origin": "Isolated local browser and Docker evidence; UTC timestamps, Asia/Shanghai review date",
   "files": [
     {
       "file": "README.md",
-      "bytes": 1886,
-      "sha256": "46dc98ef485334f630e33a9f02d558baa875f93088c58f96d7c69c286a053d26"
+      "bytes": 2030,
+      "sha256": "10b1f49c843b69a4bcb7bdedbda34ee6ea6f4180f776347423dfd66c078202a2"
     },
     {
       "file": "admin/accounts-1280x800-dark.png",
@@ -339,8 +339,8 @@
     },
     {
       "file": "after/inspector-focus-mobile.png",
-      "bytes": 22251,
-      "sha256": "ee709e435d262838ec5d5a1331fbbe9bc5e24781388f67ec30ceba6bebac9388"
+      "bytes": 22649,
+      "sha256": "1c921ad8b4b6cbda152928f824eaff8e025851f060c671e14f4dea71f3e38cb0"
     },
     {
       "file": "after/long-content-1280x800-dark.png",
@@ -590,7 +590,7 @@
     {
       "file": "after/session-context.json",
       "bytes": 632,
-      "sha256": "895da79bdcb99c8dafa9e22c6cd1fa0caeca51ded5df1a362c65be5d066f1f90"
+      "sha256": "ac0065b03565e6966a8e5cea60e77b4337129a527497c2ddaf475dc49718ca02"
     },
     {
       "file": "after/settings-1280x800-dark.png",
@@ -1149,13 +1149,13 @@
     },
     {
       "file": "final-product/admin-accounts.png",
-      "bytes": 122175,
-      "sha256": "dfc7b07c101567960ee0cebb469a71ea71b6c1eff68ef4e4089007e8c24b2438"
+      "bytes": 122074,
+      "sha256": "d6fb95653fe6a63c59e780d8e2d869efb437d25725fff45d0f09e90e1e2de0c4"
     },
     {
       "file": "final-product/admin-audit.png",
-      "bytes": 641825,
-      "sha256": "a55e940bc2233f3e7f5a4e277c0788a81f47393dfc863793a7308f7bd5fd8f46"
+      "bytes": 690728,
+      "sha256": "d65371b6db30533c2a1cc0f0fcd78f6fd9333fea9e0c20bb1e4b7990ee927339"
     },
     {
       "file": "final-product/admin-mobile.png",
@@ -1164,63 +1164,63 @@
     },
     {
       "file": "final-product/admin-overview.png",
-      "bytes": 144311,
-      "sha256": "1ea9e8f61fb82e5989724f6b0835bca3eb4f579e5aaeb476dd48a2aaeb0f6c5c"
+      "bytes": 144399,
+      "sha256": "1c310d17914905e06614c4ab15764eedfc8e6fd7975dea60203107b36cb6f4db"
     },
     {
       "file": "final-product/admin-run-detail.png",
-      "bytes": 134355,
-      "sha256": "23e63cc7bfaa1e773e00967abbb87a213281394d0fd9699bb4f265b6c5e0aa73"
+      "bytes": 131875,
+      "sha256": "9e536030d2711d0be2bb1f685256ab704a2edc0fa59caf4c41c3eba383762d23"
     },
     {
       "file": "final-product/admin-runners.png",
-      "bytes": 89479,
-      "sha256": "4d82725dd129aa5221fa0d6d68bf84026d71fa82a4ed8741cc5c37ede87641e6"
+      "bytes": 89890,
+      "sha256": "5fed064994072d9eb902a840770d63b5544688f9b1968a0e443010884d4ade51"
     },
     {
       "file": "final-product/admin-settings.png",
-      "bytes": 134020,
-      "sha256": "2c4d4145888b9d2d25d443d91c321df58ab971236576f1d89ac349071feda841"
+      "bytes": 133884,
+      "sha256": "db456e8b7ec7a34f2ea9f017feaf0365a2a1c1dce518d38fe7652760b9d3fe96"
     },
     {
       "file": "final-product/admin-ui.json",
       "bytes": 685,
-      "sha256": "0736f1a4b4577bd10edd41b37f8bc1812cfc22965446cf0e6d9fc99567fb34c4"
+      "sha256": "f4883d6284590aa7210768b0511dedc6b0e0a0d65d537eb48095d457c32f11e1"
     },
     {
       "file": "final-product/artifact-source-desktop.png",
-      "bytes": 176331,
-      "sha256": "830377c2f4adc7b95d20b9f71fb5a8f2aaffb22c532e7bb694061ac91a00d45c"
+      "bytes": 175985,
+      "sha256": "70c7af224c88410d2806334e7a8c03c5497bf5488bdc20492698f8089cb47355"
     },
     {
       "file": "final-product/artifact-source-mobile.png",
-      "bytes": 46185,
-      "sha256": "85e1494cd1ac4c23ce0aa5a891da5db66c0b92b2e8d744c3efae0c06a9f8a279"
+      "bytes": 46105,
+      "sha256": "6c8db4966da8e7fc74710794122200ca8e83a44cda350860516c7a439e55a2c9"
     },
     {
       "file": "final-product/artifact-source.json",
-      "bytes": 1466,
-      "sha256": "01e5ce3bc045ae5b41110278c665d993b00e67e3408604d344d3442fd279d457"
+      "bytes": 1784,
+      "sha256": "cea2d1e1ae4e87ee6659436e3dc9a8bcb3f5e708050ed658836d2bc49510f026"
     },
     {
       "file": "final-product/flow-approval.png",
-      "bytes": 144931,
-      "sha256": "460f7181092253829ecbc13f2c09e9b60ec8828e5c78a19376b6629e629eacf6"
+      "bytes": 121815,
+      "sha256": "88fd51b1c8df370072c2089f02b8675a7636bf5cb3123974c19b3e3797bdff34"
     },
     {
       "file": "final-product/flow-conversation.png",
-      "bytes": 146993,
-      "sha256": "61550a69e747562449cfc96fe1d759cffb595633a27c85f6402d236363de9029"
+      "bytes": 124090,
+      "sha256": "c8748d9a162460807a2e0bce2cac49db380dd4d166abdbe6f36434a8b195219f"
     },
     {
       "file": "final-product/flow-result.png",
-      "bytes": 167776,
-      "sha256": "ce9b1b6e61bccdc70b4f02284b40025f1e11a2011f4d02183279c7bbe0b9a388"
+      "bytes": 144358,
+      "sha256": "3124337180d0db0c157fa0d890b42ba783436ef028794602dadd905d9477743d"
     },
     {
       "file": "final-product/flow.json",
-      "bytes": 640,
-      "sha256": "ea1bb9f9a16e7e8b9585fcb4c4b289314ffebcac8664f7061f6a36d34651abbc"
+      "bytes": 744,
+      "sha256": "3ed2c2ca2623c9cb34378dbaa789e1a653fe695148f9be058b60f8d18ea2e5d7"
     },
     {
       "file": "final-product/settings-mobile.png",
@@ -1230,12 +1230,12 @@
     {
       "file": "index.html",
       "bytes": 21731,
-      "sha256": "15e39844dd2e6bf00a2c4b2d10ca3ee0538cf42c3c2d3959d570061b452790c8"
+      "sha256": "d69a8ccea39abc575977a1bf10ff520527b023dbb2510ad6825e230225160f9f"
     },
     {
       "file": "paired-index.json",
       "bytes": 21541,
-      "sha256": "3b77557ff971067e0cff630a25c50474531e6a589436a022ff69129824a8e918"
+      "sha256": "507279e354853b770f11e15b250a0ba6cdb2bbaabe03cf87ffff5ef8b2ad567b"
     },
     {
       "file": "real-flow/flow.json",
@@ -1254,8 +1254,8 @@
     },
     {
       "file": "validation.json",
-      "bytes": 1439,
-      "sha256": "2dbb767b5c2dec53dbcddea4a69e4b9454c533b5489460593a2e64a0e5da7f34"
+      "bytes": 2316,
+      "sha256": "783d6c5eb712a603c0b837d085c34c689387928cc15b4e050cc4b772a27f5c74"
     }
   ]
 }

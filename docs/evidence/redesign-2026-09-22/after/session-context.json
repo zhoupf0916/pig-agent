@@ -1,5 +1,5 @@
 {
-  "at": "2026-09-21T18:42:34.078Z",
+  "at": "2026-09-21T18:55:44.552Z",
   "checks": [
     "delayed real cancel response cannot reopen previous task",
     "delayed actual project binding updates A only and never replaces visible B",

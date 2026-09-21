@@ -15,9 +15,11 @@ const settings = await api("/api/settings");
 // This regression deliberately mutates a same-named host file, only in the
 // isolated review workspace. It never operates on a user's configured project.
 assert.ok(
-  ["/data/acceptance-review/workspace", "/data/redesign-local/workspace", "/data/product-workspace"].some(
-    (suffix) => resolve(settings.workspaceRoot).endsWith(suffix),
-  ),
+  [
+    "/data/acceptance-review/workspace",
+    "/data/redesign-local/workspace",
+    "/data/product-workspace",
+  ].some((suffix) => resolve(settings.workspaceRoot).endsWith(suffix)),
   "requires isolated review workspace",
 );
 const summaries = await api("/api/sessions");
@@ -30,14 +32,16 @@ let session, conversation;
 let successfulRuns;
 for (const candidate of sessions.filter(
   (s) =>
-    s.remoteRunId && s.artifacts?.some((a) => a.path === "cloud-proof.txt"),
+    s.remoteRunId &&
+    (!process.env.PIG_REVIEW_SESSION_ID ||
+      s.id === process.env.PIG_REVIEW_SESSION_ID),
 )) {
   const run = await api("/api/remote/v1/runs/" + candidate.remoteRunId);
   if (!run.conversation_id) continue;
   const data = await api("/api/remote/v1/conversations/" + run.conversation_id);
-  const completed=data.runs.filter(run=>run.state === "succeeded");
+  const completed = data.runs.filter((run) => run.state === "succeeded");
   if (completed.length >= 2) {
-    successfulRuns=completed;
+    successfulRuns = completed;
     session = candidate;
     conversation = data;
     break;
@@ -80,7 +84,9 @@ async function openInspector() {
   if ((await trigger.getAttribute("aria-expanded")) !== "true")
     await trigger.click();
   await expect(panel).toBeVisible();
-  await panel.getByLabel("所属运行 / 版本").selectOption(successfulRuns.at(-1).id);
+  await panel
+    .getByLabel("所属运行 / 版本")
+    .selectOption(successfulRuns.at(-1).id);
   return panel;
 }
 try {

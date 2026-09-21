@@ -6,7 +6,7 @@
 - 核心尺寸为 1440×900、1280×800、390×844，浅/深双主题。
 - `before/manifest.json` 与 `after/workbench-matrix.json` 分别说明截图来源；UI 夹具不作为真实执行证明。
 - `after/settings-check.json`、`after/pages-flow.json`、`after/session-context.json` 和 `admin/evidence.json` 记录真实浏览器操作。
-- `final-product/` 仅包含最后一次完整组合冒烟的明确允许清单；管理端16项在2026-09-21T18:42:39.638Z完成。旧flow-debug等中间失败截图不在归档中。
+- `final-product/` 仅包含最后一次全新临时数据目录组合冒烟的明确允许清单；管理端16项在2026-09-21T18:55:50.342Z完成。旧flow-debug等中间失败截图不在归档中。本轮flow与F2的sessionId一致；真实重试恢复后额外跟进，建立两个成功版本，保留原双版本断言。
 - `real-flow/flow.json` 记录真实 mock 容器的创建、审批、下载、跟进、拒绝重试和取消。
 - `cluster/control.json` 是双控制面14组协议场景，`cluster/runners.json` 是真实2×2节点故障与资源清理测试；模拟节点/时间戳注入与真实容器分开标注。
 - `reliability/` 是完成交付故障注入与多控制面并发/代次证据。未归档 Runner outbox 或任何秘密配置。

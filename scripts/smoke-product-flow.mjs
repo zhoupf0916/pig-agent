@@ -104,6 +104,15 @@ try {
   checks.push(
     "rejected operation fails explicitly; user-triggered retry returns to approval and succeeds",
   );
+  // Explicit retry starts a new remote conversation. Build two real successful
+  // versions in that current conversation for the subsequent provenance check.
+  const recoveredRun = (await session()).remoteRunId;
+  await send("继续核验重试后的 cloud-proof.txt，保留第二个可下载版本。");
+  await approve();
+  assert.notEqual((await session()).remoteRunId, recoveredRun);
+  checks.push(
+    "follow-up after explicit retry creates a second successful version in the recovered conversation",
+  );
   await send("再次检查文件，此轮用于验证取消。");
   const cancelledRun = (await session()).remoteRunId;
   await page.getByRole("button", { name: "停止", exact: true }).click();
