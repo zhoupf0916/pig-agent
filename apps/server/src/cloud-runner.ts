@@ -47,6 +47,7 @@ try {
       content: input.prompt,
       createdAt: now,
     });
+  const deadline = AbortSignal.timeout(210000);
   const result = await runAgent({
     session: {
       id,
@@ -64,12 +65,13 @@ try {
       llmApiKey: token,
       llmModel: "cloud-managed",
     }),
-    signal: AbortSignal.timeout(210000),
+    signal: deadline,
     emit: (event) => emit({ kind: "event", event }),
     memoryPins: [],
     projectInstruction:
       "You are running inside an isolated cloud container. The workspace is /workspace. Changes only affect this task snapshot. Network access is restricted.",
   });
+  if (deadline.aborted) throw new Error("容器任务超过执行时限");
   const files: Array<{ path: string; content: string }> = [];
   let bytes = 0;
   async function collect(dir: string) {
