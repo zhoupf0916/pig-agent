@@ -2,6 +2,10 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
 const app = new Hono();
+app.onError((error, c) => {
+  console.error(error.name);
+  return c.json({ error: "模型网关暂时无法连接上游服务" }, 502);
+});
 app.use("*", bodyLimit({ maxSize: 1024 * 1024 }));
 const control = process.env.CONTROL_URL || "http://cloud:8890";
 app.get("/health", (c) => c.json({ ok: true }));
@@ -27,6 +31,7 @@ app.post("/approvals", async (c) => {
 app.post("/approvals/:id/poll", async (c) => {
   if (!/^approval_[a-f0-9]{32}$/.test(c.req.param("id")))
     return c.json({ error: "Invalid approval" }, 400);
+  const body = await c.req.json().catch(() => ({}));
   const r = await fetch(
     control + `/internal/approvals/${c.req.param("id")}/poll`,
     {
@@ -36,6 +41,7 @@ app.post("/approvals/:id/poll", async (c) => {
         Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
       },
       body: JSON.stringify({
+        requestId: body?.requestId,
         token: c.req.header("Authorization")?.replace(/^Bearer /, "") || "",
       }),
       signal: AbortSignal.timeout(10000),

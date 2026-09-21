@@ -71,6 +71,13 @@ async function transaction<T>(
   }
 }
 async function admission(c: PoolClient, row: Row): Promise<string | null> {
+  await c.query("SELECT pg_advisory_xact_lock(71839023)");
+  const queue = (
+    await c.query(
+      "SELECT (SELECT count(*) FROM runs WHERE state='queued') >= COALESCE((SELECT (value->>'queueLimit')::int FROM platform_settings WHERE key='executionPolicy'),200) AS full",
+    )
+  ).rows[0];
+  if (queue.full) return "全局等待队列已满，已跳过本次触发";
   const active = await c.query(
     "SELECT schedule_id FROM runs WHERE owner_id=$1 AND state IN ('queued','preparing','running','cancelling')",
     [row.owner_id],

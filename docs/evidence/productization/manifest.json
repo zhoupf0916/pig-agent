@@ -1,0 +1,20 @@
+{
+  "testedCodeCommit": "51d42ff",
+  "environment": "macOS arm64 / Docker Desktop / Node 24.21.0 / pnpm 11.19.0 / system Chrome via Playwright 1.63.0",
+  "unitTests": 612,
+  "testFiles": 87,
+  "model": "isolated mock for cluster and browser acceptance",
+  "filesSha256": {
+    "admin-mobile.png": "7f7d8a398297784b7ad94c94c86e8df668128c12fe3c8e4fae083b993ac79e38",
+    "admin-runners.png": "cedea08e7eb17ce7b03fb528cf6016bd4643c8c674b387b27c9084e011ebf04f",
+    "admin-settings.png": "d4f4909791dd6fbfbefef1c48ccab159e8cc57406f377c5fa72b22ddc3340b19",
+    "admin-ui.json": "1fbe58f99dc40e8f448b14e94525cb7af0fbf65c9ac29aceed8a28fa5865ba57",
+    "control.json": "a34930211b6fbe33d76a4d819594cdbdaf2e4d737606f07f1f31704fe8e90ab6",
+    "flow-approval.png": "80e0420be0e4fda45178c7fdb2c6c024e3a00c120913f41f353ba37d0eedd6ea",
+    "flow-conversation.png": "9574c69a75034e3aee3d34a9d525dfbdace5857e9ea0e930d90177226bab8f1e",
+    "flow.json": "92a36fd1362f526e628b9387680cf68c6b82c4158ef6d474b7eb531d197fdd13",
+    "real-model.json": "3c9c92d785b670a835bd85a994ee9af1b35e18975bc12c118eae2adcee194dde",
+    "runners.json": "6446f90f09b5f3f8ce3cff4a7262158ebf9520b7b150655d282f840eed9ff337",
+    "settings-mobile.png": "ae9fe239510b9e566fb990cad212fde4d998657fa5de64331d27dcb8c0d2b7c6"
+  }
+}

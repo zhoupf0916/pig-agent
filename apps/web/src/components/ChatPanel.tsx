@@ -4,13 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { streamingStatusLabel } from "../lib/create-run-progress";
 import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
-import type { ChatMessage, Expert, ExpertTeam, LiveTool, PlanStep, Session, TeamRunMember } from "../types";
+import type { ChatMessage, ExecutionSurface, Expert, ExpertTeam, LiveTool, PlanStep, Session, TeamRunMember } from "../types";
 import { HandoffDialog } from "./HandoffDialog";
 import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
   initializing = false,
+  executionSurface,
+  onOpenRemote,
   session,
   draft,
   streaming,
@@ -33,6 +35,8 @@ export function ChatPanel({
   onOpenMemory,
 }: {
   initializing?: boolean;
+  executionSurface?: ExecutionSurface;
+  onOpenRemote?: () => void;
   session: Session | null;
   draft: string;
   streaming: boolean;
@@ -59,8 +63,16 @@ export function ChatPanel({
   const [memoryStatus, setMemoryStatus] = useState<string | null>(null);
   const [recapBusy, setRecapBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const [awayFromLatest, setAwayFromLatest] = useState(false);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    followLatest.current = true;
+    setAwayFromLatest(false);
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [session?.id]);
+  useEffect(() => {
+    if (followLatest.current) endRef.current?.scrollIntoView({ block: "end" });
   }, [session?.messages, liveTools, streaming]);
 
   const pinnedTeam = teams.find((t) => t.id === session?.expertTeamId);
@@ -225,8 +237,14 @@ export function ChatPanel({
         />
       )}
       <StepStrip steps={session?.steps ?? []} />
-      {session && <WorkbenchPanel key={session.id} sessionId={session.id} running={streaming} onResume={onResume} onRefresh={onRefresh} onDraft={onDraft} />}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      {session && <WorkbenchPanel key={session.id} sessionId={session.id} remote={executionSurface?.kind === "cloud-remote"} remoteRequireApproval={session.remoteRequireApproval} onOpenRemote={onOpenRemote} running={streaming} onResume={onResume} onRefresh={onRefresh} onDraft={onDraft} />}
+      <div ref={transcriptRef} onScroll={() => {
+        const el = transcriptRef.current;
+        if (!el) return;
+        const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        followLatest.current = near;
+        setAwayFromLatest(!near);
+      }} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
         {!session && (
           <EmptyState
             title="今天，让什么想法落地？"
@@ -257,6 +275,8 @@ export function ChatPanel({
           <div ref={endRef} />
         </div>
       </div>
+      {awayFromLatest && <div className="flex justify-center py-1"><button className="btn-ghost rounded-full border border-ink-300 bg-panel" onClick={() => { followLatest.current = true; setAwayFromLatest(false); endRef.current?.scrollIntoView({ block: "end" }); }}>回到最新消息 ↓</button></div>}
+
       <Composer
         draft={draft}
         streaming={streaming}

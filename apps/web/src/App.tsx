@@ -32,7 +32,7 @@ import {
   startWorkspaceFileSync,
   type WorkspaceFilePreview,
 } from "./lib/workspace-file-sync";
-import { describeExecutionSurface, surfaceFromSettings } from "./lib/runtime-surface";
+import { describeExecutionSurface, surfaceForSession } from "./lib/runtime-surface";
 import {
   applySessionListSnapshot,
   startSessionListSync,
@@ -125,6 +125,11 @@ export function App() {
       : "";
   });
   const [streaming, setStreaming] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const creatingSessionRef = useRef(false);
+  const [savingExecution, setSavingExecution] = useState(false);
+  const savingExecutionRef = useRef(false);
+  const [taskActionError, setTaskActionError] = useState<string | null>(null);
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [desktopSetup, setDesktopSetup] = useState(() => !!window.pigDesktop && localStorage.getItem("pig-agent.desktop-setup") !== "complete");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -416,11 +421,22 @@ export function App() {
   }, []);
 
   const createSession = useCallback(async (projectId?: string) => {
-    const created = await api.createSession(projectId ? { projectId } : undefined);
-    await refreshSessions();
-    await refreshProjects();
-    await loadSession(created.id);
-    goWorkstation(created.id);
+    if (creatingSessionRef.current || savingExecutionRef.current) return;
+    creatingSessionRef.current = true;
+    setCreatingSession(true);
+    setTaskActionError(null);
+    try {
+      const created = await api.createSession(projectId ? { projectId } : undefined);
+      await refreshSessions();
+      await refreshProjects();
+      await loadSession(created.id);
+      goWorkstation(created.id);
+    } catch (error) {
+      setTaskActionError(redactSecretsForDisplay(error instanceof Error ? error.message : String(error)));
+    } finally {
+      creatingSessionRef.current = false;
+      setCreatingSession(false);
+    }
   }, [goWorkstation, loadSession, refreshProjects, refreshSessions]);
 
   const removeSession = useCallback(
@@ -574,7 +590,7 @@ export function App() {
   }, [activeId, applyEvent]);
 
   const send = useCallback(async () => {
-    if (streaming || abortRef.current || session?.status === "running" || !draft.trim()) return;
+    if (creatingSessionRef.current || savingExecutionRef.current || streaming || abortRef.current || session?.status === "running" || !draft.trim()) return;
     const content = draft.trim();
     const clientMessageId = crypto.randomUUID();
     const controller = new AbortController();
@@ -626,7 +642,7 @@ export function App() {
   }, [session]);
 
   const retry = useCallback(async () => {
-    if (!session || streaming || abortRef.current) return;
+    if (creatingSessionRef.current || savingExecutionRef.current || !session || streaming || abortRef.current) return;
     setStreaming(true);
     setLiveTools([]);
     setSession((prev) =>
@@ -663,7 +679,7 @@ export function App() {
   }, [applyEvent, refreshSessions, session, streaming]);
 
   const startTeamRun = useCallback(async () => {
-    if (!session || streaming || abortRef.current || session.status === "running") return;
+    if (creatingSessionRef.current || savingExecutionRef.current || !session || streaming || abortRef.current || session.status === "running") return;
     const content = draft.trim();
     const clientMessageId = content ? crypto.randomUUID() : undefined;
     const canContinue = Boolean(
@@ -808,12 +824,12 @@ export function App() {
     if (!settings) {
       return describeExecutionSurface({ runtime: "pig" });
     }
-    return surfaceFromSettings(session?.executionTarget ? {...settings,runtime:session.executionTarget === "remote" ? "cloud" : session.engine || "pig",cloudMode:session.executionTarget === "remote" ? "remote" : settings.cloudMode} : settings);
+    return surfaceForSession(settings, session);
   }, [settings,session?.executionTarget,session?.engine]);
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      {remoteRunView !== null && <RemoteRunsPanel runId={remoteRunView || undefined} onClose={()=>setRemoteRunView(null)} onOpenSession={id=>{setRemoteRunView(null);goWorkstation(id);void refreshSessions();void loadSession(id);}}/>}
+      {remoteRunView !== null && <RemoteRunsPanel runId={remoteRunView || undefined} followSessionId={session?.executionTarget === "remote" || session?.remoteRunId ? session.id : undefined} onClose={()=>setRemoteRunView(null)} onOpenSession={id=>{setRemoteRunView(null);goWorkstation(id);void refreshSessions();void loadSession(id);}}/>}
       <header className="app-header flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
@@ -870,10 +886,22 @@ export function App() {
           <ThemeToggle theme={theme} onChange={setPersistedTheme} />
           <button className="btn-ghost text-xs" onClick={()=>setRemoteRunView(session?.remoteRunId || "")}>远端运行</button>
           {route.name === "workstation" && session && (
-            <ExecutionPicker session={session} settings={settings} disabled={streaming || session.status === "running"}
+            <ExecutionPicker session={session} settings={settings} disabled={creatingSession || savingExecution || streaming || session.status === "running"}
               onChange={async patch => {
-                try { setSession(await api.patchSession(session.id, patch)); }
-                catch (error) { setBootError(String(error)); }
+                if (creatingSessionRef.current || savingExecutionRef.current) return;
+                const targetId = session.id;
+                savingExecutionRef.current = true;
+                setSavingExecution(true);
+                setTaskActionError(null);
+                try {
+                  const next = await api.patchSession(targetId, patch);
+                  if (activeIdRef.current === targetId) setSession(previous => previous?.id === targetId ? next : previous);
+                } catch (error) {
+                  if (activeIdRef.current === targetId) setTaskActionError(redactSecretsForDisplay(error instanceof Error ? error.message : String(error)));
+                } finally {
+                  savingExecutionRef.current = false;
+                  setSavingExecution(false);
+                }
               }} />
           )}
           <RuntimeChip surface={executionSurface} onClick={() => setSettingsOpen(true)} />
@@ -891,6 +919,8 @@ export function App() {
         </div>
       </header>
 
+      {(creatingSession || savingExecution) && <div role="status" className="border-b border-ink-300 bg-accent-soft px-4 py-2 text-xs text-accent">{creatingSession ? "正在创建新任务，请稍候…" : "正在保存执行配置，保存后即可发送…"}</div>}
+      {taskActionError && <div role="alert" className="border-b border-danger-soft bg-danger-soft px-4 py-2 text-xs text-danger">任务操作失败：{taskActionError}</div>}
       {bootError && (
         <div className="border-b border-danger-soft bg-danger-soft px-4 py-2 text-xs text-danger">
           无法连接本地后端：{bootError}。{window.pigDesktop ? "请退出并重新打开应用；仍失败时可从帮助菜单导出诊断信息。" : <>请确认已运行 <code>pnpm dev</code>。</>}
@@ -907,7 +937,7 @@ export function App() {
           <button
             type="button"
             className="btn-ghost shrink-0 text-xs"
-            disabled={streaming || session.localRetry === "unavailable"}
+            disabled={creatingSession || savingExecution || streaming || session.localRetry === "unavailable"}
             onClick={() => void retry()}
           >
             {retryActionLabel(session.remoteRetry, session.localRetry)}
@@ -917,11 +947,11 @@ export function App() {
 
       {route.name === "workstation" && (
         <div className="mobile-workspace-bar items-center gap-2 border-b border-ink-300 bg-panel px-4 py-2">
-          <select aria-label="切换任务" className="field min-w-0 flex-1 md:hidden" value={activeId ?? ""} onChange={(e) => { void loadSession(e.target.value); goWorkstation(e.target.value); }}>
+          <select disabled={creatingSession} aria-label="切换任务" className="field min-w-0 flex-1 md:hidden" value={activeId ?? ""} onChange={(e) => { void loadSession(e.target.value); goWorkstation(e.target.value); }}>
             <option value="" disabled>选择任务</option>
             {sessions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
           </select>
-          <button className="btn-ghost md:hidden" onClick={() => void createSession()} aria-label="新建任务"><Plus size={16} /></button>
+          <button disabled={creatingSession || savingExecution} className="btn-ghost md:hidden" onClick={() => void createSession()} aria-label="新建任务"><Plus size={16} /></button>
           <button className="btn-ghost ml-auto shrink-0" aria-expanded={filesOpen} onClick={() => setFilesOpen(!filesOpen)}>
             {filesOpen ? <X size={14} /> : <FolderOpen size={14} />}{filesOpen ? "关闭文件" : "文件与产物"}
           </button>
@@ -982,6 +1012,8 @@ export function App() {
           <>
             <Sidebar
               sessions={sessions}
+              busy={creatingSession}
+              createDisabled={savingExecution}
               activeId={activeId}
               onSelect={(id) => {
                 void loadSession(id);
@@ -991,7 +1023,9 @@ export function App() {
               onDelete={(id) => void removeSession(id)}
             />
             <ChatPanel
-              initializing={bootLoading}
+              initializing={bootLoading || creatingSession || savingExecution}
+              executionSurface={executionSurface}
+              onOpenRemote={() => setRemoteRunView(session?.remoteRunId || "")}
               session={session}
               draft={draft}
               streaming={streaming}

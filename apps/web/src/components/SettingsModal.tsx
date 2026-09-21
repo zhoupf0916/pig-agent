@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDialog } from "../lib/use-dialog";
 import { describeExecutionSurface } from "../lib/runtime-surface";
 import { applyOpenSettingsFormSnapshot } from "../lib/settings-surface-sync";
 import type { AgentRuntime, CloudMode, Settings, SkillMeta } from "../types";
@@ -34,6 +35,7 @@ export function SettingsModal({
   onClose: () => void;
   onSave: (patch: Partial<Settings>) => Promise<void>;
 }) {
+  const dialog = useDialog(open, onClose);
   const [form, setForm] = useState<Settings>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,10 +92,10 @@ export function SettingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4 backdrop-blur-[2px]">
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-card border border-ink-300 bg-panel p-5 shadow-lift">
-        <div className="mb-4 flex items-start justify-between">
+      <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-card border border-ink-300 bg-panel p-5 shadow-lift">
+        <div className="mb-4 flex shrink-0 items-start justify-between">
           <div>
-            <h2 className="text-base font-medium text-ink-800">设置</h2>
+            <h2 id="settings-title" className="text-base font-medium text-ink-800">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
               {window.pigDesktop
                 ? "设置保存在应用数据目录；密钥使用系统加密存储。密钥留空会保留已保存的值。"
@@ -116,13 +118,13 @@ export function SettingsModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-ink-500 hover:text-ink-800"
+            className="ml-3 shrink-0 whitespace-nowrap text-xs text-ink-500 hover:text-ink-800"
           >
             关闭
           </button>
         </div>
 
-        <div className="space-y-3">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
           <Field label="新会话默认执行配置">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <RuntimeChoice
@@ -547,7 +549,6 @@ export function SettingsModal({
               Docker。文件访问范围本身不等于操作系统隔离。
             </p>
           </Field>
-        </div>
 
         {form.runtime !== "cloud" && (
           <div className="mt-4 rounded-card border border-ink-300 p-3">
@@ -626,22 +627,16 @@ export function SettingsModal({
           )}
           {form.runtime === "cloud" && form.cloudMode === "remote" && (
             <p className="mt-2 text-meta text-ink-500">
-              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules /
-              .git）。create-run 等待期间步骤条显示中文进度（准备快照 / 创建运行
-              / 连接事件流）；已有 remoteRunId 的 follow-up /
-              重连事件流显示继续跟进 /
-              重新连接事件流，完成后进入推流或失败横幅。仓库提示来自本页、env.json
-              或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；断连 / 超时 /
-              过期会显示中文原因并可重试（继续跟进或重新创建运行）。停止后下一轮可继续发送，不会留下僵尸运行。控制面若下发
-              plan / artifact
-              事件，工作台会按现有卡片渲染。密钥不会出现在进度或错误横幅里。
+              远端任务由控制面调度，在独立容器中执行。首轮上传工作目录的安全快照（跳过密钥、.env、.git 和 node_modules），后续对话延续远端工作区。关闭窗口不会停止任务；可在远端运行记录中查看状态、审批操作并下载成果。
             </p>
           )}
         </div>
 
-        {error && <p className="mt-3 text-xs text-danger">{error}</p>}
+        </div>
 
-        <div className="mt-5 flex justify-end gap-2">
+        {error && <p role="alert" className="mt-3 shrink-0 text-xs text-danger">{error}</p>}
+
+        <div className="mt-4 flex shrink-0 justify-end gap-2 border-t border-ink-300 pt-3">
           <button type="button" onClick={onClose} className="btn-quiet">
             取消
           </button>

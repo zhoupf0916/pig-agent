@@ -45,6 +45,25 @@ Docker Desktop 的 **Containers → pig-agent-cloud** 下有四个常驻服务�
 
 在「远端运行记录 → 组织与共享项目」管理组织和任务；新建远端会话时可勾选「写入前审批」。审批等待仍占用容器并计入运行时限。共享项目自动化与文件库、长期审批暂停/故障恢复、远端 Codex、对象存储和自动保留期尚未实现。
 
+## 0.2.0 产品化内测：控制面与 Runner 集群
+
+工作台补齐任务搜索筛选、远端日志与断线恢复、移动端设置、审批反馈与长会话阅读；管理后台提供运行概览、任务日志、Runner、执行模型、账号配额、计划审计六个页面。
+
+控制面通过 PostgreSQL 协调并发领取、公平调度、队列背压和运行租约。Runner 支持注册与心跳、容量/资源规格能力、排空、启动代次隔离和退出清理；审批与事件传输具有幂等标识。已提供独立于原本地平台的双控制面、双 Runner 验证环境：
+
+```bash
+pnpm cluster:up       # 独立数据库与 mock 模型，入口 8892
+pnpm cluster:smoke    # 协议竞争 + 真实容器故障验收
+pnpm product:smoke    # 隔离 8798 工作台的真实浏览器操作与截图
+pnpm cluster:down
+```
+
+浏览器验收默认使用已安装的 Google Chrome；也可运行 `pnpm exec playwright install chromium`，然后设置 `PIG_BROWSER_CHANNEL=chromium` 执行。`product:smoke` 自行启动和关闭隔离工作台，运行前需空出 8798 端口，不操作原 8797 的用户数据。
+
+[集群部署与排障](docs/cluster.md) · [产品化目标、验收与已知限制](docs/productization-worklog.md)
+
+这是本机 Docker 的多实例验证，不代表数据库或宿主机高可用。已启动任务失联后不会自动重放副作用，不宣称 exactly-once。对象存储、数据自动保留期、公网 TLS 与节点证书、远端 Codex、共享项目自动化和桌面签名更新仍不在本版本已交付范围。
+
 ## 桌面版（macOS 内测）
 
 Electron 打包了界面和本地 Node 服务，使用者无需安装 Node.js 或 pnpm。首次打开后：
@@ -131,7 +150,7 @@ pnpm cloud:smoke:approvals
 
 桌面冒烟需要图形环境和可用的系统密钥存储，不消耗真实模型额度。macOS 打包 CI 还会对打包后的 `.app` 运行同样的测试。
 
-截至 2026-09-22，最近一次本机回归通过 594 个测试、共享项目/审批 Docker 验收和 Electron 启动/重启验收；功能 PR #81 的测试、Docker 与 macOS 打包 CI 均已通过。新增面板的浏览器点击与视觉验收仍待补齐，mock 验收不代表真实模型任务质量。完整验收、调度故障测试及备份恢复命令见 [本地云平台文档](docs/local-cloud.md)。
+0.2.0 的构建、测试、浏览器截图和集群故障验证证据见 [产品化工作记录](docs/productization-worklog.md)。mock 验收用于确认执行链路，不代表真实模型任务质量。完整验收、调度故障测试及备份恢复命令见 [本地云平台文档](docs/local-cloud.md)。
 
 - [架构与依赖规则](docs/architecture.md)
 - [桌面客户端](docs/desktop.md)

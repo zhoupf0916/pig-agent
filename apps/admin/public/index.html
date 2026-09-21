@@ -3,127 +3,322 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Pig Cloud · 管理后台</title>
+    <title>Pig Agent · 控制面</title>
     <link rel="stylesheet" href="/admin/style.css" />
   </head>
   <body>
-    <header>
-      <strong>P / Pig Cloud</strong><span>管理后台 · 本地内测</span
-      ><a href="/debug/runs">执行链路诊断 ↗</a><button id="logout">退出</button>
-    </header>
-    <main>
-      <section id="login">
-        <h1>管理执行平台</h1>
-        <p>
-          使用 data/cloud-local/access.txt
-          中的管理员令牌。后台操作会写入审计记录。
-        </p>
-        <form id="login-form">
-          <input
-            id="token"
-            type="password"
-            placeholder="管理员访问令牌"
-            required
-          /><button>连接平台</button>
-        </form>
-      </section>
-      <p id="error" role="alert"></p>
-      <section id="dashboard" hidden>
-        <div class="heading">
-          <div>
-            <small>PLATFORM OVERVIEW</small>
-            <h1>运行概览</h1>
-          </div>
-          <span id="mode"></span>
+    <aside class="sidebar">
+      <a class="brand" href="#overview"
+        ><span class="brand-mark">P</span
+        ><span>Pig Agent<small>控制面 · Operations</small></span></a
+      >
+      <nav aria-label="管理导航" id="navigation" hidden>
+        <a href="#overview" data-page="overview">运行概览</a
+        ><a href="#runs" data-page="runs">任务与日志</a
+        ><a href="#workers" data-page="workers">Runner 集群</a
+        ><a href="#settings" data-page="settings">执行与模型</a
+        ><a href="#accounts" data-page="accounts">账号与配额</a
+        ><a href="#audit" data-page="audit">计划与审计</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="eyebrow">CONTROL PLANE</span>
+        <p>共享状态 · 统一调度</p>
+        <a href="/debug/runs">执行链路诊断 ↗</a>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header>
+        <span id="connection" role="status">等待连接</span>
+        <div class="header-actions">
+          <span id="updated"></span><button id="refresh" hidden>刷新</button
+          ><button id="logout" hidden>退出登录</button>
         </div>
-        <div id="counts" class="cards"></div>
-        <h2>账号与配额</h2>
-        <form id="invite-form" class="panel">
-          <input
-            id="invite-name"
-            placeholder="新账号名称"
-            required
-            maxlength="80"
-          /><button>创建 24 小时邀请</button
-          ><output id="invite-result"></output>
-        </form>
-        <label
-          ><input id="show-disabled" type="checkbox" /> 显示已禁用账号</label
-        >
-        <div id="accounts" class="panel"></div>
-        <h2>模型渠道</h2>
-        <p>
-          密钥加密保存，仅网关使用。启用渠道后远端任务使用真实模型；停用全部渠道则使用部署默认模型。
-        </p>
-        <form id="channel-form" class="panel">
-          <input
-            id="channel-name"
-            placeholder="渠道名称"
-            required
-            maxlength="80"
-          />
-          <input
-            id="channel-base"
-            type="url"
-            placeholder="https://api.deepseek.com/v1"
-            required
-          />
-          <input
-            id="channel-model"
-            placeholder="deepseek-chat"
-            required
-            maxlength="100"
-          />
-          <input
-            id="channel-key"
-            type="password"
-            placeholder="模型 API Key"
-            required
-            autocomplete="off"
-          />
-          <button>加密保存渠道</button>
-        </form>
-        <div id="channels" class="panel"></div>
-        <h2>执行资源</h2>
-        <form id="resource-form" class="panel">
-          <label
-            >新任务容器规格
-            <select id="resource-profile">
-              <option value="compact">轻量 · 0.5 CPU / 256 MiB / 2 分钟</option>
-              <option value="standard">标准 · 1 CPU / 512 MiB / 4 分钟</option>
-              <option value="large">扩展 · 2 CPU / 1024 MiB / 10 分钟</option>
-            </select></label
-          ><button>应用到后续任务</button>
-          <p>
-            固定受控镜像，容器非
-            root、只读根文件系统、独立网络；已运行任务保持原规格。
+      </header>
+      <main>
+        <section id="login" class="login panel">
+          <span class="eyebrow">WELCOME TO PIG AGENT</span>
+          <h1>连接你的执行平台</h1>
+          <p>管理任务、Runner 与模型渠道，在一个控制面中掌握执行状态。</p>
+          <form id="login-form">
+            <label for="token">管理员令牌</label
+            ><input
+              id="token"
+              type="password"
+              autocomplete="off"
+              placeholder="输入管理员访问令牌"
+              required
+            /><button class="primary">连接平台</button>
+          </form>
+          <p class="hint">
+            本地部署的令牌位于
+            data/cloud-local/access.txt。后台操作会记录审计日志；登录仅保留在当前标签页。
           </p>
-        </form>
-        <h2>执行节点</h2>
-        <div id="workers" class="panel"></div>
-        <h2>最近任务</h2>
-        <div class="panel">
-          <table>
-            <thead>
-              <tr>
-                <th>任务</th>
-                <th>账号</th>
-                <th>状态</th>
-                <th>模型调用</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="runs"></tbody>
-          </table>
+        </section>
+        <div id="error" class="notice error" role="alert" hidden></div>
+        <div id="feedback" class="notice success" role="status" hidden></div>
+        <div id="dashboard" hidden>
+          <section data-view="overview">
+            <div class="heading">
+              <div>
+                <span class="eyebrow">OPERATIONS</span>
+                <h1>运行概览</h1>
+                <p>关注执行队列、可用资源和需要处理的异常。</p>
+              </div>
+              <span id="mode" class="badge"></span>
+            </div>
+            <div id="counts" class="cards"></div>
+            <div class="overview-grid">
+              <div class="panel">
+                <h2>集群状态</h2>
+                <div id="cluster-summary"></div>
+                <a class="text-link" href="#workers">管理 Runner →</a>
+              </div>
+              <div class="panel">
+                <h2>需要关注</h2>
+                <div id="attention"></div>
+                <a class="text-link" href="#runs">查看任务与日志 →</a>
+              </div>
+            </div>
+            <div class="section-heading">
+              <h2>最近任务</h2>
+              <a href="#runs" class="text-link">查看全部 →</a>
+            </div>
+            <div id="recent-runs" class="panel"></div>
+          </section>
+          <section data-view="runs" hidden>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">EXECUTIONS</span>
+                <h1>任务与日志</h1>
+                <p>查看最近 100 个运行，追踪状态、分配节点与执行事件。</p>
+              </div>
+            </div>
+            <div class="toolbar">
+              <label class="search-label"
+                ><span class="sr-only">搜索任务</span
+                ><input
+                  id="run-search"
+                  type="search"
+                  placeholder="搜索任务内容、ID 或账号" /></label
+              ><label
+                ><span class="sr-only">筛选任务状态</span
+                ><select id="run-state">
+                  <option value="all">全部状态</option>
+                  <option value="queued">排队</option>
+                  <option value="preparing">准备容器</option>
+                  <option value="running">执行中</option>
+                  <option value="cancelling">停止中</option>
+                  <option value="failed">失败</option>
+                  <option value="succeeded">完成</option>
+                  <option value="cancelled">已取消</option>
+                </select></label
+              ><span id="run-count" class="muted"></span>
+            </div>
+            <div class="panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>账号</th>
+                    <th>状态</th>
+                    <th>模型调用</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="runs"></tbody>
+              </table>
+            </div>
+          </section>
+          <section data-view="workers" hidden>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">RUNNER FLEET</span>
+                <h1>Runner 集群</h1>
+                <p>每个 Runner 在自己的 Docker 环境中创建隔离执行容器。</p>
+              </div>
+            </div>
+            <div class="notice neutral">
+              排空节点会停止分配新任务，已有任务继续运行。心跳超过 15
+              秒标记离线；有效并发取配置槽位与节点上报容量的较小值。
+            </div>
+            <div id="workers" class="worker-grid"></div>
+          </section>
+          <section data-view="settings" hidden>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">PLATFORM SETTINGS</span>
+                <h1>执行与模型</h1>
+                <p>设置由控制面统一保存，所有控制面实例共享。</p>
+              </div>
+            </div>
+            <section class="panel settings-panel">
+              <h2>集群调度</h2>
+              <p class="hint">
+                保存后用于后续准入、任务领取与排队超时检查。降低并发不会终止已运行任务；队列上限仅限制新任务准入。每账号最多保留
+                5 个待执行或执行中的任务。
+              </p>
+              <form id="policy-form" class="form-grid">
+                <label
+                  >全局并发<input
+                    id="global-concurrency"
+                    type="number"
+                    min="1"
+                    max="128"
+                    required /></label
+                ><label
+                  >单账号并发<input
+                    id="user-concurrency"
+                    type="number"
+                    min="1"
+                    max="5"
+                    required /></label
+                ><label
+                  >单项目并发<input
+                    id="project-concurrency"
+                    type="number"
+                    min="1"
+                    max="64"
+                    required /></label
+                ><label
+                  >队列上限<input
+                    id="queue-limit"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    required /></label
+                ><label
+                  >排队超时（秒）<input
+                    id="queue-timeout"
+                    type="number"
+                    min="30"
+                    max="86400"
+                    required
+                /></label>
+                <div class="form-footer">
+                  <button class="primary">保存调度设置</button>
+                </div>
+              </form>
+            </section>
+            <section class="panel settings-panel">
+              <h2>容器规格</h2>
+              <p class="hint">
+                应用于新创建的任务，已提交任务保持原规格。执行使用固定受控镜像、非
+                root、只读根文件系统和独立网络。
+              </p>
+              <form id="resource-form" class="inline-form">
+                <label
+                  >新任务默认规格<select id="resource-profile">
+                    <option value="compact">
+                      轻量 · 0.5 CPU / 256 MiB / 2 分钟
+                    </option>
+                    <option value="standard">
+                      标准 · 1 CPU / 512 MiB / 4 分钟
+                    </option>
+                    <option value="large">
+                      扩展 · 2 CPU / 1024 MiB / 10 分钟
+                    </option>
+                  </select></label
+                ><button>保存容器规格</button>
+              </form>
+            </section>
+            <section class="panel settings-panel">
+              <h2>模型渠道</h2>
+              <p class="hint">
+                密钥加密保存，仅模型网关使用。启用渠道后，远端任务共享此渠道与额度。停用全部渠道后使用部署默认模型。
+              </p>
+              <div id="channels"></div>
+              <details class="channel-create">
+                <summary>添加模型渠道</summary>
+                <form id="channel-form" class="form-grid">
+                  <label
+                    >渠道名称<input
+                      id="channel-name"
+                      placeholder="例如 DeepSeek"
+                      required
+                      maxlength="80" /></label
+                  ><label
+                    >模型标识<input
+                      id="channel-model"
+                      placeholder="deepseek-chat"
+                      required
+                      maxlength="100" /></label
+                  ><label class="full"
+                    >API 地址<input
+                      id="channel-base"
+                      type="url"
+                      placeholder="https://api.deepseek.com/v1"
+                      required /></label
+                  ><label class="full"
+                    >API Key<input
+                      id="channel-key"
+                      type="password"
+                      placeholder="仅写入，不回显"
+                      required
+                      autocomplete="off"
+                  /></label>
+                  <div class="form-footer">
+                    <button class="primary">加密保存渠道</button>
+                  </div>
+                </form>
+              </details>
+            </section>
+          </section>
+          <section data-view="accounts" hidden>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">ACCESS & QUOTAS</span>
+                <h1>账号与配额</h1>
+                <p>管理成员访问权限、登录会话和每日模型调用额度。</p>
+              </div>
+            </div>
+            <form id="invite-form" class="panel inline-form">
+              <label
+                >新账号名称<input
+                  id="invite-name"
+                  placeholder="成员名称"
+                  required
+                  maxlength="80" /></label
+              ><button class="primary">创建 24 小时邀请</button
+              ><output
+                id="invite-result"
+                class="invite-output"
+                aria-live="polite"
+              ></output>
+            </form>
+            <label class="checkbox-label"
+              ><input id="show-disabled" type="checkbox" />显示已禁用账号</label
+            >
+            <div id="accounts" class="account-list"></div>
+          </section>
+          <section data-view="audit" hidden>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">PLANS & ACTIVITY</span>
+                <h1>计划与审计</h1>
+                <p>检查控制面定时计划和最近 50 条管理操作记录。</p>
+              </div>
+            </div>
+            <h2>定时计划</h2>
+            <p class="hint">
+              在 Web 或桌面工作台的「自动化」中创建和修改计划。
+            </p>
+            <div id="schedules" class="panel"></div>
+            <h2>操作审计</h2>
+            <div id="audit" class="panel"></div>
+          </section>
         </div>
-        <h2>控制面定时计划</h2>
-        <div id="schedules" class="panel"></div>
-        <h2>操作审计</h2>
-        <div id="audit" class="panel"></div>
-        <h2>任务详情</h2>
-        <pre id="detail" class="panel">选择任务查看详情</pre>
-      </section>
-    </main>
+      </main>
+    </div>
+    <dialog id="run-dialog" aria-labelledby="detail-title">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">RUN DETAILS</span>
+          <h2 id="detail-title">任务详情</h2>
+        </div>
+        <button id="close-detail" aria-label="关闭任务详情">关闭</button>
+      </div>
+      <div id="detail" aria-live="polite"></div>
+    </dialog>
     <script type="module" src="/admin/app.js"></script>
   </body>
 </html>

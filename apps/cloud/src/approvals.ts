@@ -33,7 +33,7 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
     return c.json({
       approvals: (
         await db.query(
-          "SELECT a.id,a.call_id,a.tool,a.args,CASE WHEN a.state='pending' AND (r.state NOT IN ('running','preparing') OR r.lease_until<now()) THEN 'expired' ELSE a.state END AS state,a.created_at,a.decided_at,a.decided_by FROM approvals a JOIN runs r ON r.id=a.run_id WHERE a.run_id=$1 ORDER BY a.created_at",
+          "SELECT a.id,a.call_id,a.tool,a.args,CASE WHEN a.state='pending' AND (r.state NOT IN ('running','preparing') OR r.lease_until<=now() OR r.deadline_at<=now()) THEN 'expired' ELSE a.state END AS state,a.created_at,a.decided_at,a.decided_by FROM approvals a JOIN runs r ON r.id=a.run_id WHERE a.run_id=$1 ORDER BY a.created_at",
           [c.req.param("id")],
         )
       ).rows,
@@ -45,21 +45,21 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
     const body = z
       .object({ decision: z.enum(["approve", "reject"]) })
       .strict()
-      .safeParse(await c.req.json());
+      .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "审批决定无效" }, 400);
     const client = await db.connect();
     try {
       await client.query("BEGIN");
       const run = (
         await client.query(
-          "SELECT state,lease_until FROM runs WHERE id=$1 FOR UPDATE",
+          "SELECT state,coalesce(lease_until<=now(),true) OR coalesce(deadline_at<=now(),false) AS expired FROM runs WHERE id=$1 FOR UPDATE",
           [c.req.param("id")],
         )
       ).rows[0];
       if (
         !run ||
         !["running", "preparing"].includes(run.state) ||
-        new Date(run.lease_until).getTime() < Date.now()
+        run.expired
       ) {
         await client.query("ROLLBACK");
         return c.json({ error: "运行已结束，不能再批准旧操作" }, 409);
@@ -96,14 +96,14 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
     }
   });
   app.post("/internal/approvals", async (c) => {
-    const body = schema.safeParse(await c.req.json());
+    const body = schema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "审批请求无效" }, 400);
     const client = await db.connect();
     try {
       await client.query("BEGIN");
       const run = (
         await client.query(
-          "SELECT id,input FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() FOR UPDATE",
+          "SELECT id,input FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) FOR UPDATE",
           [hash(body.data.token)],
         )
       ).rows[0];
@@ -146,16 +146,19 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
   });
   app.post("/internal/approvals/:id/poll", async (c) => {
     const body = z
-      .object({ token: z.string().max(200) })
+      .object({
+        token: z.string().max(200),
+        requestId: z.string().uuid().optional(),
+      })
       .strict()
-      .safeParse(await c.req.json());
+      .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "无效令牌" }, 400);
     const client = await db.connect();
     try {
       await client.query("BEGIN");
       const run = (
         await client.query(
-          "SELECT id FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() FOR UPDATE",
+          "SELECT id FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) FOR UPDATE",
           [hash(body.data.token)],
         )
       ).rows[0];
@@ -165,7 +168,7 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       }
       const approval = (
         await client.query(
-          "SELECT state FROM approvals WHERE id=$1 AND run_id=$2 FOR UPDATE",
+          "SELECT state,receipt_id FROM approvals WHERE id=$1 AND run_id=$2 FOR UPDATE",
           [c.req.param("id"), run.id],
         )
       ).rows[0];
@@ -175,11 +178,18 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       }
       if (approval.state === "approved")
         await client.query(
-          "UPDATE approvals SET state='consumed' WHERE id=$1",
-          [c.req.param("id")],
+          "UPDATE approvals SET state='consumed',receipt_id=$2 WHERE id=$1",
+          [c.req.param("id"), body.data.requestId || null],
         );
       await client.query("COMMIT");
-      return c.json({ state: approval.state });
+      return c.json({
+        state:
+          approval.state === "consumed" &&
+          body.data.requestId &&
+          approval.receipt_id === body.data.requestId
+            ? "approved"
+            : approval.state,
+      });
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;

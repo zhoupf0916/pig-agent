@@ -1,0 +1,39 @@
+{
+  "at": "2026-09-21T17:23:21.572Z",
+  "durationMs": 60321,
+  "environment": "local Docker Desktop; 2 control instances; 2 Runner nodes x 2 slots; mock model",
+  "evidence": [
+    {
+      "scenario": "two real Runners execute concurrently",
+      "tasks": 4,
+      "containers": 4,
+      "workers": [
+        "pig-cluster-runner-a",
+        "pig-cluster-runner-b"
+      ]
+    },
+    {
+      "scenario": "SIGKILL node",
+      "failedWithoutReplay": [
+        "run_87512f5be31b4a06885017f28f18751f",
+        "run_0bb661e7c1204fe1ac7fddf78e4a716c"
+      ]
+    },
+    {
+      "scenario": "surviving Runner and control instance",
+      "task": "run_d094a4b873c24839b95d26e668ef4a0a",
+      "state": "succeeded",
+      "artifact": "cloud-proof.txt"
+    },
+    {
+      "scenario": "SIGTERM drain bounded shutdown",
+      "task": "run_8720c11a2fd1459b8f75bcd3f2e2c8a1",
+      "state": "failed"
+    },
+    {
+      "scenario": "resource cleanup",
+      "remainingExecutionContainers": 0,
+      "remainingExecutionNetworks": 0
+    }
+  ]
+}

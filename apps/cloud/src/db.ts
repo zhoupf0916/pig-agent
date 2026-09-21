@@ -1,4 +1,5 @@
 import pg from "pg";
+import { clusterSchema } from "./cluster-schema.ts";
 import { createHash } from "node:crypto";
 import { collaborationSchema } from "./collaboration-schema.ts";
 export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -65,6 +66,7 @@ export async function migrate() {
     CREATE TABLE IF NOT EXISTS audit (id bigserial PRIMARY KEY, actor text NOT NULL, action text NOT NULL, run_id text, created_at timestamptz NOT NULL DEFAULT now());
   `);
     await client.query(collaborationSchema);
+    await client.query(clusterSchema);
     for (const [id, name, role, token] of [
       ["admin", "本机管理员", "admin", process.env.ADMIN_TOKEN],
       ["member", "本机体验账号", "member", process.env.MEMBER_TOKEN],

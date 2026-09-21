@@ -1,3 +1,4 @@
+import { registerClusterRoutes, sweepRuns } from "./cluster.ts";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -6,7 +7,7 @@ import { bodyLimit } from "hono/body-limit";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { profiles, registerResourceRoutes } from "./resources.ts";
+import { registerResourceRoutes } from "./resources.ts";
 import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
 import { registerConversationRoutes } from "./conversations.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
@@ -17,8 +18,33 @@ import type { CloudEnv } from "./types.ts";
 import { db, hash, migrate, terminal } from "./db.ts";
 type Principal = { id: string; role: string; name: string };
 const app = new Hono<CloudEnv>();
+const credentialSchema = z.object({ token: z.string().min(1).max(200) });
+const finishSchema = credentialSchema
+  .extend({
+    kind: z.literal("result").optional(),
+    ok: z.boolean(),
+    error: z.string().max(5000).optional(),
+    snapshot: z.unknown().optional(),
+    files: z
+      .array(
+        z.object({
+          path: z.string().min(1).max(4096),
+          content: z.string().max(200000),
+        }),
+      )
+      .max(100)
+      .refine(
+        (files) =>
+          files.reduce((n, f) => n + Buffer.byteLength(f.content), 0) <=
+          2 * 1024 * 1024,
+      )
+      .optional(),
+  })
+  .strict();
 app.use("*", bodyLimit({ maxSize: 7 * 1024 * 1024 }));
 app.onError((err, c) => {
+  if ("code" in err && err.code === "P0429")
+    return c.json({ error: "任务队列已满，请稍后再试" }, 429);
   if ("code" in err && err.code === "42501")
     return c.json({ error: "没有共享项目的编辑权限" }, 403);
   console.error(err.name);
@@ -62,6 +88,7 @@ async function runFor(id: string, p: Principal, writing = false) {
   ).rows[0];
 }
 registerPlatformRoutes(app);
+registerClusterRoutes(app);
 registerResourceRoutes(app);
 registerScheduleRoutes(app);
 registerConversationRoutes(app);
@@ -287,7 +314,7 @@ app.get("/v1/admin/overview", async (c) => {
     ).rows,
     workers: (
       await db.query(
-        "SELECT id,seen_at,enabled,capacity,(SELECT count(*)::int FROM runs WHERE worker_id=workers.id AND state IN ('preparing','running','cancelling') AND lease_until>now()) AS active,seen_at>now()-interval '15 seconds' AS online FROM workers",
+        "SELECT id,seen_at,enabled,capacity,reported_capacity,instance_id,profiles,draining,last_claimed_at,(SELECT count(*)::int FROM runs WHERE worker_id=workers.id AND state IN ('preparing','running','cancelling') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now())) AS active,seen_at>now()-interval '15 seconds' AS online FROM workers",
       )
     ).rows,
     counts: (
@@ -307,11 +334,11 @@ app.patch("/v1/admin/workers/:id", async (c) => {
   const parsed = z
     .object({
       enabled: z.boolean().optional(),
-      capacity: z.number().int().min(1).max(3).optional(),
+      capacity: z.number().int().min(1).max(16).optional(),
     })
     .strict()
     .safeParse(await c.req.json().catch(() => ({})));
-  if (!parsed.success) return c.json({ error: "本地节点并发须为 1–3" }, 400);
+  if (!parsed.success) return c.json({ error: "节点并发须为 1–16" }, 400);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -337,91 +364,50 @@ app.patch("/v1/admin/workers/:id", async (c) => {
   }
 });
 // Worker credentials never go to an execution container.
-app.post("/internal/claim", async (c) => {
-  const { workerId } = await c.req.json();
-  if (typeof workerId !== "string" || workerId.length > 100)
-    return c.json({ error: "Invalid worker" }, 400);
-  await db.query(
-    "INSERT INTO workers(id) VALUES($1) ON CONFLICT(id) DO UPDATE SET seen_at=now()",
-    [workerId],
-  );
-  const client = await db.connect();
-  try {
-    await client.query("BEGIN");
-    const worker = (
-      await client.query(
-        "SELECT enabled,capacity FROM workers WHERE id=$1 FOR UPDATE",
-        [workerId],
-      )
-    ).rows[0];
-    const active = (
-      await client.query(
-        "SELECT count(*)::int AS count FROM runs WHERE worker_id=$1 AND state IN ('preparing','running','cancelling') AND lease_until>now()",
-        [workerId],
-      )
-    ).rows[0].count;
-    if (!worker.enabled || active >= worker.capacity) {
-      await client.query("COMMIT");
-      return c.json(null);
-    }
-    const token = randomUUID() + randomUUID();
-    const r = await client.query(
-      "UPDATE runs SET state='preparing',worker_id=$1,attempt_token=$2,lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=(SELECT id FROM runs WHERE state='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,execution_profile",
-      [workerId, hash(token)],
-    );
-    const selected = r.rows[0]?.execution_profile as
-      | keyof typeof profiles
-      | undefined;
-    const resources = profiles[selected || "standard"] || profiles.standard;
-    if (r.rowCount)
-      await client.query(
-        "INSERT INTO execution_attempts(id,run_id,worker_id,resources) VALUES($1,$2,$3,$4)",
-        [randomUUID(), r.rows[0].id, workerId, resources],
-      );
-    await client.query("COMMIT");
-    return c.json(r.rowCount ? { id: r.rows[0].id, token, resources } : null);
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
-  }
-});
 app.post("/internal/runs/:id/heartbeat", async (c) => {
-  const { token } = await c.req.json();
+  const parsed = credentialSchema
+    .strict()
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid run credential" }, 400);
+  const { token } = parsed.data;
   await db.query(
-    "UPDATE workers SET seen_at=now() WHERE id=(SELECT worker_id FROM runs WHERE id=$1 AND attempt_token=$2)",
+    "UPDATE workers SET seen_at=now() WHERE id=(SELECT worker_id FROM runs WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()))",
     [c.req.param("id"), hash(String(token))],
   );
   const r = await db.query(
-    "UPDATE runs SET lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND state IN ('preparing','running','cancelling') RETURNING state",
+    "UPDATE runs SET lease_until=least(now()+interval '20 seconds',coalesce(deadline_at,now()+interval '20 seconds')),updated_at=now() WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running','cancelling') RETURNING state",
     [c.req.param("id"), hash(String(token))],
   );
   return c.json({ state: r.rows[0]?.state || "expired" });
 });
 app.post("/internal/runs/:id/start", async (c) => {
-  const { token } = await c.req.json();
-  await db.query(
-    "UPDATE runs SET state='running' WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND state='preparing'",
+  const parsed = credentialSchema
+    .strict()
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid run credential" }, 400);
+  const { token } = parsed.data;
+  const result = await db.query(
+    "UPDATE runs SET state='running' WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') AND (deadline_at IS NULL OR deadline_at>now()) RETURNING id",
     [c.req.param("id"), hash(String(token))],
   );
-  return c.json({ ok: true });
+  return result.rowCount
+    ? c.json({ ok: true })
+    : c.json({ error: "Run credential expired or already started" }, 409);
 });
 app.post("/internal/runs/:id/finish", async (c) => {
-  const body = await c.req.json();
+  const parsed = finishSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success)
+    return c.json({ error: "Invalid execution result" }, 400);
+  const body = parsed.data;
   const id = c.req.param("id");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     const r = await client.query(
-      "SELECT state,lease_until,conversation_id FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
+      "SELECT state,conversation_id,coalesce(lease_until<=now(),true) OR coalesce(deadline_at<=now(),false) AS expired FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
       [id, hash(String(body.token))],
     );
-    if (
-      !r.rowCount ||
-      terminal(r.rows[0].state) ||
-      new Date(r.rows[0].lease_until).getTime() < Date.now()
-    ) {
+    if (!r.rowCount || terminal(r.rows[0].state) || r.rows[0].expired) {
       await client.query("ROLLBACK");
       return c.json({ error: "Lease expired" }, 409);
     }
@@ -496,17 +482,40 @@ app.post("/internal/runs/:id/finish", async (c) => {
   }
 });
 app.post("/internal/runs/:id/event", async (c) => {
-  const { token, event } = await c.req.json();
+  const parsed = credentialSchema
+    .extend({
+      event: z
+        .object({ type: z.string().min(1) })
+        .passthrough()
+        .refine((e) => JSON.stringify(e).length <= 512000),
+      eventId: z.string().min(1).max(160).optional(),
+    })
+    .strict()
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid execution event" }, 400);
+  const { token, event, eventId } = parsed.data;
+  if (
+    eventId !== undefined &&
+    (typeof eventId !== "string" || !eventId.length || eventId.length > 160)
+  )
+    return c.json({ error: "Invalid event id" }, 400);
   const r = await db.query(
-    "INSERT INTO events(run_id,event) SELECT id,$3 FROM runs WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND state IN ('preparing','running') RETURNING seq",
-    [c.req.param("id"), hash(String(token)), event],
+    "INSERT INTO events(run_id,event,event_id) SELECT id,$3,$4 FROM runs WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') ON CONFLICT(run_id,event_id) WHERE event_id IS NOT NULL DO UPDATE SET event_id=EXCLUDED.event_id RETURNING seq",
+    [c.req.param("id"), hash(String(token)), event, eventId || null],
   );
-  return c.json({ ok: !!r.rowCount });
+  return r.rowCount
+    ? c.json({ ok: true, seq: r.rows[0].seq })
+    : c.json({ error: "Run credential expired" }, 409);
 });
 app.post("/internal/authorize", async (c) => {
-  const { token, reserve } = await c.req.json();
+  const parsed = credentialSchema
+    .extend({ reserve: z.boolean().optional() })
+    .strict()
+    .safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "Invalid authorization" }, 400);
+  const { token, reserve } = parsed.data;
   const r = await db.query(
-    "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now()",
+    "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now())",
     [hash(String(token))],
   );
   if (!r.rowCount) return c.json({ error: "Run credential expired" }, 401);
@@ -536,7 +545,7 @@ app.post("/internal/authorize", async (c) => {
         return c.json({ error: "账号已禁用或当日模型预算不足" }, 429);
       }
       const used = await client.query(
-        "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 AND attempt_token=$2 AND lease_until>now() AND state IN ('preparing','running') RETURNING id",
+        "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') RETURNING id",
         [r.rows[0].id, hash(String(token))],
       );
       if (!used.rowCount) {
@@ -594,12 +603,7 @@ const scheduleTimer = setInterval(async () => {
 }, 1000);
 scheduleTimer.unref();
 setInterval(
-  () =>
-    void db
-      .query(
-        "UPDATE runs SET state='failed',error='执行节点失联；为避免重复副作用，请核验后重新提交',attempt_token=NULL,updated_at=now() WHERE state IN ('preparing','running','cancelling') AND lease_until<now()",
-      )
-      .catch(() => console.error("Lease sweep unavailable")),
+  () => void sweepRuns().catch(() => console.error("Lease sweep unavailable")),
   5000,
 ).unref();
 serve({ fetch: app.fetch, port: 8890 });
