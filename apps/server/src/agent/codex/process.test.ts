@@ -31,7 +31,7 @@ describe("killProcessGroup", () => {
     let sleptMs = 0;
 
     const pending = killProcessGroup(
-      { pid: 4242, kill: () => true },
+      { pid: 4242, killed: true, exitCode: null, kill: () => true },
       {
         graceMs: SIGKILL_GRACE_MS,
         kill: (pid, signal) => {
@@ -78,4 +78,10 @@ describe("killProcessGroup", () => {
     const result = await pending;
     expect(result.aborted).toBe(true);
   });
+});
+
+ it("never spawns a process for an already cancelled turn", async () => {
+  const controller = new AbortController(); controller.abort();
+  const result = await runCodexExec({ binary: "/must-not-start", prompt: "test", workspaceReal: "/tmp", home: "/tmp", model: "test", networkAccess: false, signal: controller.signal, onLine: () => {} });
+  expect(result.aborted).toBe(true);
 });

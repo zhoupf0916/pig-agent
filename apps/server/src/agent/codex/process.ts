@@ -91,7 +91,7 @@ export async function killProcessGroup(
 
   await sleep(graceMs);
 
-  if (child.killed || typeof child.exitCode === "number") return;
+  if (typeof child.exitCode === "number") return;
 
   if (pid) send(-pid, "SIGKILL");
   else {
@@ -108,6 +108,7 @@ export async function runCodexExec(req: CodexExecRequest): Promise<{
   stderr: string;
   aborted: boolean;
 }> {
+  if (req.signal.aborted) return { code: null, stderr: "", aborted: true };
   const args = buildCodexExecArgs({
     workspaceReal: req.workspaceReal,
     prompt: req.prompt,
@@ -115,12 +116,16 @@ export async function runCodexExec(req: CodexExecRequest): Promise<{
     networkAccess: req.networkAccess,
   });
   const env: NodeJS.ProcessEnv = {
-    ...req.env,
     ...process.env,
+    ...req.env,
     CODEX_HOME: req.home,
   };
   const key = resolveCodexApiKey(req.env ?? process.env);
   const keyName = resolveCodexApiKeyEnvName(req.env ?? process.env);
+  delete env.DEEPSEEK_API_KEY;
+  delete env.CODEX_API_KEY;
+  delete env.LLM_API_KEY;
+  delete env.OPENAI_API_KEY;
   if (key) env[keyName] = key;
   // Do not map pig Chat Completions URL into the child.
   delete env.LLM_BASE_URL;
@@ -138,7 +143,7 @@ export async function runCodexExec(req: CodexExecRequest): Promise<{
   let aborted = false;
 
   child.stderr?.on("data", (chunk: Buffer | string) => {
-    stderr += chunk.toString();
+    stderr = (stderr + chunk.toString()).slice(-24_000);
   });
   child.stdout?.on("data", (chunk: Buffer | string) => {
     buffer += chunk.toString();
@@ -159,10 +164,11 @@ export async function runCodexExec(req: CodexExecRequest): Promise<{
   if (req.signal.aborted) abort();
   else req.signal.addEventListener("abort", abort, { once: true });
 
-  const code = await new Promise<number | null>((resolve, reject) => {
+  let code: number | null;
+  try { code = await new Promise<number | null>((resolve, reject) => {
     child.once("error", reject);
     child.once("close", (exitCode) => resolve(exitCode));
-  });
+  }); } finally { req.signal.removeEventListener("abort", abort); }
 
   if (buffer.trim()) req.onLine(buffer);
   return { code, stderr, aborted };

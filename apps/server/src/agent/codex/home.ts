@@ -1,3 +1,4 @@
+import { codexEnvironment } from "./environment.ts";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -119,7 +120,7 @@ export async function syncCodexHome(
   settings: Settings,
   options: { home?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ home: string; workspaceRealPath: string | null; configPath: string }> {
-  const env = options.env ?? process.env;
+  const env = codexEnvironment(settings, options.env ?? process.env);
   const home = options.home ?? resolveCodexHome(env); // isolated; ignores user ~/.codex
   await mkdir(home, { recursive: true });
 

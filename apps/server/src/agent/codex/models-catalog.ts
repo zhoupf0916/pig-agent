@@ -18,6 +18,7 @@ function deepseekModel(slug: string, displayName: string, description: string, p
     display_name: displayName,
     description,
     prefer_websockets: false,
+    experimental_supported_tools: [],
     support_verbosity: true,
     default_verbosity: "low",
     apply_patch_tool_type: "freeform",

@@ -10,6 +10,7 @@ import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
+  initializing = false,
   session,
   draft,
   streaming,
@@ -31,6 +32,7 @@ export function ChatPanel({
   onHandoffDone,
   onOpenMemory,
 }: {
+  initializing?: boolean;
   session: Session | null;
   draft: string;
   streaming: boolean;
@@ -228,7 +230,7 @@ export function ChatPanel({
         {!session && (
           <EmptyState
             title="今天，让什么想法落地？"
-            body="新建一个任务，从一句话开始。规划、执行与成果，都在这里。"
+            body="直接描述目标，发送后会自动新建任务。规划、执行与成果，都在这里。"
           />
         )}
         {session && visible.length === 0 && !streaming && (
@@ -258,7 +260,7 @@ export function ChatPanel({
       <Composer
         draft={draft}
         streaming={streaming}
-        disabled={!session}
+        disabled={initializing}
         onDraft={onDraft}
         onSend={onSend}
         onStop={onStop}
@@ -533,7 +535,7 @@ function Composer({
         <textarea
           value={draft}
           disabled={disabled || streaming}
-          placeholder={disabled ? "先新建一个任务…" : "描述目标，例如：整理工作区并写一份摘要 README"}
+          placeholder={disabled ? "正在加载工作台…" : "描述目标，例如：整理工作区并写一份摘要 README"}
           rows={2}
           onChange={(e) => onDraft(e.target.value)}
           onKeyDown={(e) => {

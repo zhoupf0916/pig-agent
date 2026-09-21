@@ -1,4 +1,5 @@
-import { accessSync, constants, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { codexEnvironment } from "./environment.ts";
+import { accessSync, constants, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveCodexApiKey, resolveCodexHome } from "../../config.ts";
 import type { CodexStatus, Settings } from "../../types.ts";
@@ -15,7 +16,13 @@ export function resolveCodexBinary(
     return configured;
   }
   const found = findOnPath(configured, env);
-  return found ?? configured;
+  if (found) return found;
+  if (configured === "codex" && process.platform === "darwin") {
+    for (const candidate of ["/Applications/Codex.app/Contents/Resources/codex", "/Applications/ChatGPT.app/Contents/Resources/codex"]) {
+      try { accessSync(candidate, constants.X_OK); return candidate; } catch { /* next app */ }
+    }
+  }
+  return configured;
 }
 
 export function findOnPath(name: string, env: NodeJS.ProcessEnv = process.env): string | null {
@@ -41,6 +48,7 @@ export function inspectCodexStatus(
   settings: Settings,
   env: NodeJS.ProcessEnv = process.env,
 ): CodexStatus {
+  env = codexEnvironment(settings, env);
   const binary = resolveCodexBinary(settings.codexBinaryPath, env);
   let binaryFound = false;
   try {
@@ -58,7 +66,7 @@ export function inspectCodexStatus(
     writeFileSync(probe, "ok");
     homeWritable = true;
   } catch {
-    homeWritable = existsSync(home);
+    homeWritable = false;
   }
 
   return {
@@ -73,6 +81,7 @@ export function assertCodexReady(
   env: NodeJS.ProcessEnv = process.env,
 ): { binary: string; home: string } {
   const status = inspectCodexStatus(settings, env);
+  env = codexEnvironment(settings, env);
   const binary = resolveCodexBinary(settings.codexBinaryPath, env);
   const home = resolveCodexHome(env);
   if (!status.binaryFound) {

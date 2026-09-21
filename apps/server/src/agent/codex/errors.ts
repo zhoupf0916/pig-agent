@@ -13,10 +13,10 @@ export type CodexErrorCode =
 
 export const CODEX_TURN_MESSAGES = {
   binary_missing:
-    "未找到 Codex 二进制。请安装 @openai/codex 0.154.x，或在设置中填写二进制路径 / CODEX_BIN。",
+    "未找到 Codex 二进制。请安装 Codex CLI，或在设置中填写二进制路径 / CODEX_BIN。",
   home_unwritable: "隔离的 CODEX_HOME 不可写。请检查 PIG_CODEX_HOME 路径权限。",
   api_key_missing:
-    "缺少 DEEPSEEK_API_KEY 或 CODEX_API_KEY。Codex 密钥只从环境变量读取，请勿写入设置或提交仓库。",
+    "缺少 Codex 专用 API Key。请在设置的 Codex 区域填写；源码模式也可使用 DEEPSEEK_API_KEY 或 CODEX_API_KEY。Pig 密钥不会自动代用。",
   workspace_invalid: "工作区路径无效或与 Codex 信任目录不一致。请在设置中检查工作区后重试本轮。",
   empty_prompt: "没有可发送给 Codex 的用户目标。请先发送一条消息。",
   start_failed: "Codex 进程启动失败。请检查二进制路径与权限后重试本轮。",
@@ -25,7 +25,7 @@ export const CODEX_TURN_MESSAGES = {
 } as const satisfies Record<CodexErrorCode, string>;
 
 const SECRET_DETAIL_RE =
-  /(sk-[A-Za-z0-9]{8,}|Bearer\s+\S+|BEGIN [A-Z ]*PRIVATE KEY|DEEPSEEK_API_KEY\s*[:=]\s*\S+|CODEX_API_KEY\s*[:=]\s*\S+|OPENAI_API_KEY\s*[:=]\s*\S+|LLM_API_KEY\s*[:=]\s*\S+|PIG_CLOUD_TOKEN\s*[:=]\s*\S+|CLOUD_TOKEN\s*[:=]\s*\S+)/gi;
+  /(sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|BEGIN [A-Z ]*PRIVATE KEY|DEEPSEEK_API_KEY\s*[:=]\s*\S+|CODEX_API_KEY\s*[:=]\s*\S+|OPENAI_API_KEY\s*[:=]\s*\S+|LLM_API_KEY\s*[:=]\s*\S+|PIG_CLOUD_TOKEN\s*[:=]\s*\S+|CLOUD_TOKEN\s*[:=]\s*\S+)/gi;
 
 export class CodexValidationError extends Error {
   readonly code: CodexErrorCode;
@@ -122,10 +122,7 @@ export function formatCodexTurnError(err: unknown): string {
 
 function compactCodexDetail(raw: string, base: string): string {
   const stripped = raw.replace(base, "").replace(/^（|）$/g, "").trim();
-  const compact = redactCodexErrorDetail(stripped.replace(/\s+/g, " ")).slice(0, 120);
-  if (!compact || compact === raw.slice(0, 120)) {
-    const fallback = redactCodexErrorDetail(raw.replace(/\s+/g, " ")).slice(0, 120);
-    return fallback && fallback !== base ? fallback : "";
-  }
-  return compact;
+  const compact = redactCodexErrorDetail(stripped.replace(/\s+/g, " "));
+  // Native parser/provider errors often put the actionable cause after a long path.
+  return compact.length > 240 ? `…${compact.slice(-240)}` : compact;
 }

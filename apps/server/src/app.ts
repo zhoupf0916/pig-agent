@@ -1,3 +1,4 @@
+import { registerConnectionTest } from "./routes/connection-test.ts";
 import { registerWorkbenchRoutes } from "./routes/workbench.ts";
 import { loadWorkbench } from "./store/workbench.ts";
 import { Hono } from "hono";
@@ -45,6 +46,8 @@ const settingsSchema = z.object({
   workspaceRoot: z.string().min(1).optional(),
   runtime: z.enum(["pig", "codex", "cloud"]).optional(),
   codexBinaryPath: z.string().optional(),
+  codexApiKey: z.string().optional(),
+  codexBaseUrl: z.string().url().refine(value => /^https?:\/\//.test(value), "HTTP(S) URL required").optional(),
   codexModel: z.string().min(1).optional(),
   codexNetworkAccess: z.boolean().optional(),
   cloudBaseUrl: z.string().optional(),
@@ -79,8 +82,18 @@ export function createApp(): Hono {
   );
 
   registerWorkbenchRoutes(app);
+  registerConnectionTest(app);
 
   app.get("/api/health", (c) => c.json({ ok: true, name: "pig-agent" }));
+
+  app.post("/api/settings/codex/use-pig-key", async c => {
+    const settings = await loadSettings();
+    if (!settings.llmApiKey) return c.json({ error: "尚未配置 Pig 密钥。" }, 400);
+    try {
+      if (new URL(settings.llmBaseUrl).origin !== new URL(settings.codexBaseUrl || "https://api.deepseek.com/").origin) return c.json({ error: "两个运行时的提供商地址不同，请单独填写 Codex 密钥。" }, 400);
+    } catch { return c.json({ error: "请先保存有效的模型接口地址。" }, 400); }
+    return c.json(publicSettings(await saveSettings({ codexApiKey: settings.llmApiKey })));
+  });
 
   app.get("/api/settings", async (c) => {
     const settings = await loadSettings();

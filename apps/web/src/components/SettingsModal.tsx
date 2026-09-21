@@ -11,6 +11,8 @@ const emptyForm: Settings = {
   runtime: "pig",
   codexBinaryPath: "",
   codexModel: "deepseek-flash",
+  codexApiKey: "",
+  codexBaseUrl: "https://api.deepseek.com/",
   codexNetworkAccess: false,
   cloudBaseUrl: "",
   cloudToken: "",
@@ -36,6 +38,7 @@ export function SettingsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const primedOpen = useRef(false);
+  const [connectionStatus, setConnectionStatus] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -277,14 +280,10 @@ export function SettingsModal({
           {form.runtime === "codex" && (
             <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
               <p className="text-meta leading-relaxed text-ink-600">
-                DeepSeek 走隔离 CODEX_HOME + <code className="font-mono text-ink-800">wire_api=responses</code>
-                ，模型如 <code className="font-mono text-ink-800">deepseek-flash</code>
-                。不会把 Pig 的 Chat Completions <code className="font-mono text-ink-800">llmBaseUrl</code>
-                （…/v1）映射进 Codex。密钥只用环境变量{" "}
-                <code className="font-mono text-ink-800">DEEPSEEK_API_KEY</code> /{" "}
-                <code className="font-mono text-ink-800">CODEX_API_KEY</code>。多轮只拼最近若干条文本，没有
-                Codex 原生跨轮记忆。缺少二进制、启动失败或本轮会话出错时会显示中文原因，并可「重试本轮」（不重复插入用户消息）。会话回到
-                idle，不会卡在运行中。
+                Codex CLI 负责规划和工具执行，模型由下面的 Responses 接口提供。
+                它使用独立密钥，不会自动使用 Pig 的密钥，也不使用此电脑上 Codex App 的登录账号。
+                多轮由工作台传入近期对话；Codex 文件操作使用自身的 workspace-write 沙箱，不经过 Pig 的写入审批。
+
               </p>
               <Field label="Codex 二进制路径（可选，留空则用 PATH 中的 codex）">
                 <input
@@ -293,6 +292,25 @@ export function SettingsModal({
                   className="field"
                   placeholder="codex 或 /usr/local/bin/codex"
                 />
+              </Field>
+              <Field label="Codex Responses 接口地址">
+                <input className="field" value={form.codexBaseUrl ?? "https://api.deepseek.com/"} onChange={e => setForm({ ...form, codexBaseUrl: e.target.value })} placeholder="https://api.deepseek.com/" />
+              </Field>
+              <Field label="Codex 专用 API Key">
+                <input className="field" type="password" autoComplete="off" value={form.codexApiKey ?? ""} onChange={e => setForm({ ...form, codexApiKey: e.target.value })} placeholder={settings?.codexApiKeyConfigured ? "已保存；留空保持不变" : "填写 Responses 提供商的密钥"} />
+                <button type="button" className="btn-ghost mt-2 text-xs" disabled={saving} onClick={async () => {
+                  setSaving(true); setError(null);
+                  try {
+                    await onSave(form);
+                    const response = await fetch("/api/settings/codex/use-pig-key", { method: "POST" });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error || "无法复用密钥");
+                    setForm(value => ({ ...value, codexApiKey: "", codexApiKeyConfigured: true }));
+                    setConnectionStatus("已将同一提供商的 Pig 密钥保存为 Codex 专用密钥，可继续测试连接。");
+                  } catch (err) { setError(err instanceof Error ? err.message : "保存失败"); }
+                  finally { setSaving(false); }
+                }}>同一提供商：使用已保存的 Pig 密钥</button>
+                <p className="mt-1 text-xs text-ink-500">桌面版加密保存；源码 Web 版保存在本机设置文件，也可使用 CODEX_API_KEY 环境变量。</p>
               </Field>
               <Field label="Codex 模型">
                 <input
@@ -328,7 +346,7 @@ export function SettingsModal({
                   <StatusLine ok={settings.codexStatus.homeWritable} label="隔离 CODEX_HOME 可写" />
                   <StatusLine
                     ok={settings.codexStatus.apiKeyPresent}
-                    label="环境变量中有 DEEPSEEK_API_KEY 或 CODEX_API_KEY"
+                    label="Codex 专用密钥已配置"
                   />
                 </ul>
               )}
@@ -375,6 +393,22 @@ export function SettingsModal({
           </Field>
         </div>
 
+        {form.runtime !== "cloud" && <div className="mt-4 rounded-card border border-ink-300 p-3">
+          <button type="button" disabled={saving} className="btn-ghost" onClick={async () => {
+            setSaving(true); setError(null); setConnectionStatus("");
+            try {
+              await onSave(form);
+              const response = await fetch("/api/settings/test-connection", { method: "POST" });
+              const result = await response.json();
+              if (!response.ok) throw new Error(result.error || "连接失败");
+              setForm(value => ({ ...value, codexApiKey: "", ...(window.pigDesktop ? { llmApiKey: "", cloudToken: "" } : {}) }));
+              setConnectionStatus(form.runtime === "codex" ? "Codex CLI 已实际启动并收到模型回复。" : "模型连接成功。");
+            } catch (err) { setError(err instanceof Error ? err.message : "连接失败"); }
+            finally { setSaving(false); }
+          }}>{saving ? "正在检测…" : "保存并测试当前运行时"}</button>
+          <p className="mt-1 text-xs text-ink-500">测试会发起一次简短模型请求。Codex 测试在临时目录进行，不修改当前工作区。</p>
+          {connectionStatus && <p role="status" className="mt-2 text-sm text-success">{connectionStatus}</p>}
+        </div>}
         <div className="mt-4 rounded-card border border-ink-300 bg-ink-100 p-3">
           <div className="text-meta uppercase tracking-[0.14em] text-ink-500">本地技能</div>
           <ul className="mt-2 space-y-1.5">

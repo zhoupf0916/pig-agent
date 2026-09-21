@@ -4,7 +4,7 @@
 
 macOS 内测客户端，复用 Web 工作台与本地服务。安装后不需要 Node.js / pnpm。首次选择工作目录并填写模型参数，可测试模型连接；Docker 和 Codex CLI 仍需用户自行安装。
 
-桌面首版的端到端验收以 Pig 运行时为准。Codex 的独立凭据配置尚未接入桌面设置，需要 Codex 时请使用 Web 源码模式并按 [Codex 运行时文档](codex-runtime.md) 配置；桌面程序不会继承终端中的模型密钥。
+0.1.1 支持 Pig 与 Codex 的独立凭据配置和真实连接测试。Codex 调用本机 CLI，需单独安装；在设置中填写 Responses 地址、模型与密钥，同一提供商可显式复用已保存的 Pig 密钥。详见 [Codex 运行时文档](codex-runtime.md)。桌面程序不会继承终端中的模型密钥。
 
 关闭最后一个窗口或退出应用会停止本地服务，自动化仅在应用运行时调度；当前不支持退出后后台常驻任务。
 
@@ -29,8 +29,8 @@ pnpm desktop:dist  # 生成 DMG 与 ZIP
 - 每次启动生成随机认证令牌，静态资源与 API 都受鉴权保护。令牌不进入 renderer、URL 或 localStorage，后端启动后从环境移除，避免命令子进程继承。
 - renderer 使用固定的 `pig://app` 地址，主进程代理到当前后端；草稿、主题与首次配置状态不随端口变化丢失。
 - 关闭 Node integration，启用 context isolation、renderer sandbox、CSP，拒绝网页权限申请、外部页面导航和 webview。
-- preload 只暴露目录选择与应用信息；文件与命令仍通过服务端任务的审阅流程执行。
-- 使用 Electron safeStorage 加密模型密钥与 Cloud token，保存在 `credentials.bin`；普通 `settings.json` 不包含这两个密钥的明文。读取设置时只向 UI 返回「已配置」标志；输入框留空保留原值，填写新值可替换。
+- preload 只暴露目录选择与应用信息；文件与命令通过服务端运行时执行；Pig 写入经过审阅，Codex 使用自身 workspace-write 沙箱，不经过 Pig 的逐项写入批准。
+- 使用 Electron safeStorage 加密 Pig、Codex 模型密钥与 Cloud token，保存在 `credentials.bin`；普通 `settings.json` 不包含这些凭据的明文。读取设置时只向 UI 返回「已配置」标志；输入框留空保留原值，填写新值可替换。
 - 系统加密不可用时不降级成明文。备份凭据后换机器可能无法解密，需重新配置自己的密钥。
 
 Electron renderer 沙箱保护的是界面，不代表 Agent 命令自动运行在 Docker 中。Agent 仍可按任务设置使用本机或 Docker；应用和同用户进程不是彼此隔离的安全租户。
@@ -59,6 +59,6 @@ pnpm desktop:smoke
 node scripts/smoke-desktop.mjs --packaged
 ```
 
-测试使用临时数据与本机假模型，校验无令牌请求被拒绝、renderer 无 Node 权限、受限桥可用、模型请求成功、密钥加密且 API 不回传密钥。测试退出后删除临时数据。
+测试使用临时数据、本机假模型服务和真实 Codex CLI，校验鉴权、renderer 隔离、首次发送自动建任务、双击发送去重、两种运行时对话、密钥加密与重启恢复。测试退出后删除临时数据。完整范围见 [回归报告](regression-2026-09-21.md)。
 
 人工验收：首次启动 → 选择目录 → 输入自己的模型配置 → 测试连接 → 发起任务 → 审阅并批准写入 → 查看实际文件 → 退出重开检查会话和草稿 → 导出诊断。不要在连接测试中使用他人的密钥。

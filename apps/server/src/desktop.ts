@@ -10,7 +10,6 @@ import {
   setDesktopSecrets,
   type DesktopSecrets,
 } from "./store/desktop-secrets.ts";
-import { loadSettings } from "./store/settings.ts";
 
 type ParentPort = {
   postMessage(value: unknown): void;
@@ -59,49 +58,6 @@ const token = Buffer.from(process.env.PIG_DESKTOP_TOKEN);
 delete process.env.PIG_DESKTOP_TOKEN; // Never inherit desktop authorization in agent shell commands.
 const app = new Hono();
 app.use("*", desktopAuth(token));
-app.post("/api/desktop/test-connection", async (c) => {
-  const settings = await loadSettings();
-  try {
-    const url = new URL(
-      settings.llmBaseUrl.replace(/\/$/, "") + "/chat/completions",
-    );
-    if (!["http:", "https:"].includes(url.protocol))
-      throw new Error("protocol");
-    const response = await fetch(url, {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(20000),
-      headers: {
-        "Content-Type": "application/json",
-        ...(settings.llmApiKey
-          ? { Authorization: `Bearer ${settings.llmApiKey}` }
-          : {}),
-      },
-      body: JSON.stringify({
-        model: settings.llmModel,
-        messages: [{ role: "user", content: "Reply OK" }],
-        max_tokens: 16,
-        stream: false,
-      }),
-    });
-    if (!response.ok)
-      return c.json(
-        {
-          error: `模型连接失败（HTTP ${response.status}），请检查地址、模型、密钥和额度。`,
-        },
-        400,
-      );
-    const body = (await response.json()) as { choices?: unknown[] };
-    if (!body.choices?.length)
-      return c.json(
-        { error: "接口没有返回有效的 Chat Completions 响应。" },
-        400,
-      );
-    return c.json({ ok: true });
-  } catch {
-    return c.json({ error: "连接失败或超时，请检查模型地址和网络。" }, 400);
-  }
-});
 app.route("/", createApp());
 app.use("/*", serveStatic({ root: "web/dist" }));
 app.get("*", serveStatic({ root: "web/dist", path: "index.html" }));
