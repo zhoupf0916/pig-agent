@@ -92,7 +92,7 @@ export function RightPanel({
   }, [artifacts]);
 
   return (
-    <aside className="flex h-full w-[300px] shrink-0 flex-col border-l border-ink-300 bg-ink-100 xl:w-[360px]">
+    <aside className="resource-panel flex h-full w-[300px] shrink-0 flex-col border-l border-ink-300 bg-ink-100 ">
       <div className="flex border-b border-ink-400 bg-panel">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
