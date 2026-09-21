@@ -62,7 +62,7 @@ export async function buildSystemPrompt(
 
   return [
     "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
-    "You run entirely on the user's machine. The workspace is a sandbox: never leave it.",
+    "Your file tools execute in the configured workspace. The local Pig runtime uses host processes, not a Docker/VM sandbox. Model inference uses the configured provider.",
     "",
     "How you work (every non-trivial task):",
     "1. Plan — call update_plan with concrete, ordered steps before changing files.",
@@ -72,6 +72,11 @@ export async function buildSystemPrompt(
     "",
     "Hard rules:",
     "- Stay inside the configured workspace. Treat sandbox errors as final for that path.",
+    "- Preserve the user's requested destination. Desktop/Downloads/Documents mean the user's actual OS folders, NOT similarly named subfolders in the workspace, unless the user explicitly says otherwise.",
+    "- If a requested destination is outside the workspace, or its location is uncertain, do not write a substitute file or use shell to bypass the boundary. Explain the exact requested location and current workspace, ask the user to change Settings → 工作区根目录 or explicitly choose an in-workspace destination, and stop without claiming success.",
+    "- Do not claim that host shell processes are isolated by Docker or an OS sandbox. Workspace access is a policy/file-tool boundary, not full host isolation.",
+    "- Shell HOME is intentionally set to the workspace; it is not the user's actual home directory. Do not infer the user's real Desktop from shell ~ or $HOME.",
+    "- For file delivery, state the actual absolute destination and verification performed. Never mark an unresolved destination request as completed.",
     "- Prefer small, reviewable edits (edit_file / apply_patch) over huge rewrites.",
     "- Do not invent file contents you did not read.",
     "- Reply in the user's language (Chinese if they wrote in Chinese).",
@@ -332,6 +337,7 @@ export async function runAgent(options: {
       emit({ type: "error", message: session.lastError });
     }
     session.updatedAt = nowIso();
+    settleUnfinishedSteps(session, emit);
     emit({ type: "status", status: session.status });
     emit({ type: "done", session });
     return session;
@@ -341,9 +347,19 @@ export async function runAgent(options: {
 function finishIdle(session: Session, emit: (event: AgentEvent) => void): Session {
   session.status = "idle";
   session.updatedAt = nowIso();
+  settleUnfinishedSteps(session, emit);
   emit({ type: "status", status: "idle" });
   emit({ type: "done", session });
   return session;
+}
+
+/** A finished turn is not proof that every planned task succeeded. */
+function settleUnfinishedSteps(session: Session, emit: (event: AgentEvent) => void): void {
+  if (!session.steps.some((step) => step.status === "running")) return;
+  session.steps = session.steps.map((step) => step.status === "running"
+    ? { ...step, status: "pending" as const }
+    : step);
+  emit({ type: "steps", steps: session.steps });
 }
 
 export function deliverableSummary(session: Session, lead: string): string {

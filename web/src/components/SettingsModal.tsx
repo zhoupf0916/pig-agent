@@ -361,13 +361,17 @@ export function SettingsModal({
               placeholder="deepseek-chat"
             />
           </Field>
-          <Field label="工作区根目录（沙箱，不可逃逸）">
+          <Field label="工作区根目录（文件工具的访问范围）">
             <input
               value={form.workspaceRoot}
               onChange={(e) => setForm({ ...form, workspaceRoot: e.target.value })}
               className="field"
               placeholder="./sample-workspace"
             />
+            <p className="mt-1 text-xs leading-5 text-ink-500">
+              文件写入此目录。要操作真实桌面，请填写桌面的完整路径；工作区里的 Desktop 子目录不是系统桌面。
+              本机 Pig 的命令在主机执行，此范围限制不等于 Docker 或虚拟机隔离。
+            </p>
           </Field>
         </div>
 

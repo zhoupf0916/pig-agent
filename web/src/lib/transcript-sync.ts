@@ -1,4 +1,14 @@
-import type { AgentEvent } from "../types";
+import type { AgentEvent, ChatMessage } from "../types";
+
+/** A server acknowledgement replaces its optimistic row; equal text is not identity. */
+export function reconcileMessage(messages: ChatMessage[], message: ChatMessage): ChatMessage[] {
+  const current = message.role === "assistant"
+    ? messages.filter((m) => m.id !== "stream_live")
+    : messages;
+  const index = current.findIndex((m) => m.id === message.id);
+  if (index < 0) return [...current, message];
+  return current.map((m, i) => i === index ? message : m);
+}
 
 export type TranscriptSyncPhase = "idle" | "catching_up";
 

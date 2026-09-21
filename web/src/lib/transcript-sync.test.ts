@@ -4,8 +4,35 @@ import {
   applySyncPhase,
   CATCH_UP_STATUS,
   rememberEventSeq,
+  reconcileMessage,
   sessionEventsSubscribeInit,
 } from "./transcript-sync";
+import type { ChatMessage } from "../types";
+
+describe("optimistic message acknowledgement", () => {
+  const user = (id: string): ChatMessage => ({ id, role: "user", content: "继续", createdAt: "local" });
+
+  it("replaces the optimistic row on POST acknowledgement and SSE replay", () => {
+    const optimistic = user("request-1");
+    const confirmed = { ...optimistic, createdAt: "server" };
+    const once = reconcileMessage([optimistic], confirmed);
+    expect(once).toEqual([confirmed]);
+    expect(reconcileMessage(once, confirmed)).toEqual([confirmed]);
+  });
+
+  it("preserves repeated text and another tab's independent message", () => {
+    const once = reconcileMessage([user("request-1")], user("request-2"));
+    expect(once.map((m) => m.id)).toEqual(["request-1", "request-2"]);
+    expect(reconcileMessage(once, { ...user("request-1"), createdAt: "server" })).toHaveLength(2);
+  });
+
+  it("only replaces streamed assistant text when the assistant message is finalized", () => {
+    const partial: ChatMessage = { id: "stream_live", role: "assistant", content: "正在", createdAt: "" };
+    expect(reconcileMessage([partial], user("request-1"))).toContain(partial);
+    const final = { ...partial, id: "assistant-1", content: "完成" };
+    expect(reconcileMessage([user("request-1"), partial], final)).toEqual([user("request-1"), final]);
+  });
+});
 
 describe("transcript SSE reconnect cursor", () => {
   it("reconnects with after + Last-Event-ID only (no full-history snapshot)", () => {

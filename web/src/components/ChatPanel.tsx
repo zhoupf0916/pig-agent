@@ -390,12 +390,14 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   if (steps.length === 0) return null;
   const running = steps.filter((s) => s.status === "running").length;
   const done = steps.filter((s) => s.status === "done").length;
+  const pending = steps.filter((s) => s.status === "pending").length;
   return (
     <div className="border-b border-ink-400 bg-panel px-6 py-3">
       <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
         <span className="uppercase tracking-[0.16em]">步骤</span>
         <span>
           {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
+          {pending ? ` · ${pending} 待处理` : ""}
         </span>
       </div>
       <ol className="flex flex-wrap gap-2">

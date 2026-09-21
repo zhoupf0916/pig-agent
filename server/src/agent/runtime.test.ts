@@ -103,6 +103,32 @@ function toolDelta(
 }
 
 describe("runAgent harness", () => {
+  it("leaves an unconfirmed plan pending when the model asks for a destination", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-pending-"));
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [{
+        id: "plan", name: "update_plan", args: { steps: [
+          { title: "核对位置", status: "done" },
+          { title: "等待用户选择工作区", status: "running" },
+        ] },
+      }]),
+      (_raw, res) => sse(res, { choices: [{ delta: { content: "目标在工作区外，请调整工作区后继续。" } }] }),
+    ]);
+    try {
+      const events: AgentEvent[] = [];
+      const next = await runAgent({
+        session: emptySession(), settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal, emit: (event) => { events.push(event); },
+      });
+      expect(next.status).toBe("idle");
+      expect(next.artifacts).toEqual([]);
+      expect(next.steps.map((step) => step.status)).toEqual(["done", "pending"]);
+      expect(events.filter((event) => event.type === "steps").at(-1)).toMatchObject({
+        steps: [{ status: "done" }, { status: "pending" }],
+      });
+    } finally { await mock.close(); }
+  });
+
   it("runs a DeepSeek-style parallel tool loop and writes an artifact summary", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-run-"));
     writeFileSync(join(workspaceRoot, "messy.txt"), "todo: file me");

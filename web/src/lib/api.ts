@@ -473,11 +473,12 @@ export async function streamMessage(
   content: string,
   onEvent: (event: AgentEvent, seq?: number) => void,
   signal?: AbortSignal,
+  clientMessageId?: string,
 ): Promise<void> {
   const res = await fetch(`/api/sessions/${sessionId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, clientMessageId }),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -505,7 +506,7 @@ export async function streamRetry(
 
 export async function streamTeamRun(
   sessionId: string,
-  input: { action: "start" | "continue"; content?: string },
+  input: { action: "start" | "continue"; content?: string; clientMessageId?: string },
   onEvent: (event: AgentEvent, seq?: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
