@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
-import { readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { resolve } from "node:path";
 const base = "http://127.0.0.1:8798";
@@ -18,11 +18,14 @@ await new Promise((resolve, reject) => {
 const secrets = parseEnv(
   await readFile("data/cluster-local/stack.env", "utf8"),
 );
+// Each run must prove its own task history, not accidentally reuse older local successes.
+const dataDirectory = await mkdtemp(resolve("data/product-acceptance-"));
 const env = {
   ...process.env,
   PIG_DESKTOP: "1",
   PORT: "8798",
-  DATA_DIR: resolve("data/product-acceptance"),
+  DATA_DIR: dataDirectory,
+  PIG_TEST_DATA_DIR: dataDirectory,
   WORKSPACE_ROOT: resolve("data/product-workspace"),
 };
 for (const key of Object.keys(env))
@@ -74,6 +77,17 @@ try {
   await command("apps/web/scripts/smoke-product-ui.mjs");
   await command("apps/web/scripts/smoke-session-creation.mjs");
   await command("apps/web/scripts/smoke-remote-following.mjs");
+  await command("scripts/redesign/session-context.mjs", {
+    PIG_WORKBENCH_URL: base,
+    PIG_TEST_DATA_DIR: env.DATA_DIR,
+  });
+  await command("scripts/smoke-artifact-provenance.mjs", {
+    PIG_REVIEW_BASE: base,
+    PIG_REVIEW_EVIDENCE: "data/product-evidence",
+    PIG_REVIEW_SESSION_ID: JSON.parse(
+      await readFile("data/product-evidence/flow.json", "utf8"),
+    ).sessionId,
+  });
   await command("apps/admin/smoke-ui.mjs", { ADMIN_UI_MUTATE: "1" });
   console.log(
     "PASS: product browser acceptance; evidence in data/product-evidence.",

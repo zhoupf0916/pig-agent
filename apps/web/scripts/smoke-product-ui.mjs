@@ -3,17 +3,24 @@ import { chromium, expect } from "@playwright/test";
 import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
-const base = "http://127.0.0.1:8798";
-const data = resolve("data/product-acceptance");
+const base = process.env.PIG_WORKBENCH_URL || "http://127.0.0.1:8798";
+const data = resolve(
+  process.env.PIG_TEST_DATA_DIR || "data/product-acceptance",
+);
 const evidence = resolve("data/product-evidence");
 await mkdir(evidence, { recursive: true });
-const browser = await chromium.launch({ channel: process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome", headless: true });
+const browser = await chromium.launch({
+  channel:
+    process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome",
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 const failures = [];
 page.on("pageerror", (error) => failures.push(error.message));
 let fixturePath;
 try {
   await page.goto(base);
+  await page.getByRole("button", { name: "打开导航", exact: true }).click();
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "设置" })).toBeVisible();
   await expect(
@@ -35,15 +42,47 @@ try {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "设置", exact: true }),
+    page.getByRole("button", { name: "打开导航", exact: true }),
   ).toBeFocused();
+  // Editing a real setting stays a draft until explicit save; closing must not silently discard it.
+  await page.getByRole("button", { name: "打开导航", exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  const settingsDialog = page.getByRole("dialog", {
+    name: "设置",
+    exact: true,
+  });
+  await settingsDialog.getByRole("button", { name: /^工作区/ }).click();
+  const workspaceInput = settingsDialog.getByRole("textbox", {
+    name: /^工作区根目录/,
+  });
+  const savedWorkspace = await workspaceInput.inputValue();
+  await workspaceInput.fill(savedWorkspace + "-unsaved-fixture");
+  await settingsDialog
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  await expect(
+    page.getByRole("alertdialog", { name: "放弃未保存的修改？" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "继续编辑", exact: true }).click();
+  await expect(workspaceInput).toHaveValue(savedWorkspace + "-unsaved-fixture");
+  await settingsDialog
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "放弃修改并关闭", exact: true })
+    .click();
+  assert.equal(
+    (await (await page.request.get(`${base}/api/settings`)).json())
+      .workspaceRoot,
+    savedWorkspace,
+  );
   console.log(
     "PASS 390×844 settings footer, keyboard containment, Escape, return focus",
   );
 
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.getByRole("button", { name: "远端运行", exact: true }).click();
-  const remote = page.getByRole("dialog", { name: "远端运行记录" });
+  await page.getByRole("button", { name: "远端记录", exact: true }).click();
+  const remote = page.getByRole("region", { name: "远端运行记录" });
   await expect(
     remote.getByText("正在读取运行记录…", { exact: true }),
   ).toHaveCount(0, { timeout: 15000 });
@@ -66,7 +105,7 @@ try {
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
-    remote.getByRole("button", { name: "关闭", exact: true }),
+    remote.getByRole("button", { name: "返回工作台", exact: true }),
   ).toBeInViewport();
   await page.screenshot({
     path: `${evidence}/remote-runs-mobile.png`,
@@ -80,7 +119,7 @@ try {
   await expect(remote.getByText(/暂时无法同步控制面/)).toHaveCount(0, {
     timeout: 15000,
   });
-  await page.keyboard.press("Escape");
+  await remote.getByRole("button", { name: "返回工作台", exact: true }).click();
   await expect(remote).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 960 });
   console.log(
@@ -126,7 +165,7 @@ try {
   await page
     .getByRole("combobox", { name: "筛选本地任务" })
     .selectOption("all");
-  const transcript = page.locator("section > div.overflow-y-auto");
+  const transcript = page.locator(".transcript");
   await transcript.evaluate((el) => {
     el.scrollTop = 120;
   });

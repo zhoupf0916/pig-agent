@@ -1,6 +1,9 @@
 export const clusterSchema = `
+CREATE TABLE IF NOT EXISTS worker_generations(worker_id text NOT NULL,instance_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(worker_id,instance_id));
+CREATE TABLE IF NOT EXISTS run_completions(run_id text PRIMARY KEY REFERENCES runs(id),submission_id text NOT NULL,token_hash text NOT NULL,payload_hash text NOT NULL,state text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS receipt_id text;
 ALTER TABLE workers ADD COLUMN IF NOT EXISTS instance_id text;
+INSERT INTO worker_generations(worker_id,instance_id) SELECT id,instance_id FROM workers WHERE instance_id IS NOT NULL ON CONFLICT DO NOTHING;
 ALTER TABLE workers ADD COLUMN IF NOT EXISTS reported_capacity int NOT NULL DEFAULT 3;
 ALTER TABLE workers ADD COLUMN IF NOT EXISTS profiles jsonb NOT NULL DEFAULT '["compact","standard","large"]';
 ALTER TABLE workers ADD COLUMN IF NOT EXISTS draining boolean NOT NULL DEFAULT false;

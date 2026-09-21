@@ -21,6 +21,7 @@ const app = new Hono<CloudEnv>();
 const credentialSchema = z.object({ token: z.string().min(1).max(200) });
 const finishSchema = credentialSchema
   .extend({
+    submissionId: z.string().uuid().optional(),
     kind: z.literal("result").optional(),
     ok: z.boolean(),
     error: z.string().max(5000).optional(),
@@ -400,9 +401,24 @@ app.post("/internal/runs/:id/finish", async (c) => {
     return c.json({ error: "Invalid execution result" }, 400);
   const body = parsed.data;
   const id = c.req.param("id");
+  const tokenHash = hash(body.token);
+  const payloadHash = hash(JSON.stringify(body));
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    // Lock the run first, including terminal runs, so completion replay and cancellation serialize.
+    await client.query("SELECT id FROM runs WHERE id=$1 FOR UPDATE", [id]);
+    const receipt = (
+      await client.query("SELECT * FROM run_completions WHERE run_id=$1", [id])
+    ).rows[0];
+    if (receipt) {
+      await client.query("ROLLBACK");
+      return receipt.token_hash === tokenHash &&
+        receipt.payload_hash === payloadHash &&
+        receipt.submission_id === (body.submissionId || "legacy")
+        ? c.json({ ok: true, state: receipt.state, replayed: true })
+        : c.json({ error: "Completion conflicts with accepted result" }, 409);
+    }
     const r = await client.query(
       "SELECT state,conversation_id,coalesce(lease_until<=now(),true) OR coalesce(deadline_at<=now(),false) AS expired FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
       [id, hash(String(body.token))],
@@ -472,8 +488,12 @@ app.post("/internal/runs/:id/finish", async (c) => {
           ]);
       }
     }
+    await client.query(
+      "INSERT INTO run_completions(run_id,submission_id,token_hash,payload_hash,state) VALUES($1,$2,$3,$4,$5)",
+      [id, body.submissionId || "legacy", tokenHash, payloadHash, state],
+    );
     await client.query("COMMIT");
-    return c.json({ ok: true });
+    return c.json({ ok: true, state });
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;

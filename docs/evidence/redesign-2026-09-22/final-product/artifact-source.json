@@ -1,0 +1,35 @@
+{
+  "session": "ses_3d0f120cbaca1227",
+  "latestRun": "run_6a50f1b8a03e41f499f3602b5af07e22",
+  "versions": [
+    {
+      "runId": "run_afbae5c757ab481398f446260de04c44",
+      "artifactId": "544f2a93-5f8d-44d1-be25-17bafa4e70df",
+      "content": "PIG_CLOUD_CONTAINER_OK\n"
+    },
+    {
+      "runId": "run_18b857c60e0b45208cb9fc175d31fa58",
+      "artifactId": "d4e3075e-3cc2-45ad-94c0-cd280eb79b0b",
+      "content": "PIG_CLOUD_CONTAINER_OK\n"
+    }
+  ],
+  "scenarios": [
+    "absent local file: authorized remote content shown",
+    "same-name different local content: no host bytes displayed",
+    "explicit import stages a separate local review without writing",
+    "approved import writes exact remote bytes into isolated local workspace",
+    "switch back after import retains original remote identity"
+  ],
+  "requests": [
+    "/api/remote/v1/runs/run_6a50f1b8a03e41f499f3602b5af07e22/artifacts/b2297b47-cb86-4748-87e7-ef798035fa27",
+    "/api/remote/v1/runs/run_18b857c60e0b45208cb9fc175d31fa58/artifacts/d4e3075e-3cc2-45ad-94c0-cd280eb79b0b",
+    "/api/remote/v1/runs/run_6a50f1b8a03e41f499f3602b5af07e22/artifacts/b2297b47-cb86-4748-87e7-ef798035fa27",
+    "/api/remote/v1/runs/run_18b857c60e0b45208cb9fc175d31fa58/artifacts/d4e3075e-3cc2-45ad-94c0-cd280eb79b0b",
+    "/api/remote/v1/runs/run_afbae5c757ab481398f446260de04c44/artifacts/544f2a93-5f8d-44d1-be25-17bafa4e70df",
+    "/api/remote/v1/runs/run_18b857c60e0b45208cb9fc175d31fa58/artifacts/d4e3075e-3cc2-45ad-94c0-cd280eb79b0b",
+    "/api/remote/v1/runs/run_6a50f1b8a03e41f499f3602b5af07e22/artifacts/b2297b47-cb86-4748-87e7-ef798035fa27",
+    "/api/remote/v1/runs/run_18b857c60e0b45208cb9fc175d31fa58/artifacts/d4e3075e-3cc2-45ad-94c0-cd280eb79b0b"
+  ],
+  "errors": [],
+  "importSession": "ses_9be8d0dd81873f0b"
+}

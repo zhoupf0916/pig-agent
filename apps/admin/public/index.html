@@ -4,10 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Pig Agent · 控制面</title>
+    <link rel="stylesheet" href="/admin/tokens.css" />
     <link rel="stylesheet" href="/admin/style.css" />
   </head>
   <body>
-    <aside class="sidebar">
+    <button
+      id="nav-backdrop"
+      class="nav-backdrop"
+      aria-label="关闭管理导航"
+      hidden
+    ></button>
+    <aside class="sidebar" id="admin-sidebar" aria-label="控制面导航">
       <a class="brand" href="#overview"
         ><span class="brand-mark">P</span
         ><span>Pig Agent<small>控制面 · Operations</small></span></a
@@ -21,6 +28,7 @@
         ><a href="#audit" data-page="audit">计划与审计</a>
       </nav>
       <div class="sidebar-footer">
+        <button id="theme-toggle" type="button">切换深色</button>
         <span class="eyebrow">CONTROL PLANE</span>
         <p>共享状态 · 统一调度</p>
         <a href="/debug/runs">执行链路诊断 ↗</a>
@@ -28,7 +36,19 @@
     </aside>
     <div class="workspace">
       <header>
-        <span id="connection" role="status">等待连接</span>
+        <div class="header-context">
+          <button
+            id="nav-toggle"
+            type="button"
+            aria-controls="admin-sidebar"
+            aria-expanded="false"
+            aria-label="打开管理导航"
+          >
+            ☰
+          </button>
+          <h1 id="page-title">运行概览</h1>
+          <span id="connection" role="status">等待连接</span>
+        </div>
         <div class="header-actions">
           <span id="updated"></span><button id="refresh" hidden>刷新</button
           ><button id="logout" hidden>退出登录</button>
@@ -50,8 +70,7 @@
             /><button class="primary">连接平台</button>
           </form>
           <p class="hint">
-            本地部署的令牌位于
-            data/cloud-local/access.txt。后台操作会记录审计日志；登录仅保留在当前标签页。
+            使用平台管理员提供的访问令牌。后台操作会记录审计日志；登录仅保留在当前标签页。
           </p>
         </section>
         <div id="error" class="notice error" role="alert" hidden></div>
@@ -67,6 +86,7 @@
               <span id="mode" class="badge"></span>
             </div>
             <div id="counts" class="cards"></div>
+            <div id="history-counts" class="history-summary"></div>
             <div class="overview-grid">
               <div class="panel">
                 <h2>集群状态</h2>
@@ -141,7 +161,25 @@
               排空节点会停止分配新任务，已有任务继续运行。心跳超过 15
               秒标记离线；有效并发取配置槽位与节点上报容量的较小值。
             </div>
-            <div id="workers" class="worker-grid"></div>
+            <div class="toolbar">
+              <label class="search-label"
+                ><span class="sr-only">搜索 Runner</span
+                ><input
+                  id="worker-search"
+                  type="search"
+                  placeholder="搜索节点名称或支持规格" /></label
+              ><label
+                ><span class="sr-only">筛选 Runner 状态</span
+                ><select id="worker-state">
+                  <option value="online">当前在线</option>
+                  <option value="available">可接单</option>
+                  <option value="draining">排空 / 停用</option>
+                  <option value="offline">历史离线</option>
+                  <option value="all">全部节点</option>
+                </select></label
+              ><span id="worker-count" class="muted"></span>
+            </div>
+            <div id="workers" class="worker-list panel"></div>
           </section>
           <section data-view="settings" hidden>
             <div class="heading">
@@ -159,28 +197,28 @@
               </p>
               <form id="policy-form" class="form-grid">
                 <label
-                  >全局并发<input
+                  >全局并发（任务）<input
                     id="global-concurrency"
                     type="number"
                     min="1"
                     max="128"
                     required /></label
                 ><label
-                  >单账号并发<input
+                  >单账号并发（任务）<input
                     id="user-concurrency"
                     type="number"
                     min="1"
                     max="5"
                     required /></label
                 ><label
-                  >单项目并发<input
+                  >单项目并发（任务）<input
                     id="project-concurrency"
                     type="number"
                     min="1"
                     max="64"
                     required /></label
                 ><label
-                  >队列上限<input
+                  >队列上限（等待任务）<input
                     id="queue-limit"
                     type="number"
                     min="1"

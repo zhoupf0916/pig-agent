@@ -4,6 +4,7 @@ import { resolveInWorkspace } from "../agent/sandbox.ts";
 import type { Artifact, ProjectAsset, Session } from "../types.ts";
 import { getProject, upsertAsset } from "./projects.ts";
 import { loadSettings } from "./settings.ts";
+import { createPlaneClient } from "../control-plane/client.ts";
 
 export const MAX_ARTIFACT_ASSET_BYTES = 1_500_000;
 
@@ -87,6 +88,21 @@ export async function readArtifactBytes(
   if (!isSavableArtifact(artifact)) {
     throw new ArtifactSaveError(`Cannot save deleted artifact: ${artifact.path}`, 400);
   }
+  if (artifact.source?.kind === "remote") {
+    const runId = artifact.source.runId;
+    if (!/^run_[a-zA-Z0-9]+$/.test(runId)) throw new ArtifactSaveError("Remote artifact run is unavailable", 409);
+    // A single copy must keep the same authority across metadata and bytes.
+    const plane = createPlaneClient(await loadSettings());
+    const { artifacts } = await plane.json<{ artifacts: Array<{id: string; path: string; size: number}> }>(`/v1/runs/${runId}/artifacts`);
+    const remote = artifacts.find((item) => artifact.source?.artifactId ? item.id === artifact.source.artifactId : item.path === artifact.path);
+    if (!remote || remote.path !== artifact.path) throw new ArtifactSaveError("Remote artifact is not available; local files were not used", 409);
+    if (remote.size > MAX_ARTIFACT_ASSET_BYTES) throw new ArtifactSaveError("artifact too large (1.5MB max)", 400);
+    const response = await plane.fetch(`/v1/runs/${runId}/artifacts/${encodeURIComponent(remote.id)}`);
+    if (!response.ok) throw new ArtifactSaveError("Remote artifact is not accessible", 409);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_ARTIFACT_ASSET_BYTES) throw new ArtifactSaveError("artifact too large (1.5MB max)", 400);
+    return bytes;
+  }
   const abs = resolveInWorkspace(workspaceRoot, artifact.path, { mustExist: true });
   const st = await stat(abs);
   if (st.isDirectory()) {
@@ -131,6 +147,10 @@ async function copyOne(
   const projectId = requireBoundProject(session);
   const project = await getProject(projectId);
   if (!project) throw new ArtifactSaveError("Project not found", 404);
+  // Old saved remote sessions predate source metadata. Fail closed rather than
+  // copying a same-named host file; new snapshots carry their precise run.
+  if (session.executionTarget === "remote" && !artifact.source)
+    throw new ArtifactSaveError("请刷新远端任务后再保存成果；未读取本机文件", 409);
   const content = await readArtifactBytes(workspaceRoot, artifact);
   const result = await upsertAsset(projectId, {
     filename: basename(artifact.path),

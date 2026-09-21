@@ -1,0 +1,45 @@
+{
+  "reviewDate": "2026-09-22",
+  "timezone": "Asia/Shanghai",
+  "unitTests": {
+    "command": "pnpm test",
+    "passed": 632,
+    "files": 93,
+    "durationSeconds": 3.44,
+    "startedAtLocalTime": "02:39:08",
+    "source": "Actual final log /tmp/pig-redesign-tests-final.log"
+  },
+  "controlPlaneAndRunnerTypecheck": "passed",
+  "desktopBuild": "passed; bundle-size warning retained",
+  "desktopSmoke": "Final latest-source fresh start and restart passed again",
+  "liveUpgrade": {
+    "web": "8797 navigation checked without browser runtime errors",
+    "desktopVersion": "0.3.0",
+    "settingsHashes": "preserved",
+    "userTasksPreserved": 9,
+    "source": "Parent integrator actual validation report"
+  },
+  "combinedProductSmoke": {
+    "result": "fresh mkdtemp data directory run passed, exit 0",
+    "lastAdminCheckAt": "2026-09-21T18:55:50.342Z",
+    "adminChecks": 16,
+    "base": "isolated workbench8798 + cluster8892",
+    "scope": "core real container flow, settings/navigation/offline, creation races, run following, context6, remote artifact source/version/download/import, admin",
+    "coreFlowChecks": 8,
+    "dataIsolation": "Every product run gets a fresh temporary DATA_DIR forwarded through PIG_TEST_DATA_DIR. F2 uses this run flow sessionId and authoritative successful conversation runs."
+  },
+  "scope": "Local development and isolated mock containers. No production capacity or exactly-once claim.",
+  "cluster": {
+    "protocolScenarios": 14,
+    "realRunnerFaultDurationMs": 59140,
+    "finalState": "zero execution containers and networks",
+    "dnsFault": "original strict assertion retained and passed after topology/resolver/config-mount correction"
+  },
+  "ciFollowup": {
+    "initialHead": "866edf8",
+    "initialOutcome": "Cluster job exposed a fixture precondition: recovered conversation after explicit retry had only one successful version; repeated local data had let F2 select another older session.",
+    "correction": "Keep all version/content assertions; add actual follow-up and approval after retry to create two successful versions in the current recovered conversation. Fresh directory and explicit session selection prevent old-data fallback.",
+    "currentState": "Fresh local full suite passed; per-commit CI outcomes: https://github.com/zhoupf0916/pig-agent/pull/84/checks",
+    "productionCodeChangedForThisFix": false
+  }
+}

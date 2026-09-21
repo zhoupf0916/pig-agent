@@ -1,0 +1,807 @@
+{
+  "at": "2026-09-21T18:17:18.784Z",
+  "checks": [
+    "all-field draft survives polling and group navigation",
+    "dirty close prompts; Escape dismisses discard only",
+    "invalid address blocks save and preserves draft",
+    "model saved through real API, reload persisted, restored without model calls",
+    "saved remote connection verified using real authenticated /v1/runs",
+    "all six sections at three viewports/two themes; save visible; no page overflow",
+    "appearance persists after browser reload"
+  ],
+  "captures": [
+    {
+      "file": "settings-1440x900-light.png",
+      "state": "settings",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-execution-1440x900-light.png",
+      "state": "settings-execution",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-1440x900-light.png",
+      "state": "settings-workspace",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-remote-1440x900-light.png",
+      "state": "settings-remote",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-1440x900-light.png",
+      "state": "settings-appearance",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-1440x900-light.png",
+      "state": "settings-advanced",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-1280x800-light.png",
+      "state": "settings",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-execution-1280x800-light.png",
+      "state": "settings-execution",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-1280x800-light.png",
+      "state": "settings-workspace",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-remote-1280x800-light.png",
+      "state": "settings-remote",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-1280x800-light.png",
+      "state": "settings-appearance",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-1280x800-light.png",
+      "state": "settings-advanced",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-390x844-light.png",
+      "state": "settings",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-execution-390x844-light.png",
+      "state": "settings-execution",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-390x844-light.png",
+      "state": "settings-workspace",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-remote-390x844-light.png",
+      "state": "settings-remote",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-390x844-light.png",
+      "state": "settings-appearance",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-390x844-light.png",
+      "state": "settings-advanced",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-1440x900-dark.png",
+      "state": "settings",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-execution-1440x900-dark.png",
+      "state": "settings-execution",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-1440x900-dark.png",
+      "state": "settings-workspace",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-remote-1440x900-dark.png",
+      "state": "settings-remote",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-1440x900-dark.png",
+      "state": "settings-appearance",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-1440x900-dark.png",
+      "state": "settings-advanced",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1440,
+        "viewport": 1440,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 231,
+          "y": 750,
+          "width": 978,
+          "height": 69,
+          "top": 750,
+          "right": 1209,
+          "bottom": 819,
+          "left": 231
+        }
+      }
+    },
+    {
+      "file": "settings-1280x800-dark.png",
+      "state": "settings",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-execution-1280x800-dark.png",
+      "state": "settings-execution",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-1280x800-dark.png",
+      "state": "settings-workspace",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-remote-1280x800-dark.png",
+      "state": "settings-remote",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-1280x800-dark.png",
+      "state": "settings-appearance",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-1280x800-dark.png",
+      "state": "settings-advanced",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 1280,
+        "viewport": 1280,
+        "dialogWidth": 980,
+        "footer": {
+          "x": 151,
+          "y": 698,
+          "width": 978,
+          "height": 69,
+          "top": 698,
+          "right": 1129,
+          "bottom": 767,
+          "left": 151
+        }
+      }
+    },
+    {
+      "file": "settings-390x844-dark.png",
+      "state": "settings",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-execution-390x844-dark.png",
+      "state": "settings-execution",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-workspace-390x844-dark.png",
+      "state": "settings-workspace",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-remote-390x844-dark.png",
+      "state": "settings-remote",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-appearance-390x844-dark.png",
+      "state": "settings-appearance",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    },
+    {
+      "file": "settings-advanced-390x844-dark.png",
+      "state": "settings-advanced",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "metrics": {
+        "scrollWidth": 390,
+        "viewport": 390,
+        "dialogWidth": 390,
+        "footer": {
+          "x": 0,
+          "y": 783,
+          "width": 390,
+          "height": 61,
+          "top": 783,
+          "right": 390,
+          "bottom": 844,
+          "left": 0
+        }
+      }
+    }
+  ],
+  "errors": []
+}

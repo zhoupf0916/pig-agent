@@ -58,3 +58,16 @@ Runner 环境：`WORKER_ID`、`WORKER_CAPACITY`（1–16）、`WORKER_PROFILES`�
 - Docker 只见常驻节点：`pig-run_…` 执行容器按任务创建并在任务结束回收。
 
 验证结果和剩余问题持续记入 [产品化工作记录](productization-worklog.md)。本地测试只说明测试环境中的行为，不推断生产吞吐或高可用。
+
+### 网络与代理恢复
+
+控制网络为 Docker 内部网络，PostgreSQL、Runner 和 Gateway 不依赖宿主机外网。两个控制面另接 `egress` 网络供模型提供商访问；入口代理另接 `ingress` 网络发布本机 8892 端口。代理保留 Docker 服务发现，但其外部 DNS 后备指向容器回环地址：停止的服务名不能被宿主机通配 DNS / fake-IP 代理解析为外部地址。没有为 POST 打开无条件重放。
+
+Nginx 使用目录挂载读取 `/etc/pig-cluster/nginx.conf`，避免编辑器原子替换单文件后 Docker 挂载保留失效 inode。`cluster:up` 会检查并重载代理配置，并实际请求宿主机 8892 健康端点，不能仅凭容器 Healthy 宣布可用。
+
+从旧的非内部控制网络升级，先在没有活动任务时运行 `pnpm cluster:down`，再执行 `pnpm cluster:up`。这两个命令不会删除 PostgreSQL 或 Runner outbox 命名卷。若入口 502，查看 `pnpm cluster:logs control`；若日志中的控制面上游出现 198.18 等宿主机 fake-IP 地址，检查入口服务的 DNS 配置是否被覆盖，而不是给所有 POST 添加盲目重试。
+
+
+2026-09-22 的修复回归实际运行于本机 Docker Desktop：两个控制面、两个 Runner（各两个槽位），模型为确定性 mock。严格协议验证 14 项全部通过；真实 Runner 故障套件耗时 59,140 ms，验证四任务四容器并发、SIGKILL 后不重放、剩余 Runner 与单控制面完成任务、SIGTERM 有界退出和执行资源零残留。之后顺序通过空数据库迁移/重复迁移/历史代次回填、五项完成与代次隔离验证、三项真实容器完成交付验证（正常、提交前 503、提交后丢响应）。这不是生产容量测量，也不证明整套系统高可用。
+
+首次严格故障回归曾在控制面退出后的审批 POST 返回 502；该失败及 DNS 修复摘要保留于 `data/acceptance-redesign/cluster-dns.json`。原始集群结果位于 `data/cluster-local/evidence/control.json` 和 `runners.json`；交付及代次验证见完成交付文档与重设计验收证据。故障修复没有降低原有测试标准或允许盲目重放非幂等请求。

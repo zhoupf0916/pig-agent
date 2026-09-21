@@ -1,3 +1,5 @@
+import "./remote-runs.css";
+import { remoteHash } from "../lib/hash";
 import { useEffect, useState, useRef } from "react";
 import type {
   CloudRunSummary,
@@ -27,16 +29,35 @@ async function remote(path: string, init?: RequestInit) {
 }
 export function RemoteRunsPanel({
   runId,
+  embedded = false,
   followSessionId,
   onClose,
   onOpenSession,
 }: {
   runId?: string;
+  embedded?: boolean;
   followSessionId?: string;
   onClose: () => void;
   onOpenSession?: (id: string) => void;
 }) {
-  const dialog = useDialog(true, onClose);
+  const dialog = useDialog(!embedded, onClose);
+  const [mobileList, setMobileList] = useState(!runId);
+  const [tab, setTab] = useState<"process" | "artifacts" | "approvals">(
+    "process",
+  );
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (runId || embedded) {
+      setSelected(runId || "");
+      setMobileList(!runId);
+    }
+  }, [runId, embedded]);
   const [following, setFollowing] = useState(true);
   const [followError, setFollowError] = useState("");
   const [query, setQuery] = useState("");
@@ -55,17 +76,20 @@ export function RemoteRunsPanel({
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (mounted.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
       actionLock.current = false;
-      setPending("");
+      if (mounted.current) setPending("");
     }
   }
   const [approvals, setApprovals] = useState<CloudApproval[]>([]);
   const [shared, setShared] = useState(false);
   const [runs, setRuns] = useState<CloudRunSummary[]>([]);
   const [selected, setSelected] = useState(runId || "");
-  const [detail, setDetail] = useState<CloudRunSummary | null>(null);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const [loadedDetail, setDetail] = useState<CloudRunSummary | null>(null);
+  const detail = loadedDetail?.id === selected ? loadedDetail : null;
   const [events, setEvents] = useState<
     Array<{
       seq: string;
@@ -103,8 +127,20 @@ export function RemoteRunsPanel({
             typeof current.remoteRunId === "string" &&
             current.remoteRunId &&
             !actionLock.current
-          )
+          ) {
             setSelected(current.remoteRunId);
+            if (
+              embedded &&
+              window.location.hash !== remoteHash(current.remoteRunId)
+            ) {
+              window.history.replaceState(
+                null,
+                "",
+                remoteHash(current.remoteRunId),
+              );
+              window.dispatchEvent(new HashChangeEvent("hashchange"));
+            }
+          }
         }
       } catch (error) {
         if (!stopped)
@@ -120,7 +156,7 @@ export function RemoteRunsPanel({
       stopped = true;
       clearTimeout(timer);
     };
-  }, [followSessionId, following]);
+  }, [followSessionId, following, embedded]);
   useEffect(() => {
     void remote("/health")
       .then((d) => setMode(d.modelMode))
@@ -204,13 +240,13 @@ export function RemoteRunsPanel({
     <div
       ref={dialog}
       tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
+      role={embedded ? "region" : "dialog"}
+      aria-modal={embedded ? undefined : true}
       aria-label="远端运行记录"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-2 backdrop-blur-[2px] sm:p-4"
+      className={`remote-runs ${embedded ? "remote-runs-embedded" : "remote-runs-modal"}`}
     >
-      <section className="flex h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-card border border-ink-300 bg-panel shadow-xl">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-300 p-4">
+      <section className="remote-runs-surface">
+        <header className="remote-runs-header">
           <div>
             <h2 className="font-medium">远端运行记录</h2>
             <p className="text-xs text-ink-500">
@@ -242,7 +278,7 @@ export function RemoteRunsPanel({
             className="btn-ghost shrink-0 whitespace-nowrap"
             onClick={onClose}
           >
-            关闭
+            {embedded ? "返回工作台" : "关闭"}
           </button>
         </header>
         {(listError || detailError || followError) && (
@@ -267,13 +303,17 @@ export function RemoteRunsPanel({
             onRun={(id) => {
               setFollowing(false);
               setSelected(id);
+              if (embedded) window.location.hash = remoteHash(id);
+              setMobileList(false);
               setShared(false);
             }}
           />
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <aside className="max-h-52 w-full shrink-0 overflow-auto border-b border-ink-300 p-2 sm:max-h-none sm:w-72 sm:border-b-0 sm:border-r">
-              <div className="sticky top-0 z-10 space-y-2 bg-panel p-2">
+          <div
+            className={`remote-runs-body ${mobileList || !selected ? "show-list" : "show-detail"}`}
+          >
+            <aside className="remote-run-list">
+              <div className="remote-run-filters">
                 <input
                   className="field"
                   aria-label="搜索远端运行"
@@ -317,10 +357,12 @@ export function RemoteRunsPanel({
                   onClick={() => {
                     setFollowing(false);
                     setSelected(run.id);
+                    if (embedded) window.location.hash = remoteHash(run.id);
+                    setMobileList(false);
                   }}
-                  className={`mb-1 block w-full rounded-card p-3 text-left text-sm ${selected === run.id ? "bg-accent-soft" : "hover:bg-ink-100"}`}
+                  className={`remote-run-row ${selected === run.id ? "selected" : ""}`}
                 >
-                  <div className="truncate">{run.prompt}</div>
+                  <div className="remote-run-title">{run.prompt}</div>
                   <div className="mt-1 text-xs text-ink-500">
                     {labels[run.state] || run.state} ·{" "}
                     {new Date(run.created_at).toLocaleString()}
@@ -328,7 +370,13 @@ export function RemoteRunsPanel({
                 </button>
               ))}
             </aside>
-            <article className="min-w-0 flex-1 space-y-4 overflow-auto p-5">
+            <article className="remote-run-detail">
+              <button
+                className="btn-ghost remote-list-toggle"
+                onClick={() => setMobileList(true)}
+              >
+                ← 选择其他运行
+              </button>
               {!selected && (
                 <p className="text-sm text-ink-500">
                   选择一条运行查看回复、工具日志和成果。
@@ -361,16 +409,30 @@ export function RemoteRunsPanel({
                           className="btn-ghost"
                           disabled={stopping}
                           onClick={async () => {
+                            if (actionLock.current) return;
+                            actionLock.current = true;
                             setStopping(true);
                             try {
                               await remote(`/v1/runs/${selected}/abort`, {
                                 method: "POST",
                               });
-                              setDetail(await remote(`/v1/runs/${selected}`));
+                              const updated = await remote(
+                                `/v1/runs/${selected}`,
+                              );
+                              if (
+                                mounted.current &&
+                                selectedRef.current === selected
+                              )
+                                setDetail(updated);
                             } catch (e) {
-                              setError(String(e));
+                              if (
+                                mounted.current &&
+                                selectedRef.current === selected
+                              )
+                                setError(String(e));
                             } finally {
-                              setStopping(false);
+                              actionLock.current = false;
+                              if (mounted.current) setStopping(false);
                             }
                           }}
                         >
@@ -392,7 +454,7 @@ export function RemoteRunsPanel({
                               );
                               const data = await r.json();
                               if (!r.ok) throw Error(data.error);
-                              onOpenSession?.(data.id);
+                              if (mounted.current) onOpenSession?.(data.id);
                             } catch (e) {
                               setError(String(e));
                             }
@@ -414,7 +476,7 @@ export function RemoteRunsPanel({
                       )}
                     </div>
                   )}
-                  <div className="rounded-card border border-ink-300 bg-ink-100 p-4">
+                  <div className="remote-run-goal">
                     <h3 className="mb-2 text-xs font-medium text-ink-500">
                       任务目标
                     </h3>
@@ -437,78 +499,154 @@ export function RemoteRunsPanel({
                   )}
                 </>
               )}
-              {approvals.map((approval) => (
-                <section
-                  key={approval.id}
-                  className="rounded-card border border-ink-300 p-3 space-y-2 text-sm"
-                >
-                  <h4 className="font-medium">
-                    云端操作审批 · {approval.tool}
-                  </h4>
-                  <p>
-                    {
-                      {
-                        pending: "等待审批，尚未执行；等待计入容器运行时限",
-                        approved:
-                          detail &&
-                          ["succeeded", "failed", "cancelled"].includes(
-                            detail.state,
-                          )
-                            ? "已批准，但运行已结束；此授权未被执行器领取"
-                            : "已批准，等待执行器领取",
-                        rejected: "已拒绝",
-                        consumed: "授权已领取，执行结果请查看工具日志",
-                        expired: "运行已结束，旧审批已失效",
-                      }[approval.state]
-                    }
-                  </p>
-                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all text-xs">
-                    {JSON.stringify(approval.args, null, 2)}
-                  </pre>
-                  {approval.state === "pending" &&
-                    detail?.can_write !== false && (
-                      <div className="flex gap-2">
-                        {(["approve", "reject"] as const).map((decision) => (
-                          <button
-                            className="btn-ghost"
-                            key={decision}
-                            disabled={!!pending}
-                            onClick={() =>
-                              void perform(approval.id, async () => {
-                                try {
-                                  await remote(
-                                    `/v1/runs/${selected}/approvals/${approval.id}/decision`,
-                                    {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                      },
-                                      body: JSON.stringify({ decision }),
-                                    },
-                                  );
-                                  setApprovals(
-                                    (
-                                      await remote(
-                                        `/v1/runs/${selected}/approvals`,
-                                      )
-                                    ).approvals,
-                                  );
-                                } catch (e) {
-                                  setError(String(e));
-                                }
-                              })
-                            }
-                          >
-                            {decision === "approve"
-                              ? "批准此操作"
-                              : "拒绝并结束本轮"}
-                          </button>
-                        ))}
+              {detail && (
+                <>
+                  <nav className="remote-detail-tabs" aria-label="运行详情视图">
+                    {(
+                      [
+                        ["process", "过程", events.length],
+                        ["artifacts", "成果", artifacts.length],
+                        ["approvals", "审批", approvals.length],
+                      ] as const
+                    ).map(([value, label, count]) => (
+                      <button
+                        key={value}
+                        aria-pressed={tab === value}
+                        className={tab === value ? "selected" : ""}
+                        onClick={() => setTab(value)}
+                      >
+                        {label}
+                        <span>{count}</span>
+                      </button>
+                    ))}
+                  </nav>
+                  {tab !== "approvals" &&
+                    approvals.some((a) => a.state === "pending") &&
+                    !["succeeded", "failed", "cancelled"].includes(
+                      detail.state,
+                    ) && (
+                      <div className="remote-approval-notice">
+                        <span>此运行正在等待审批</span>
+                        <button
+                          className="btn-primary"
+                          onClick={() => setTab("approvals")}
+                        >
+                          审阅操作
+                        </button>
                       </div>
                     )}
-                </section>
-              ))}
-              {detail && (
+                </>
+              )}
+              {tab === "approvals" && detail && !approvals.length && (
+                <p className="remote-detail-empty">此运行暂无审批记录。</p>
+              )}
+              {tab === "approvals" &&
+                detail &&
+                approvals.map((approval) => (
+                  <section
+                    key={approval.id}
+                    className="approval-card remote-history-approval"
+                  >
+                    <h4 className="font-medium">
+                      云端操作审批 · {approval.tool}
+                    </h4>
+                    <p>
+                      {
+                        {
+                          pending: "等待审批，尚未执行；等待计入容器运行时限",
+                          approved:
+                            detail &&
+                            ["succeeded", "failed", "cancelled"].includes(
+                              detail.state,
+                            )
+                              ? "已批准，但运行已结束；此授权未被执行器领取"
+                              : "已批准，等待执行器领取",
+                          rejected: "已拒绝",
+                          consumed: "授权已领取，执行结果请查看工具日志",
+                          expired: "运行已结束，旧审批已失效",
+                        }[approval.state]
+                      }
+                    </p>
+                    <div className="operation-target">
+                      <strong>
+                        {String(
+                          approval.args.path ??
+                            approval.args.file_path ??
+                            approval.tool,
+                        )}
+                      </strong>
+                    </div>
+                    {approval.args.command !== undefined && (
+                      <pre className="approval-code">
+                        {String(approval.args.command)}
+                      </pre>
+                    )}
+                    {(approval.args.content ?? approval.args.new_string) !==
+                      undefined && (
+                      <div className="proposed-content">
+                        <span>拟写入内容</span>
+                        <pre>
+                          {String(
+                            approval.args.content ?? approval.args.new_string,
+                          )}
+                        </pre>
+                      </div>
+                    )}
+                    <details>
+                      <summary>高级：完整参数</summary>
+                      <pre className="approval-code">
+                        {JSON.stringify(approval.args, null, 2)}
+                      </pre>
+                    </details>
+                    {approval.state === "pending" &&
+                      detail &&
+                      !["succeeded", "failed", "cancelled"].includes(
+                        detail.state,
+                      ) &&
+                      detail.can_write !== false && (
+                        <div className="flex gap-2">
+                          {(["approve", "reject"] as const).map((decision) => (
+                            <button
+                              className="btn-ghost"
+                              key={decision}
+                              disabled={!!pending}
+                              onClick={() =>
+                                void perform(approval.id, async () => {
+                                  try {
+                                    await remote(
+                                      `/v1/runs/${selected}/approvals/${approval.id}/decision`,
+                                      {
+                                        method: "POST",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({ decision }),
+                                      },
+                                    );
+                                    const updated = await remote(
+                                      `/v1/runs/${selected}/approvals`,
+                                    );
+                                    if (
+                                      mounted.current &&
+                                      selectedRef.current === selected
+                                    )
+                                      setApprovals(updated.approvals);
+                                  } catch (e) {
+                                    setError(String(e));
+                                  }
+                                })
+                              }
+                            >
+                              {decision === "approve"
+                                ? "批准此操作"
+                                : "拒绝并结束本轮"}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                  </section>
+                ))}
+              {tab === "process" && detail && (
                 <h4 className="border-t border-ink-300 pt-4 text-sm font-medium">
                   执行过程{" "}
                   <span className="ml-2 text-xs font-normal text-ink-500">
@@ -516,34 +654,41 @@ export function RemoteRunsPanel({
                   </span>
                 </h4>
               )}
-              {detail && !events.length && (
+              {tab === "process" && detail && !events.length && (
                 <p className="text-xs text-ink-500">
                   {detail.state === "queued"
                     ? "任务已进入队列，等待 Runner 领取。"
                     : "尚无执行事件。"}
                 </p>
               )}
-              {events.map(({ seq, event }) =>
-                event.type === "message" && event.message?.content?.trim() ? (
-                  <div key={seq} className="rounded-card bg-ink-100 p-3">
-                    <MarkdownView text={event.message?.content || ""} />
-                  </div>
-                ) : event.type === "tool_end" ? (
-                  <details
-                    key={seq}
-                    className="rounded-card border border-ink-300 p-3 text-xs"
-                  >
-                    <summary className="cursor-pointer font-medium">
-                      {event.ok ? "✓" : "✕"} {event.name}
-                    </summary>
-                    <pre className="mt-2 whitespace-pre-wrap break-all">
-                      {event.output}
-                    </pre>
-                  </details>
-                ) : null,
+              {tab === "process" &&
+                detail &&
+                events.map(({ seq, event }) =>
+                  event.type === "message" && event.message?.content?.trim() ? (
+                    <div key={seq} className="rounded-card bg-ink-100 p-3">
+                      <MarkdownView text={event.message?.content || ""} />
+                    </div>
+                  ) : event.type === "tool_end" ? (
+                    <details
+                      key={seq}
+                      className="rounded-card border border-ink-300 p-3 text-xs"
+                    >
+                      <summary className="cursor-pointer font-medium">
+                        {event.ok ? "✓" : "✕"} {event.name}
+                      </summary>
+                      <pre className="mt-2 whitespace-pre-wrap break-all">
+                        {event.output}
+                      </pre>
+                    </details>
+                  ) : null,
+                )}
+              {tab === "artifacts" && detail && !artifacts.length && (
+                <p className="remote-detail-empty">
+                  此运行尚无已保存成果。执行结束后会自动更新。
+                </p>
               )}
-              {artifacts.length > 0 && (
-                <div className="border-t border-ink-300 pt-3">
+              {tab === "artifacts" && detail && artifacts.length > 0 && (
+                <div className="remote-run-artifacts">
                   <h4 className="mb-2 text-sm font-medium">成果文件</h4>
                   <button
                     className="btn-ghost mb-2"
@@ -557,7 +702,7 @@ export function RemoteRunsPanel({
                           );
                           const data = await r.json();
                           if (!r.ok) throw Error(data.error);
-                          onOpenSession?.(data.id);
+                          if (mounted.current) onOpenSession?.(data.id);
                         } catch (e) {
                           setError(String(e));
                         }

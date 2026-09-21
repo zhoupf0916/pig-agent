@@ -1,3 +1,5 @@
+import "../pages.css";
+import { useDialog } from "../lib/use-dialog";
 import { Download, FolderKanban, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
@@ -40,6 +42,10 @@ export function ProjectsPanel({
   onOpenSession: (id: string) => void;
   onCreateSession: (projectId: string) => void;
 }) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const catalogDialog = useDialog(catalogOpen, () => setCatalogOpen(false));
+  useEffect(() => { if (selectedId) setCatalogOpen(false); }, [selectedId]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [detail, setDetail] = useState<Project | null>(null);
   const [name, setName] = useState("");
@@ -138,16 +144,23 @@ export function ProjectsPanel({
   );
 
   return (
-    <section className="flex min-w-0 flex-1 overflow-hidden bg-ink-50">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-ink-300 bg-ink-100">
-        <div className="flex items-center justify-between px-4 pb-3 pt-4">
+    <section className="resource-page" aria-label="项目">
+      <header className="resource-header"><div><h2>项目</h2><p>管理本机项目的任务与交付成果</p></div><button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)} aria-expanded={catalogOpen}>项目目录 <span>{projects.length}</span></button></header>
+      {catalogOpen && <button className="resource-scrim" aria-label="关闭项目目录" onClick={() => setCatalogOpen(false)} />}
+      <div ref={catalogDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="项目目录" hidden={!catalogOpen} className="resource-catalog">
+        <div className="resource-catalog-heading"><h3>项目目录</h3><button type="button" className="btn-quiet" onClick={() => setCatalogOpen(false)}>关闭</button></div>
+        <input className="field resource-catalog-search" aria-label="搜索项目" placeholder="搜索项目" value={catalogQuery} onChange={e => setCatalogQuery(e.target.value)} />
+
+        {catalogQuery && !projects.some(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())) && <p role="status" className="resource-catalog-empty">没有匹配的项目</p>}
+        <div className="resource-catalog-intro">
           <div>
             <div className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</div>
             <div className="mt-0.5 text-sm font-medium text-ink-800">协作空间</div>
           </div>
         </div>
+        {error && <p role="alert" className="resource-error">{error}</p>}
         <form
-          className="space-y-2 px-3 pb-3"
+          className="resource-create"
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim()) return;
@@ -156,7 +169,7 @@ export function ProjectsPanel({
               setName("");
               await refreshList();
               onSelectProject(created.id);
-            })();
+            })().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
           }}
         >
           <input
@@ -176,13 +189,13 @@ export function ProjectsPanel({
               还没有项目。建一个空间，再把会话绑上去。
             </p>
           )}
-          {projects.map((p) => {
+          {projects.filter(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())).map((p) => {
             const active = p.id === selectedId;
             return (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => onSelectProject(p.id)}
+                onClick={() => { setCatalogOpen(false); onSelectProject(p.id); }}
                 className={`w-full rounded-card px-2.5 py-2 text-left ${
                   active ? "bg-accent-soft text-ink-800" : "text-ink-700 hover:bg-ink-200"
                 }`}
@@ -195,14 +208,15 @@ export function ProjectsPanel({
             );
           })}
         </div>
-      </aside>
+      </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
+      <div className="resource-content">
+        {error && <p role="alert" className="resource-error">{error}</p>}
         {!detail && (
-          <div className="flex h-full flex-col items-center justify-center text-ink-500">
+          <div className="resource-empty">
             <FolderKanban size={28} className="mb-3 text-ink-400" />
             <p className="text-sm">选择或新建一个项目</p>
+          <button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)}>新建项目</button>
           </div>
         )}
         {detail && (
@@ -211,7 +225,7 @@ export function ProjectsPanel({
               <div>
                 <h2 className="text-base font-medium text-ink-800">{detail.name}</h2>
                 <p className="mt-1 text-xs text-ink-500">
-                  本机轻量多用户 · 指令会注入已绑定会话的系统提示
+                  项目指令、待办、会话和成果集中管理
                 </p>
               </div>
               <button

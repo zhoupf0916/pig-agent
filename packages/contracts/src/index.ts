@@ -28,6 +28,8 @@ export type PlanStep = {
 export type ArtifactAction = "created" | "modified" | "deleted" | "moved";
 
 export type Artifact = {
+  /** Remote event snapshots are never paths in the host workspace. */
+  source?: { kind: "remote"; runId: string; artifactId?: string };
   path: string;
   action: ArtifactAction;
   updatedAt: string;

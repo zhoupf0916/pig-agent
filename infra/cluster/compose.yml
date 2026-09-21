@@ -10,7 +10,7 @@ x-cloud: &cloud
     MEMBER2_TOKEN: ${MEMBER2_TOKEN}
     WORKER_TOKEN: ${WORKER_TOKEN}
     MODEL_MODE: mock
-  networks: [control]
+  networks: [control, egress]
   depends_on:
     postgres: { condition: service_healthy }
   healthcheck:
@@ -28,7 +28,7 @@ x-worker: &worker
     WORKER_CAPACITY: 2
     WORKER_NAMESPACE: pig-agent-cluster
     GATEWAY_CONTAINER: pig-agent-cluster-gateway-1
-  volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+  volumes: ["/var/run/docker.sock:/var/run/docker.sock", "worker-outbox:/app/data/worker-outbox"]
   networks: [control]
   stop_grace_period: 40s
   depends_on:
@@ -53,9 +53,13 @@ services:
     ports: ["127.0.0.1:8894:8890"]
   control:
     image: nginx:1.28-alpine
-    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    # Directory mount survives atomic editor replacements of nginx.conf.
+    volumes: ["./:/etc/pig-cluster:ro"]
+    command: [nginx, -c, /etc/pig-cluster/nginx.conf, -g, "daemon off;"]
     ports: ["127.0.0.1:8892:8890"]
-    networks: [control]
+    networks: [control, ingress]
+    # Resolve Docker service aliases only; never forward vanished names to host fake-IP DNS.
+    dns: [127.0.0.1]
     depends_on:
       cloud-a: { condition: service_healthy }
       cloud-b: { condition: service_healthy }
@@ -80,6 +84,10 @@ services:
     profiles: [build]
     network_mode: none
 volumes:
+  worker-outbox:
   database:
 networks:
   control:
+    internal: true
+  egress:
+  ingress:

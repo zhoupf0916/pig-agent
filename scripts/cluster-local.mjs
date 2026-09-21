@@ -33,6 +33,42 @@ function compose(args) {
 if (command === "up") {
   compose(["--profile", "build", "build"]);
   compose(["up", "-d", "--wait", "--wait-timeout", "120"]);
+  compose([
+    "exec",
+    "-T",
+    "control",
+    "nginx",
+    "-t",
+    "-c",
+    "/etc/pig-cluster/nginx.conf",
+  ]);
+  compose([
+    "exec",
+    "-T",
+    "control",
+    "nginx",
+    "-s",
+    "reload",
+    "-c",
+    "/etc/pig-cluster/nginx.conf",
+  ]);
+  let reachable = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      reachable = (
+        await fetch("http://127.0.0.1:8892/health", {
+          signal: AbortSignal.timeout(2000),
+        })
+      ).ok;
+    } catch {}
+    if (reachable) break;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!reachable)
+    throw Error(
+      "Containers started but published control entrypoint :8892 is unreachable",
+    );
+  console.log("Published control entrypoint is healthy: http://127.0.0.1:8892");
 } else if (command === "down") {
   compose(["stop", "runner-a", "runner-b"]);
   // Only resources explicitly labeled for this isolated stack may be removed.

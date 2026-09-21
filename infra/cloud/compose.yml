@@ -75,7 +75,7 @@ services:
       CONTROL_URL: http://cloud:8890
       WORKER_TOKEN: ${WORKER_TOKEN}
       RUNNER_IMAGE: pig-agent-runner:local
-    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock", "worker-outbox:/app/data/worker-outbox"]
     networks: [control]
     depends_on:
       cloud: { condition: service_healthy }
@@ -91,6 +91,7 @@ services:
     profiles: [build]
     network_mode: none
 volumes:
+  worker-outbox:
   database:
 networks:
   control:

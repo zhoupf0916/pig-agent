@@ -25,6 +25,7 @@ for (const [name, entry] of Object.entries({
 await cp("skills", "cloud-dist/skills", { recursive: true });
 await cp("apps/web/dist", "cloud-dist/web", { recursive: true });
 await cp("apps/admin/public", "cloud-dist/admin", { recursive: true });
+await cp("packages/design/tokens.css", "cloud-dist/admin/tokens.css");
 console.log(
   "Cloud, gateway, worker and existing Pig runner bundled. No local data or credentials included.",
 );

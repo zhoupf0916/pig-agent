@@ -1,0 +1,645 @@
+{
+  "at": "2026-09-21T18:57:11.907Z",
+  "pairs": [
+    {
+      "file": "admin-runners-1280x800-dark.png",
+      "afterPath": "admin/workers-1280x800-dark.png",
+      "state": "admin-runners",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "admin-runners-1280x800-light.png",
+      "afterPath": "admin/workers-1280x800-light.png",
+      "state": "admin-runners",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "admin-runners-1440x900-dark.png",
+      "afterPath": "admin/workers-1440x900-dark.png",
+      "state": "admin-runners",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "admin-runners-1440x900-light.png",
+      "afterPath": "admin/workers-1440x900-light.png",
+      "state": "admin-runners",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "admin-runners-390x844-dark.png",
+      "afterPath": "admin/workers-390x844-dark.png",
+      "state": "admin-runners",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "admin-runners-390x844-light.png",
+      "afterPath": "admin/workers-390x844-light.png",
+      "state": "admin-runners",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real cluster; baseline admin has no dark support",
+      "afterKind": "Real isolated Runner cluster"
+    },
+    {
+      "file": "approval-1280x800-dark.png",
+      "afterPath": "after/approval-1280x800-dark.png",
+      "state": "approval",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "approval-1280x800-light.png",
+      "afterPath": "after/approval-1280x800-light.png",
+      "state": "approval",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "approval-1440x900-dark.png",
+      "afterPath": "after/approval-1440x900-dark.png",
+      "state": "approval",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "approval-1440x900-light.png",
+      "afterPath": "after/approval-1440x900-light.png",
+      "state": "approval",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "approval-390x844-dark.png",
+      "afterPath": "after/approval-390x844-dark.png",
+      "state": "approval",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "approval-390x844-light.png",
+      "afterPath": "after/approval-390x844-light.png",
+      "state": "approval",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real mock container pending authorized write"
+    },
+    {
+      "file": "empty-1280x800-dark.png",
+      "afterPath": "after/empty-1280x800-dark.png",
+      "state": "empty",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "empty-1280x800-light.png",
+      "afterPath": "after/empty-1280x800-light.png",
+      "state": "empty",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "empty-1440x900-dark.png",
+      "afterPath": "after/empty-1440x900-dark.png",
+      "state": "empty",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "empty-1440x900-light.png",
+      "afterPath": "after/empty-1440x900-light.png",
+      "state": "empty",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "empty-390x844-dark.png",
+      "afterPath": "after/empty-390x844-dark.png",
+      "state": "empty",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "empty-390x844-light.png",
+      "afterPath": "after/empty-390x844-light.png",
+      "state": "empty",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "UI fixture task list, real empty session",
+      "afterKind": "Explicit UI fixture title/list; actual empty session"
+    },
+    {
+      "file": "error-1280x800-dark.png",
+      "afterPath": "after/error-1280x800-dark.png",
+      "state": "error",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "error-1280x800-light.png",
+      "afterPath": "after/error-1280x800-light.png",
+      "state": "error",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "error-1440x900-dark.png",
+      "afterPath": "after/error-1440x900-dark.png",
+      "state": "error",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "error-1440x900-light.png",
+      "afterPath": "after/error-1440x900-light.png",
+      "state": "error",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "error-390x844-dark.png",
+      "afterPath": "after/error-390x844-dark.png",
+      "state": "error",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "error-390x844-light.png",
+      "afterPath": "after/error-390x844-light.png",
+      "state": "error",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real browser network fault injection",
+      "afterKind": "Real browser network fault injection; last known task retained"
+    },
+    {
+      "file": "executing-1280x800-dark.png",
+      "afterPath": "after/executing-1280x800-dark.png",
+      "state": "executing",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "executing-1280x800-light.png",
+      "afterPath": "after/executing-1280x800-light.png",
+      "state": "executing",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "executing-1440x900-dark.png",
+      "afterPath": "after/executing-1440x900-dark.png",
+      "state": "executing",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "executing-1440x900-light.png",
+      "afterPath": "after/executing-1440x900-light.png",
+      "state": "executing",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "executing-390x844-dark.png",
+      "afterPath": "after/executing-390x844-dark.png",
+      "state": "executing",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "executing-390x844-light.png",
+      "afterPath": "after/executing-390x844-light.png",
+      "state": "executing",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real mock container; may reach approval during viewport sweep",
+      "afterKind": "Explicit UI fixture running state; real container lifecycle proved separately by flow.json"
+    },
+    {
+      "file": "long-content-1280x800-dark.png",
+      "afterPath": "after/long-content-1280x800-dark.png",
+      "state": "long-content",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "long-content-1280x800-light.png",
+      "afterPath": "after/long-content-1280x800-light.png",
+      "state": "long-content",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "long-content-1440x900-dark.png",
+      "afterPath": "after/long-content-1440x900-dark.png",
+      "state": "long-content",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "long-content-1440x900-light.png",
+      "afterPath": "after/long-content-1440x900-light.png",
+      "state": "long-content",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "long-content-390x844-dark.png",
+      "afterPath": "after/long-content-390x844-dark.png",
+      "state": "long-content",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "long-content-390x844-light.png",
+      "afterPath": "after/long-content-390x844-light.png",
+      "state": "long-content",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "UI fixture",
+      "afterKind": "Explicit fixture long Chinese / Markdown / code / table"
+    },
+    {
+      "file": "page-automations-1440x900-light.png",
+      "afterPath": "after/page-automations-1440x900-light.png",
+      "state": "page-automations",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-automations-390x844-light.png",
+      "afterPath": "after/page-automations-390x844-light.png",
+      "state": "page-automations",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-experts-1440x900-light.png",
+      "afterPath": "after/page-experts-1440x900-light.png",
+      "state": "page-experts",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-experts-390x844-light.png",
+      "afterPath": "after/page-experts-390x844-light.png",
+      "state": "page-experts",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-memory-1440x900-light.png",
+      "afterPath": "after/page-memory-1440x900-light.png",
+      "state": "page-memory",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-memory-390x844-light.png",
+      "afterPath": "after/page-memory-390x844-light.png",
+      "state": "page-memory",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-projects-1440x900-light.png",
+      "afterPath": "after/page-projects-1440x900-light.png",
+      "state": "page-projects",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-projects-390x844-light.png",
+      "afterPath": "after/page-projects-390x844-light.png",
+      "state": "page-projects",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-search-1440x900-light.png",
+      "afterPath": "after/page-search-1440x900-light.png",
+      "state": "page-search",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "page-search-390x844-light.png",
+      "afterPath": "after/page-search-390x844-light.png",
+      "state": "page-search",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "Secondary page body before propagation; global shell already redesigned",
+      "afterKind": "Real isolated CRUD test records; no model execution"
+    },
+    {
+      "file": "recovery-1280x800-dark.png",
+      "afterPath": "after/recovery-1280x800-dark.png",
+      "state": "recovery",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "recovery-1280x800-light.png",
+      "afterPath": "after/recovery-1280x800-light.png",
+      "state": "recovery",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "recovery-1440x900-dark.png",
+      "afterPath": "after/recovery-1440x900-dark.png",
+      "state": "recovery",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "recovery-1440x900-light.png",
+      "afterPath": "after/recovery-1440x900-light.png",
+      "state": "recovery",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "recovery-390x844-dark.png",
+      "afterPath": "after/recovery-390x844-dark.png",
+      "state": "recovery",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "recovery-390x844-light.png",
+      "afterPath": "after/recovery-390x844-light.png",
+      "state": "recovery",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Same real task after connection restored"
+    },
+    {
+      "file": "result-1280x800-dark.png",
+      "afterPath": "after/result-1280x800-dark.png",
+      "state": "result",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "result-1280x800-light.png",
+      "afterPath": "after/result-1280x800-light.png",
+      "state": "result",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "result-1440x900-dark.png",
+      "afterPath": "after/result-1440x900-dark.png",
+      "state": "result",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "result-1440x900-light.png",
+      "afterPath": "after/result-1440x900-light.png",
+      "state": "result",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "result-390x844-dark.png",
+      "afterPath": "after/result-390x844-dark.png",
+      "state": "result",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "result-390x844-light.png",
+      "afterPath": "after/result-390x844-light.png",
+      "state": "result",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real authorized remote artifact exact-content download"
+    },
+    {
+      "file": "settings-1280x800-dark.png",
+      "afterPath": "after/settings-1280x800-dark.png",
+      "state": "settings",
+      "width": 1280,
+      "height": 800,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    },
+    {
+      "file": "settings-1280x800-light.png",
+      "afterPath": "after/settings-1280x800-light.png",
+      "state": "settings",
+      "width": 1280,
+      "height": 800,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    },
+    {
+      "file": "settings-1440x900-dark.png",
+      "afterPath": "after/settings-1440x900-dark.png",
+      "state": "settings",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    },
+    {
+      "file": "settings-1440x900-light.png",
+      "afterPath": "after/settings-1440x900-light.png",
+      "state": "settings",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    },
+    {
+      "file": "settings-390x844-dark.png",
+      "afterPath": "after/settings-390x844-dark.png",
+      "state": "settings",
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    },
+    {
+      "file": "settings-390x844-light.png",
+      "afterPath": "after/settings-390x844-light.png",
+      "state": "settings",
+      "width": 390,
+      "height": 844,
+      "theme": "light",
+      "beforeKind": "real",
+      "afterKind": "Real saved settings and connection validation"
+    }
+  ]
+}

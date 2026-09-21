@@ -22,7 +22,7 @@
 
 执行 `pnpm cloud:up` 会构建并启动 PostgreSQL、云端 API、模型网关和 Worker，真实任务在独立容器执行。用户继续使用现有 Web / Electron 工作台，并通过 Cloud / remote 适配器连接控制面；管理员入口为 [管理后台](http://127.0.0.1:8890/admin/)，访问令牌在本机 `data/cloud-local/access.txt`。
 
-会话顶部选择本地/远端执行，自动化可选择由控制面调度的远端计划，关闭客户端后仍执行。工作台可跨设备恢复远端会话、延续工作区、下载版本，并将文本成果转为本地待批准变更单。后台支持邀请账号、登录撤销、每日调用预算、加密模型渠道、节点排空、并发和容器资源规格。默认仍是模拟模型；管理员可添加并启用真实渠道。详见 [本地云平台运行与验收](docs/local-cloud.md) 和 [分阶段扩展计划](docs/platform-expansion-plan.md)。个人模型密钥不会自动配置到平台。
+在新任务输入区或当前任务的「任务配置」中选择本地/远端执行，自动化可选择由控制面调度的远端计划，关闭客户端后仍执行。工作台可跨设备恢复远端会话、延续工作区、下载版本，并将文本成果转为本地待批准变更单。后台支持邀请账号、登录撤销、每日调用预算、加密模型渠道、节点排空、并发和容器资源规格。默认仍是模拟模型；管理员可添加并启用真实渠道。详见 [本地云平台运行与验收](docs/local-cloud.md) 和 [分阶段扩展计划](docs/platform-expansion-plan.md)。个人模型密钥不会自动配置到平台。
 
 ```bash
 # 需要先启动 Docker Desktop；从仓库根目录执行
@@ -45,24 +45,53 @@ Docker Desktop 的 **Containers → pig-agent-cloud** 下有四个常驻服务�
 
 在「远端运行记录 → 组织与共享项目」管理组织和任务；新建远端会话时可勾选「写入前审批」。审批等待仍占用容器并计入运行时限。共享项目自动化与文件库、长期审批暂停/故障恢复、远端 Codex、对象存储和自动保留期尚未实现。
 
-## 0.2.0 产品化内测：控制面与 Runner 集群
+## 0.3.0：围绕任务重设计
 
-工作台补齐任务搜索筛选、远端日志与断线恢复、移动端设置、审批反馈与长会话阅读；管理后台提供运行概览、任务日志、Runner、执行模型、账号配额、计划审计六个页面。
+本轮从上一版未通过的[独立验收](docs/acceptance-review-2026-09-22.md)出发，重新组织工作台，而不只调整配色：
 
-控制面通过 PostgreSQL 协调并发领取、公平调度、队列背压和运行租约。Runner 支持注册与心跳、容量/资源规格能力、排空、启动代次隔离和退出清理；审批与事件传输具有幂等标识。已提供独立于原本地平台的双控制面、双 Runner 验证环境：
+- **一个导航入口**：全局页面与最近任务集中在左栏；任务标题、状态与少量操作保留在主区单行标题栏。手机使用抽屉导航。
+- **输入先于面板**：新任务以工作区、任务描述和执行配置为中心；没有成果时不常驻空文件栏。
+- **在当前任务处理审批**：执行摘要、文件差异、命令及批准/拒绝按钮出现在会话内；原始参数放在可展开详情中。支持停止、失败后重试和继续对话。
+- **按来源核验成果**：检查器按需展开，桌面宽度可调，手机使用抽屉。远端文件使用所属运行和成果 ID 获取授权内容，支持历史版本、对比、日志和下载，不读取本机同名文件。选择「审阅并导入到本机」会创建独立变更单，批准后才写入目标工作区。
+- **分组设置**：模型连接、执行默认值、工作区、远端连接、外观和高级选项分别呈现；提供保存反馈、校验与未保存草稿保护。默认值、当前任务配置与平台调度设置有各自作用范围。
+- **一致的管理端**：与工作台共用浅色/深色视觉 token，保留独立管理员鉴权。Runner 采用可搜索的紧凑列表，默认展示在线节点，历史离线记录单独筛选；概览明确区分当前资源与累计结果。任务详情直接查看日志及授权成果。
+
+本版同时修复三项正确性问题：完成提交暂时失败不再把成功执行改写成失败；远端成果不再映射为本机路径；已被替代的 Runner 代次不能通过迟到注册重新取得所有权。
+
+[本轮验收报告](docs/redesign-acceptance-2026-09-22.md) · [同尺寸改版前后截图](docs/evidence/redesign-2026-09-22/index.html) · [设计决策与工作记录](docs/redesign-worklog.md)
+
+截图覆盖 1440×900、1280×800、390×844 及浅深主题，分别标明 UI 压力夹具、真实 mock 容器流程和故障注入。HTML 对照页可下载仓库后用浏览器打开；视觉检查与功能测试分别记录，测试通过不代替界面验收。
+
+### 控制面与 Runner 集群
+
+PostgreSQL 协调并发领取、公平调度、队列背压和运行租约。Runner 支持注册、心跳、容量与资源规格、排空和代次隔离。双控制面、双 Runner 环境使用独立数据库和默认 mock 模型，不需要另设用户端「云工作台」。
 
 ```bash
-pnpm cluster:up       # 独立数据库与 mock 模型，入口 8892
-pnpm cluster:smoke    # 协议竞争 + 真实容器故障验收
-pnpm product:smoke    # 隔离 8798 工作台的真实浏览器操作与截图
-pnpm cluster:down
+# 先启动 Docker Desktop，从仓库根目录执行
+pnpm cluster:up       # 构建并启动双控制面、双 Runner；管理入口 8892
+pnpm cluster:status
+pnpm cluster:smoke    # 并发竞争、真实容器节点故障与资源回收
+pnpm product:smoke    # 自动启动隔离 8798，运行真实浏览器流程并保存截图
+pnpm cluster:logs
+pnpm cluster:down    # 保留数据库和 Runner outbox 命名卷
 ```
 
-浏览器验收默认使用已安装的 Google Chrome；也可运行 `pnpm exec playwright install chromium`，然后设置 `PIG_BROWSER_CHANNEL=chromium` 执行。`product:smoke` 自行启动和关闭隔离工作台，运行前需空出 8798 端口，不操作原 8797 的用户数据。
+`product:smoke` 需要空闲的 8798 端口，会自行关闭测试工作台；使用独立数据目录，不操作原 8797 工作台。默认使用已安装的 Google Chrome。也可先执行 `pnpm exec playwright install chromium`，然后运行 `PIG_BROWSER_CHANNEL=chromium pnpm product:smoke`。浏览器证据输出到 `data/product-evidence/`。
 
-[集群部署与排障](docs/cluster.md) · [产品化目标、验收与已知限制](docs/productization-worklog.md)
+完成交付与旧代次的专项回归：
 
-这是本机 Docker 的多实例验证，不代表数据库或宿主机高可用。已启动任务失联后不会自动重放副作用，不宣称 exactly-once。对象存储、数据自动保留期、公网 TLS 与节点证书、远端 Codex、共享项目自动化和桌面签名更新仍不在本版本已交付范围。
+```bash
+# 仅在没有活动用户任务的独立 mock 集群执行；部分脚本临时排空节点
+node scripts/smoke-cluster-migration.mjs
+node scripts/smoke-completion-fencing.mjs
+node scripts/smoke-completion-delivery.mjs
+```
+
+Runner 在私有持久 outbox 中保存原始完成结果，再向控制面提交；同一提交重放只确认原结果，不重复插入成果。暂时不可达时重试交付，不重新执行任务。超过租约或已被隔离的结果会保留供核验，不绕过失效凭据恢复终态。持久卷包含执行凭据和任务内容，不能作为普通日志公开上传。详见[完成交付语义、排障与故障验证](docs/completion-delivery.md)。
+
+[集群部署与排障](docs/cluster.md) · [上一轮产品化记录](docs/productization-worklog.md)
+
+这仍是单 Docker 主机的多实例验证，不代表数据库、宿主机或磁盘高可用，也不宣称 exactly-once 执行。等待审批仍占用运行资源且受时限约束。跨主机复制、对象存储、自动数据保留、公网 TLS 与节点证书、远端 Codex、共享项目自动化和桌面签名更新尚未交付。
 
 ## 桌面版（macOS 内测）
 
@@ -71,7 +100,7 @@ Electron 打包了界面和本地 Node 服务，使用者无需安装 Node.js �
 1. 选择工作目录。
 2. 填写模型接口地址、模型名和自己的 API Key。
 3. 点击「保存并测试连接」，然后进入工作台。测试会产生一次简短的模型请求。
-4. 直接输入即可自动创建任务，在「执行与验收」里审阅改动并核验产物。
+4. 输入目标创建任务，在会话内审阅待批准操作，再打开成果检查器核验文件。
 
 开发者可执行 `pnpm desktop:dist` 生成 DMG / ZIP，输出在根目录 `release/`。GitHub 的 **Desktop / Package macOS** workflow 也会生成可下载的构建附件。当前属于**未签名、未公证的内部测试包**；正式公开分发前仍需配置 Apple Developer 签名、公证和更新发布流程。暂未提供 Windows / Linux 安装包。
 
@@ -121,8 +150,10 @@ apps/
   admin/           控制面管理后台
 packages/
   contracts/       共享类型、事件与 Cloud 协议；不依赖 Node / React / Electron
+  design/          工作台与管理端共用的视觉 token
 scripts/           构建、架构边界检查和桌面冒烟测试
-infra/cloud/       Docker Compose 与执行镜像
+infra/cloud/       单控制面 Docker Compose 与执行镜像
+infra/cluster/     双控制面、双 Runner 与入口代理
 skills/            内置 Agent 技能
 examples/          示例与可选集成
 sample-workspace/  开发演示工作区
@@ -150,7 +181,7 @@ pnpm cloud:smoke:approvals
 
 桌面冒烟需要图形环境和可用的系统密钥存储，不消耗真实模型额度。macOS 打包 CI 还会对打包后的 `.app` 运行同样的测试。
 
-0.2.0 的构建、测试、浏览器截图和集群故障验证证据见 [产品化工作记录](docs/productization-worklog.md)。mock 验收用于确认执行链路，不代表真实模型任务质量。完整验收、调度故障测试及备份恢复命令见 [本地云平台文档](docs/local-cloud.md)。
+0.3.0 的实际运行、截图自审、修正过程和已知边界见[本轮验收报告](docs/redesign-acceptance-2026-09-22.md)。源码中的 `scripts/redesign/` 保留视觉验收脚本，其中前后对照脚本依赖本轮基线清单和隔离夹具，并非空仓库的一键初始化；日常可复现回归优先使用上面的 `product:smoke`。mock 验收用于确认执行链路，不代表真实模型任务质量或生产容量。备份恢复命令见[本地云平台文档](docs/local-cloud.md)。
 
 - [架构与依赖规则](docs/architecture.md)
 - [桌面客户端](docs/desktop.md)

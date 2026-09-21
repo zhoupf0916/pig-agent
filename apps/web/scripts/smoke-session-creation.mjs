@@ -3,8 +3,12 @@ import { chromium, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
-const base = "http://127.0.0.1:8798";
-const browser = await chromium.launch({ channel: process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome", headless: true });
+const base = process.env.PIG_WORKBENCH_URL || "http://127.0.0.1:8798";
+const browser = await chromium.launch({
+  channel:
+    process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome",
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const created = [];
 const errors = [];
@@ -25,7 +29,10 @@ try {
   const original = await response.json();
   created.push(original.id);
   const fixturePath = resolve(
-    "data/product-acceptance/sessions",
+    resolve(
+      process.env.PIG_TEST_DATA_DIR || "data/product-acceptance",
+      "sessions",
+    ),
     `${original.id}.json`,
   );
   const fixture = JSON.parse(await readFile(fixturePath, "utf8"));

@@ -130,7 +130,7 @@ try {
               message: {
                 id: approval.id,
                 role: "assistant",
-                content: `操作 ${call.tool} 等待审批，尚未执行。请打开「远端运行记录」审批；等待计入本次容器时限。`,
+                content: `操作 ${call.tool} 等待审批，尚未执行。请在当前任务的审批卡片中确认；等待计入本次容器时限。`,
                 createdAt: new Date().toISOString(),
               },
             },

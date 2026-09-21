@@ -5,13 +5,25 @@ import { artifactLabel, formatBytes, isMarkdown } from "../lib/format";
 import type { Artifact, ArtifactAction, WorkspaceNode } from "../types";
 import { DiffView } from "./DiffView";
 import { MarkdownView } from "./MarkdownView";
+import { RemoteArtifactPanel } from "./RemoteArtifactPanel";
 
 type Tab = "artifacts" | "workspace";
 type PreviewMode = "file" | "diff";
 
 const GROUPS: ArtifactAction[] = ["created", "modified", "moved", "deleted"];
 
-export function RightPanel({
+export function RightPanel(props: Parameters<typeof LocalRightPanel>[0] & {
+  executionTarget?: "local" | "remote";
+  remoteRunId?: string;
+  remoteState?: string;
+  onOpenSession?: (id: string) => void;
+}) {
+  return props.executionTarget === "remote" || Boolean(props.remoteRunId)
+    ? <RemoteArtifactPanel key={`${props.sessionId}:${props.remoteRunId}`} runId={props.remoteRunId} runState={props.remoteState} sessionId={props.sessionId} onOpenSession={props.onOpenSession} />
+    : <LocalRightPanel {...props} />;
+}
+
+function LocalRightPanel({
   artifacts,
   tree,
   workspaceRoot,
@@ -92,7 +104,8 @@ export function RightPanel({
   }, [artifacts]);
 
   return (
-    <aside className="resource-panel flex h-full w-[300px] shrink-0 flex-col border-l border-ink-300 bg-ink-100 ">
+    <aside className="resource-panel flex h-full min-w-0 flex-col bg-panel" aria-label="本机成果检查器">
+      <header className="border-b border-ink-300 px-4 py-3"><p className="text-sm text-ink-600">本机工作区 · 当前文件内容</p></header>
       <div className="flex border-b border-ink-400 bg-panel">
         <TabButton active={tab === "artifacts"} onClick={() => setTab("artifacts")}>
           产物
@@ -103,11 +116,11 @@ export function RightPanel({
           )}
         </TabButton>
         <TabButton active={tab === "workspace"} onClick={() => setTab("workspace")}>
-          工作区
+          本机工作区
         </TabButton>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className={previewPath ? "max-h-[35%] shrink-0 overflow-y-auto" : "min-h-0 flex-1 overflow-y-auto"}>
         {tab === "artifacts" && (
           <div className="p-3">
             {bound && artifacts.length > 0 && (
@@ -206,7 +219,7 @@ export function RightPanel({
         )}
       </div>
 
-      <div className="min-h-[42%] border-t border-ink-400 bg-panel">
+      {(previewPath || selected) && <div className="min-h-0 flex-1 overflow-auto border-t border-ink-400 bg-panel">
         <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-600">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">
@@ -238,7 +251,7 @@ export function RightPanel({
         <div className="h-[calc(100%-32px)] overflow-auto px-3 pb-3">
           {previewPath && workspaceRoot && (
             <div className="mb-2 break-all rounded border border-ink-300 bg-ink-100 p-2 text-xs text-ink-600">
-              <div>工作区文件位置</div>
+              <div>本机工作区文件位置</div>
               <div className="mt-1 select-all font-mono">{`${workspaceRoot.replace(/\/+$/, "")}/${previewPath.replace(/^\/+/, "")}`}</div>
             </div>
           )}
@@ -271,7 +284,7 @@ export function RightPanel({
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </aside>
   );
 }

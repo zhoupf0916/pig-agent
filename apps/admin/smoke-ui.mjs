@@ -11,6 +11,10 @@ assert(token, "Admin token must exist in the local environment file");
 const browser = await chromium.launch({ channel: process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
+async function navigateTo(name) {
+  if (page.viewportSize().width <= 700) await page.getByRole("button", {name:"打开管理导航",exact:true}).click();
+  await page.getByRole("link", {name,exact:true}).click();
+}
 let originalQueueTimeout;
 let invitationFixtureId;
 const pendingInvites = new Set();
@@ -91,7 +95,7 @@ async function loginAgain() {
   await page.getByLabel("管理员令牌").fill(token);
   await page.getByRole("button", { name: "连接平台", exact: true }).click();
   await page.locator("#dashboard").waitFor({ state: "visible" });
-  await page.getByRole("link", { name: "账号与配额", exact: true }).click();
+  await navigateTo("账号与配额");
 }
 page.on("pageerror", (e) => errors.push(e.message));
 await mkdir("data/product-evidence", { recursive: true });
@@ -107,18 +111,18 @@ try {
     path: "data/product-evidence/admin-overview.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "Runner 集群", exact: true }).click();
+  await navigateTo("Runner 集群");
   await page.locator('[data-view="workers"]').waitFor({ state: "visible" });
-  await page.locator("#workers article").first().waitFor();
+  await page.locator("#workers .worker-row").first().waitFor();
   assert(
-    (await page.locator("#workers article").count()) >= 2,
-    "Two registered Runner cards",
+    (await page.locator("#workers .worker-row").count()) >= 2,
+    "Two online Runner rows",
   );
   await page.screenshot({
     path: "data/product-evidence/admin-runners.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "执行与模型", exact: true }).click();
+  await navigateTo("执行与模型");
   assert(Number(await page.locator("#global-concurrency").inputValue()) > 0);
   if (process.env.ADMIN_UI_MUTATE === "1") {
     const original = await page.locator("#queue-timeout").inputValue();
@@ -149,7 +153,7 @@ try {
     path: "data/product-evidence/admin-settings.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "账号与配额", exact: true }).click();
+  await navigateTo("账号与配额");
   await page.locator('[data-view="accounts"]').waitFor({ state: "visible" });
   const quotaInputs = page.locator('#accounts input[type="number"]');
   if ((await quotaInputs.count()) >= 2) {
@@ -173,13 +177,13 @@ try {
     path: "data/product-evidence/admin-accounts.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "计划与审计", exact: true }).click();
+  await navigateTo("计划与审计");
   await page.locator('[data-view="audit"]').waitFor({ state: "visible" });
   await page.screenshot({
     path: "data/product-evidence/admin-audit.png",
     fullPage: true,
   });
-  await page.getByRole("link", { name: "任务与日志", exact: true }).click();
+  await navigateTo("任务与日志");
   await page
     .getByRole("searchbox", { name: "搜索任务" })
     .fill("no-match-for-admin-smoke-938485");
@@ -229,7 +233,7 @@ try {
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.getByText("● 控制面已连接", { exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("link", { name: "Runner 集群", exact: true }).click();
+  await navigateTo("Runner 集群");
   await page.locator('[data-view="workers"]').waitFor({ state: "visible" });
   assert(
     await page.evaluate(
@@ -247,7 +251,7 @@ try {
     ["任务与日志", "runs"],
     ["计划与审计", "audit"],
   ]) {
-    await page.getByRole("link", { name, exact: true }).click();
+    await navigateTo(name);
     await page.locator(`[data-view="${view}"]`).waitFor({ state: "visible" });
     assert(
       await page.evaluate(
@@ -256,7 +260,7 @@ try {
       `${name}: no horizontal page overflow`,
     );
   }
-  await page.getByRole("link", { name: "账号与配额", exact: true }).click();
+  await navigateTo("账号与配额");
   const fixtureName = `UI delayed invitation ${Date.now()}`;
   const invite = await delayedInviteAfterLogout(async () => {
     await page.getByLabel("新账号名称").fill(fixtureName);
@@ -285,7 +289,7 @@ try {
     checks: [
       "invalid login",
       "valid login",
-      "two Runner cards",
+      "two online Runner rows",
       "settings load",
       "account drafts survive refresh",
       "all six management pages",

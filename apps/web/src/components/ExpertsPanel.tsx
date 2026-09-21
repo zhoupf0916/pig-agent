@@ -1,5 +1,6 @@
+import { useDialog } from "../lib/use-dialog";
 import { Plus, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import {
   applyExpertDetailSnapshot,
@@ -34,6 +35,11 @@ export function ExpertsPanel({
   onPinExpert: (expertId: string) => void;
   onPinTeam: (teamId: string) => void;
 }) {
+  const draftBaseline = useRef({ id: "", value: "" });
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const catalogDialog = useDialog(catalogOpen, () => setCatalogOpen(false));
+  useEffect(() => { if (selectedId) setCatalogOpen(false); }, [selectedId]);
   const [experts, setExperts] = useState<Expert[]>([]);
   const [teams, setTeams] = useState<ExpertTeam[]>([]);
   const [detail, setDetail] = useState<Expert | null>(null);
@@ -105,6 +111,10 @@ export function ExpertsPanel({
 
   useEffect(() => {
     if (!detail) return;
+    const incoming = JSON.stringify([detail.name, detail.description, detail.instruction]);
+    const current = JSON.stringify([draftName, draftDescription, draftInstruction]);
+    if (draftBaseline.current.id === detail.id && current !== draftBaseline.current.value && current !== incoming) return;
+    draftBaseline.current = { id: detail.id, value: incoming };
     setDraftName(detail.name);
     setDraftDescription(detail.description);
     setDraftInstruction(detail.instruction);
@@ -116,16 +126,23 @@ export function ExpertsPanel({
   );
 
   return (
-    <section className="flex min-w-0 flex-1 overflow-hidden bg-ink-50">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-ink-300 bg-ink-100">
-        <div className="flex items-center justify-between px-4 pb-3 pt-4">
+    <section className="resource-page" aria-label="专家">
+      <header className="resource-header"><div><h2>专家</h2><p>复用本机工作方法与任务指令</p></div><button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)} aria-expanded={catalogOpen}>专家目录 <span>{experts.length}</span></button></header>
+      {catalogOpen && <button className="resource-scrim" aria-label="关闭专家目录" onClick={() => setCatalogOpen(false)} />}
+      <div ref={catalogDialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="专家目录" hidden={!catalogOpen} className="resource-catalog">
+        <div className="resource-catalog-heading"><h3>专家目录</h3><button type="button" className="btn-quiet" onClick={() => setCatalogOpen(false)}>关闭</button></div>
+        <input className="field resource-catalog-search" aria-label="搜索专家" placeholder="搜索专家" value={catalogQuery} onChange={e => setCatalogQuery(e.target.value)} />
+
+        {catalogQuery && !experts.some(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())) && <p role="status" className="resource-catalog-empty">没有匹配的专家</p>}
+        <div className="resource-catalog-intro">
           <div>
             <div className="text-meta uppercase tracking-[0.16em] text-ink-500">专家</div>
-            <div className="mt-0.5 text-sm font-medium text-ink-800">本机 Playbook</div>
+            <div className="mt-0.5 text-sm font-medium text-ink-800">工作方法与技能</div>
           </div>
         </div>
+        {error && <p role="alert" className="resource-error">{error}</p>}
         <form
-          className="space-y-2 px-3 pb-3"
+          className="resource-create"
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim() || !instruction.trim()) return;
@@ -139,7 +156,7 @@ export function ExpertsPanel({
               setInstruction("");
               await refreshList();
               onSelectExpert(created.id);
-            })();
+            })().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
           }}
         >
           <input
@@ -160,13 +177,13 @@ export function ExpertsPanel({
           </button>
         </form>
         <div className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">
-          {experts.map((expert) => {
+          {experts.filter(row => row.name.toLocaleLowerCase().includes(catalogQuery.toLocaleLowerCase())).map((expert) => {
             const active = expert.id === selectedId;
             return (
               <button
                 key={expert.id}
                 type="button"
-                onClick={() => onSelectExpert(expert.id)}
+                onClick={() => { setCatalogOpen(false); onSelectExpert(expert.id); }}
                 className={`w-full rounded-card px-2.5 py-2 text-left ${
                   active ? "bg-accent-soft text-ink-800" : "text-ink-700 hover:bg-ink-200"
                 }`}
@@ -221,14 +238,15 @@ export function ExpertsPanel({
             </div>
           ))}
         </div>
-      </aside>
+      </div>
 
-      <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
+      <div className="resource-content">
+        {error && <p role="alert" className="resource-error">{error}</p>}
         {!detail && (
-          <div className="flex h-full flex-col items-center justify-center text-ink-500">
+          <div className="resource-empty">
             <Sparkles size={28} className="mb-3 text-ink-400" />
             <p className="text-sm">选择或新建一个本机专家</p>
+          <button type="button" className="btn-primary" onClick={() => setCatalogOpen(true)}>新建专家</button>
           </div>
         )}
         {detail && (
@@ -237,7 +255,7 @@ export function ExpertsPanel({
               <div>
                 <h2 className="text-base font-medium text-ink-800">{detail.name}</h2>
                 <p className="mt-1 text-xs text-ink-500">
-                  本机 JSON playbook · 指令先于项目指令注入 pig / Codex / cloud-stub
+                  绑定到任务后使用这套指令与技能
                   {selectedTeam ? ` · 也属于「${selectedTeam.name}」` : ""}
                 </p>
               </div>

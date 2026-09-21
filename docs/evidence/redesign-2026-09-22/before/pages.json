@@ -1,0 +1,102 @@
+[
+  {
+    "name": "项目",
+    "file": "page-projects-1440x900-light.png",
+    "width": 1440,
+    "height": 900,
+    "metrics": {
+      "scrollWidth": 1440,
+      "viewport": 1440
+    }
+  },
+  {
+    "name": "项目",
+    "file": "page-projects-390x844-light.png",
+    "width": 390,
+    "height": 844,
+    "metrics": {
+      "scrollWidth": 390,
+      "viewport": 390
+    }
+  },
+  {
+    "name": "专家",
+    "file": "page-experts-1440x900-light.png",
+    "width": 1440,
+    "height": 900,
+    "metrics": {
+      "scrollWidth": 1440,
+      "viewport": 1440
+    }
+  },
+  {
+    "name": "专家",
+    "file": "page-experts-390x844-light.png",
+    "width": 390,
+    "height": 844,
+    "metrics": {
+      "scrollWidth": 390,
+      "viewport": 390
+    }
+  },
+  {
+    "name": "自动化",
+    "file": "page-automations-1440x900-light.png",
+    "width": 1440,
+    "height": 900,
+    "metrics": {
+      "scrollWidth": 1440,
+      "viewport": 1440
+    }
+  },
+  {
+    "name": "自动化",
+    "file": "page-automations-390x844-light.png",
+    "width": 390,
+    "height": 844,
+    "metrics": {
+      "scrollWidth": 390,
+      "viewport": 390
+    }
+  },
+  {
+    "name": "记忆",
+    "file": "page-memory-1440x900-light.png",
+    "width": 1440,
+    "height": 900,
+    "metrics": {
+      "scrollWidth": 1440,
+      "viewport": 1440
+    }
+  },
+  {
+    "name": "记忆",
+    "file": "page-memory-390x844-light.png",
+    "width": 390,
+    "height": 844,
+    "metrics": {
+      "scrollWidth": 390,
+      "viewport": 390
+    }
+  },
+  {
+    "name": "搜索",
+    "file": "page-search-1440x900-light.png",
+    "width": 1440,
+    "height": 900,
+    "metrics": {
+      "scrollWidth": 1440,
+      "viewport": 1440
+    }
+  },
+  {
+    "name": "搜索",
+    "file": "page-search-390x844-light.png",
+    "width": 390,
+    "height": 844,
+    "metrics": {
+      "scrollWidth": 390,
+      "viewport": 390
+    }
+  }
+]

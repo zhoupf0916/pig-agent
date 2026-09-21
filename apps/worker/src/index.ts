@@ -1,3 +1,5 @@
+import { CompletionOutbox } from "./completion-outbox.ts";
+import { join } from "node:path";
 import http from "node:http";
 import { createContainerStopper } from "./stop-container.ts";
 import { StringDecoder } from "node:string_decoder";
@@ -29,6 +31,11 @@ async function api(path: string, body: unknown) {
   if (!r.ok) throw Error(`Control ${r.status}`);
   return r.json() as Promise<any>;
 }
+const outbox = new CompletionOutbox(
+  process.env.WORKER_OUTBOX_DIR ||
+    join(process.cwd(), "data", "worker-outbox", namespace, workerId),
+  api,
+);
 async function sendEvent(path: string, body: unknown) {
   for (let attempt = 0; ; attempt++) {
     try {
@@ -155,6 +162,8 @@ async function execute(job: {
     writes = Promise.resolve(),
     stopping = false,
     heartbeatBusy = false,
+    completion: Record<string, unknown> | undefined,
+    completionSaved = false,
     leaseLost = false;
   const started = Date.now();
   let eventSequence = 0;
@@ -288,31 +297,48 @@ async function execute(job: {
       (resource.timeoutSeconds + 30) * 1000,
     );
     await writes;
-    if (eventError) throw eventError;
+    if (eventError)
+      console.error("Some execution events were not delivered", job.id);
     const inspected = await docker("GET", `/containers/${container}/json`);
-    await api(`/internal/runs/${job.id}/finish`, {
+    completion = {
       token: job.token,
       ...(result || {}),
+      submissionId: randomUUID(),
       ok: !stopping && inspected.State.ExitCode === 0 && result?.ok === true,
       error: stopping
         ? "运行已取消或超时"
-        : result?.error || "容器未返回有效结果",
-    });
+        : inspected.State.ExitCode === 0 && result?.ok === true
+          ? undefined
+          : result?.error || "容器未返回有效结果",
+    };
   } catch (error) {
     await stop();
-    await api(`/internal/runs/${job.id}/finish`, {
+    completion = {
       token: job.token,
+      submissionId: randomUUID(),
       ok: false,
       error: error instanceof Error ? error.message : "Worker failure",
-    }).catch(() => {});
+    };
   } finally {
+    // Never turn delivery failure into execution failure or discard the original result.
+    if (completion) {
+      try {
+        const item = { runId: job.id, body: completion };
+        await outbox.save(item);
+        completionSaved = true;
+        if (!(await outbox.deliver(item)))
+          console.error("Completion retained in outbox", job.id);
+      } catch {
+        console.error("Completion persistence/delivery unavailable", job.id);
+      }
+    }
     clearInterval(pulse);
     activeStops.delete(stop);
-    if (container)
+    if (container && completionSaved)
       await docker("DELETE", `/containers/${container}?force=1&v=1`).catch(
         () => {},
       );
-    if (network) await cleanupNetwork(network);
+    if (network && completionSaved) await cleanupNetwork(network);
   }
 }
 // Snapshot IDs BEFORE registration. A delayed older process must never discover
@@ -333,6 +359,7 @@ async function orphanSnapshot() {
     networks: networks.map((n: { Id: string }) => n.Id),
   };
 }
+await outbox.recover();
 const orphans = await orphanSnapshot();
 for (let attempt = 0; ; attempt++) {
   try {
@@ -358,6 +385,17 @@ for (const id of orphans.containers)
   });
 for (const id of orphans.networks) await cleanupNetwork(id);
 console.log("Worker ready", workerId, "slots", slots);
+let recoveryBusy = false;
+const recoveryPulse = setInterval(() => {
+  if (recoveryBusy) return;
+  recoveryBusy = true;
+  void outbox
+    .recover()
+    .catch(() => console.error("Completion recovery unavailable"))
+    .finally(() => {
+      recoveryBusy = false;
+    });
+}, 30000);
 let nodePulseBusy = false;
 const nodePulse = setInterval(() => {
   if (nodePulseBusy) return;
@@ -415,5 +453,6 @@ await Promise.all(
   }),
 );
 clearInterval(nodePulse);
+clearInterval(recoveryPulse);
 if (shutdownTimer) clearTimeout(shutdownTimer);
 console.log("Worker drained", workerId);

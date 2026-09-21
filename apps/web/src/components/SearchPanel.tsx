@@ -103,49 +103,19 @@ export function SearchPanel({
   }, [hits]);
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-50">
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-6">
-        <div className="mb-4">
-          <div className="text-meta uppercase tracking-[0.16em] text-ink-500">本机记忆</div>
-          <h2 className="mt-0.5 text-base font-medium text-ink-800">搜索会话、项目与记忆</h2>
-          <p className="mt-1 text-xs text-ink-500">
-            子串 / 分词匹配，不含向量库。只用顶栏搜索框；Ctrl+K 或 / 聚焦，Enter 更新结果。
-          </p>
-        </div>
-        {error && <p className="mb-3 text-xs text-danger">{error}</p>}
-        {!q.trim() && (
-          <p className="py-10 text-center text-sm text-ink-500">在顶栏输入关键词，查找本机会话和项目记录。</p>
-        )}
-        {q.trim() && busy && hits.length === 0 && (
-          <p className="py-10 text-center text-sm text-ink-500">搜索中…</p>
-        )}
-        {q.trim() && !busy && hits.length === 0 && !error && (
-          <p className="py-10 text-center text-sm text-ink-500">没有匹配的本机记录</p>
-        )}
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pb-8">
-          {grouped.map((group) => (
-            <section key={group.type}>
-              <div className="mb-2 text-meta uppercase tracking-[0.16em] text-ink-500">
-                {searchHitLabel(group.type)}
-              </div>
-              <ul className="space-y-1 rounded-card border border-ink-300 bg-panel p-1">
-                {group.hits.map((hit) => (
-                  <li key={`${hit.type}:${hit.id}`}>
-                    <button
-                      type="button"
-                      className="flex w-full flex-col rounded-[10px] px-3 py-2 text-left hover:bg-ink-100"
-                      onClick={() => openHitOrDrop(hit)}
-                    >
-                      <div className="truncate text-[13px] font-medium text-ink-800">{hit.title}</div>
-                      {hit.snippet && (
-                        <div className="mt-0.5 line-clamp-2 text-xs text-ink-500">{hit.snippet}</div>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
+    <section className="resource-page" aria-label="搜索">
+      <header className="resource-header"><div><h2>搜索</h2><p>查找这台设备上的任务、项目、成果与记忆</p></div></header>
+      <div className="resource-search">
+        <form className="resource-search-form" onSubmit={event => event.preventDefault()}>
+          <input className="field" aria-label="搜索所有记录" placeholder="输入关键词…" value={q} onChange={event => setQ(event.target.value)} autoFocus />
+          {q && <button type="button" className="btn-quiet" onClick={() => setQ("")}>清空</button>}
+        </form>
+        <p className="resource-search-summary" role="status">{busy ? "正在搜索…" : q.trim() ? `找到 ${hits.length} 条记录` : "支持任务标题、正文、项目名称与笔记内容"}</p>
+        {error && <p role="alert" className="resource-error">{error}</p>}
+        {!q.trim() && <div className="resource-empty"><p>从一个关键词开始</p><span className="text-sm text-ink-500">例如项目名、文件名，或上次讨论的决定。</span></div>}
+        {q.trim() && !busy && hits.length === 0 && !error && <div className="resource-empty"><p>没有匹配的记录</p><span className="text-sm text-ink-500">试试更短的关键词，或检查名称是否正确。</span></div>}
+        <div className="resource-search-results">
+          {grouped.map(group => <section key={group.type}><h3>{searchHitLabel(group.type)} <span className="text-ink-500">{group.hits.length}</span></h3><ul>{group.hits.map(hit => <li key={`${hit.type}:${hit.id}`}><button type="button" onClick={() => openHitOrDrop(hit)}><strong className="line-clamp-2">{hit.title}</strong>{hit.snippet && hit.snippet.trim() !== hit.title.trim() && <p className="line-clamp-2">{hit.snippet}</p>}</button></li>)}</ul></section>)}
         </div>
       </div>
     </section>
