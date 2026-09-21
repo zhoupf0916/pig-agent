@@ -1,0 +1,77 @@
+{
+  "at": "2026-09-21T17:22:21.189Z",
+  "environment": "isolated local Docker, two control instances, simulated registered workers for deterministic protocol races",
+  "passed": 14,
+  "evidence": [
+    {
+      "name": "durable settings and duplicate submissions",
+      "detail": "invalid/member settings rejected; same key across controls creates one run",
+      "at": "2026-09-21T17:22:05.760Z"
+    },
+    {
+      "name": "two-control concurrent claims, global=2, user=1",
+      "detail": "12 competing requests, 2 unique attempts across 2 owners",
+      "at": "2026-09-21T17:22:05.810Z"
+    },
+    {
+      "name": "cross-control event persistence and idempotency",
+      "detail": "one event for two deliveries",
+      "at": "2026-09-21T17:22:05.817Z"
+    },
+    {
+      "name": "cancel and process-generation fencing",
+      "detail": "late start, finish, and old heartbeat rejected",
+      "at": "2026-09-21T17:22:05.829Z"
+    },
+    {
+      "name": "owner fairness without a restrictive user cap",
+      "detail": "owner with three queued jobs cannot monopolize both slots ahead of another owner",
+      "at": "2026-09-21T17:22:05.857Z"
+    },
+    {
+      "name": "per Runner capacity",
+      "detail": "configured capacity 1 cannot claim a second task",
+      "at": "2026-09-21T17:22:05.884Z"
+    },
+    {
+      "name": "Runner draining, advertised capacity and capabilities",
+      "detail": "draining cannot claim; hardware capacity beats admin value; incompatible profile stays queued",
+      "at": "2026-09-21T17:22:05.943Z"
+    },
+    {
+      "name": "shared project capacity",
+      "detail": "two owners cannot exceed project concurrency 1",
+      "at": "2026-09-21T17:22:05.958Z"
+    },
+    {
+      "name": "approval receipt retry fencing",
+      "detail": "same receipt across controls recovers granted authorization; different and legacy receipt cannot replay",
+      "at": "2026-09-21T17:22:05.978Z"
+    },
+    {
+      "name": "queue backpressure and expiry",
+      "detail": "queue limit 1 rejects second submission; aged task fails durably",
+      "at": "2026-09-21T17:22:06.376Z"
+    },
+    {
+      "name": "authoritative execution deadline",
+      "detail": "live lease cannot extend expired execution deadline",
+      "at": "2026-09-21T17:22:11.342Z"
+    },
+    {
+      "name": "lost node lease and stale operation",
+      "detail": "expired attempt failed without automatic replay",
+      "at": "2026-09-21T17:22:16.334Z"
+    },
+    {
+      "name": "two scheduler instances",
+      "detail": "one unique firing and one queued run",
+      "at": "2026-09-21T17:22:17.705Z"
+    },
+    {
+      "name": "control instance restart",
+      "detail": "other control retains service; queued state survives",
+      "at": "2026-09-21T17:22:21.162Z"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "base": "http://127.0.0.1:8892",
+  "testedAt": "2026-09-21T17:23:58.328Z",
+  "mutation": true,
+  "checks": [
+    "invalid login",
+    "valid login",
+    "two Runner cards",
+    "settings load",
+    "account drafts survive refresh",
+    "all six management pages",
+    "settings saved and persisted after reload; original restored",
+    "task search empty state",
+    "task detail and event log",
+    "event log JSON download",
+    "network failure preserves dashboard",
+    "connection recovery",
+    "390px responsive layout",
+    "logout",
+    "delayed new-member and device-renewal invitations stay hidden after logout",
+    "no browser runtime errors"
+  ]
+}
