@@ -370,7 +370,7 @@ export function SettingsModal({
             />
             <p className="mt-1 text-xs leading-5 text-ink-500">
               文件写入此目录。要操作真实桌面，请填写桌面的完整路径；工作区里的 Desktop 子目录不是系统桌面。
-              本机 Pig 的命令在主机执行，此范围限制不等于 Docker 或虚拟机隔离。
+              本机 Pig 默认在主机执行命令；可在任务的「执行与验收」中选择 Docker。文件访问范围本身不等于操作系统隔离。
             </p>
           </Field>
         </div>
