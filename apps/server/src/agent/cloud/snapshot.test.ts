@@ -1,3 +1,4 @@
+import { gzipSync, gunzipSync } from "node:zlib";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,5 +77,23 @@ describe("workspace snapshot", () => {
         env: { PIG_CLOUD_REPO_URL: "https://env.example/app.git" },
       }),
     ).toEqual({ repoUrl: "https://settings.example/app.git", ref: "dev" });
+  });
+});
+
+
+describe("untrusted cloud snapshot limits", () => {
+  it("rejects expansion bombs before allocating the full archive", () => {
+    const data = gzipSync(Buffer.alloc(6 * 1024 * 1024)).toString("base64");
+    expect(() => extractWorkspaceSnapshot({ encoding: "tar.gz", data, files: [], skipped: [], byteSize: 1, truncated: false }, tmpdir())).toThrow();
+  });
+  it("rejects a forbidden ancestor even when the final filename is harmless", () => {
+    const source = mkdtempSync(join(tmpdir(), "pig-snap-attack-"));
+    const dest = mkdtempSync(join(tmpdir(), "pig-snap-output-"));
+    writeFileSync(join(source, "ok.txt"), "text");
+    const snapshot = packWorkspaceSnapshot(source);
+    const tar = gunzipSync(Buffer.from(snapshot.data, "base64"));
+    tar.fill(0, 0, 100); tar.write(".ssh/harmless.txt", 0);
+    expect(() => extractWorkspaceSnapshot({ ...snapshot, data: gzipSync(tar).toString("base64") }, dest)).toThrow(/skipped path/);
+    expect(existsSync(join(dest, ".ssh"))).toBe(false);
   });
 });

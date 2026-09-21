@@ -1,0 +1,135 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #f4f6fa;
+  color: #202c40;
+  font: 14px/1.65 system-ui;
+}
+header {
+  height: 76px;
+  background: #152238;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 36px;
+}
+header span {
+  color: #94a5be;
+  font-size: 12px;
+}
+header a {
+  margin-left: auto;
+  color: #d7def7;
+  text-decoration: none;
+}
+button {
+  border: 1px solid #d7dfeb;
+  background: white;
+  border-radius: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+  color: #344866;
+}
+main {
+  max-width: 1300px;
+  margin: 40px auto;
+  padding: 0 30px;
+}
+h1 {
+  font-size: 30px;
+  margin: 5px 0 20px;
+}
+h2 {
+  font-size: 15px;
+  margin-top: 30px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.heading small {
+  letter-spacing: 2px;
+  color: #8592aa;
+  font-size: 10px;
+}
+.heading > span {
+  border: 1px solid #d7dfeb;
+  border-radius: 16px;
+  padding: 6px 12px;
+  color: #6a7b94;
+}
+.cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.cards > div {
+  background: white;
+  border: 1px solid #e1e6ee;
+  border-radius: 12px;
+  min-width: 155px;
+  padding: 20px;
+}
+.cards span {
+  color: #78879e;
+}
+.cards strong {
+  display: block;
+  font-size: 30px;
+  margin-top: 10px;
+}
+.panel {
+  background: white;
+  border: 1px solid #e1e6ee;
+  border-radius: 12px;
+  padding: 18px;
+  overflow: auto;
+}
+.panel p {
+  margin: 6px 0;
+  color: #6b7b92;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  text-align: left;
+  min-width: 700px;
+}
+th {
+  color: #8a96a9;
+  font-weight: 500;
+  font-size: 12px;
+}
+td,
+th {
+  padding: 12px;
+  border-bottom: 1px solid #edf0f5;
+}
+td button {
+  margin-right: 6px;
+}
+#login {
+  max-width: 620px;
+  padding: 35px;
+  background: white;
+  border: 1px solid #e1e6ee;
+  border-radius: 16px;
+}
+input {
+  padding: 12px;
+  border: 1px solid #d7dfeb;
+  border-radius: 7px;
+  width: 65%;
+  margin-right: 10px;
+}
+#error {
+  color: #b43a43;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

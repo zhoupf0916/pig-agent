@@ -1,0 +1,95 @@
+name: pig-agent-cloud
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: pig
+      POSTGRES_DB: pig
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run pnpm cloud:setup}
+    volumes: ["database:/var/lib/postgresql/data"]
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pig"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  cloud:
+    image: pig-agent-cloud:local
+    build:
+      {
+        context: ../../cloud-dist,
+        dockerfile: ../infra/cloud/Dockerfile,
+        target: cloud,
+      }
+    environment:
+      DATABASE_URL: postgres://pig:${DB_PASSWORD}@postgres:5432/pig
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      MEMBER_TOKEN: ${MEMBER_TOKEN}
+      MEMBER2_TOKEN: ${MEMBER2_TOKEN}
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      MODEL_MODE: ${MODEL_MODE:-mock}
+    ports: ["127.0.0.1:8890:8890"]
+    networks: [control]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8890/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  gateway:
+    image: pig-agent-gateway:local
+    build:
+      {
+        context: ../../cloud-dist,
+        dockerfile: ../infra/cloud/Dockerfile,
+        target: gateway,
+      }
+    environment:
+      CONTROL_URL: http://cloud:8890
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      MODEL_MODE: ${MODEL_MODE:-mock}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com/v1}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+    networks: [control]
+    depends_on:
+      cloud: { condition: service_healthy }
+  worker:
+    image: pig-agent-worker:local
+    build:
+      {
+        context: ../../cloud-dist,
+        dockerfile: ../infra/cloud/Dockerfile,
+        target: worker,
+      }
+    hostname: pig-worker-local
+    environment:
+      CONTROL_URL: http://cloud:8890
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      RUNNER_IMAGE: pig-agent-runner:local
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    networks: [control]
+    depends_on:
+      cloud: { condition: service_healthy }
+      gateway: { condition: service_started }
+  runner-image:
+    image: pig-agent-runner:local
+    build:
+      {
+        context: ../../cloud-dist,
+        dockerfile: ../infra/cloud/Dockerfile,
+        target: runner,
+      }
+    profiles: [build]
+    network_mode: none
+volumes:
+  database:
+networks:
+  control:

@@ -21,7 +21,14 @@
     "desktop:pack": "pnpm --filter @pig-agent/desktop pack",
     "desktop:dist": "pnpm --filter @pig-agent/desktop dist",
     "check:architecture": "node scripts/check-architecture.mjs",
-    "desktop:smoke": "node scripts/smoke-desktop.mjs"
+    "desktop:smoke": "node scripts/smoke-desktop.mjs",
+    "cloud:setup": "node scripts/cloud-local.mjs setup",
+    "cloud:build": "pnpm build && pnpm --filter @pig-agent/cloud typecheck && pnpm --filter @pig-agent/worker typecheck && node scripts/build-cloud.mjs",
+    "cloud:up": "pnpm cloud:setup && pnpm cloud:build && node scripts/cloud-local.mjs up",
+    "cloud:down": "node scripts/cloud-local.mjs down",
+    "cloud:status": "node scripts/cloud-local.mjs status",
+    "cloud:logs": "node scripts/cloud-local.mjs logs",
+    "cloud:smoke": "node scripts/smoke-cloud.mjs"
   },
   "engines": {
     "node": ">=22.13"

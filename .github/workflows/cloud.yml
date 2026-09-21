@@ -1,0 +1,32 @@
+name: Local cloud
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'infra/cloud/**'
+      - 'scripts/*cloud*'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cloud.yml'
+permissions:
+  contents: read
+jobs:
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm cloud:up
+      - run: pnpm cloud:smoke
+      - run: pnpm exec tsx scripts/smoke-cloud-adapter.ts
+      - if: failure()
+        run: pnpm cloud:logs
+      - if: always()
+        run: pnpm cloud:down
