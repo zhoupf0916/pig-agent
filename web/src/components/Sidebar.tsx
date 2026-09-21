@@ -16,7 +16,7 @@ export function Sidebar({
   onDelete: (id: string) => void;
 }) {
   return (
-    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-ink-300 bg-ink-100 lg:w-[240px]">
+    <aside className="session-sidebar flex h-full w-[220px] shrink-0 flex-col border-r border-ink-300 bg-ink-100 lg:w-[232px]">
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <div>
           <div className="text-meta uppercase tracking-[0.16em] text-ink-500">会话</div>
@@ -38,9 +38,9 @@ export function Sidebar({
           return (
             <div
               key={s.id}
-              className={`group relative flex items-start gap-2 rounded-card px-2.5 py-2 ${
+              className={`group relative flex items-start gap-2 rounded-card px-3 py-3 ${
                 active
-                  ? "bg-accent-soft text-ink-800"
+                  ? "bg-panel text-ink-800 shadow-sm"
                   : "text-ink-700 hover:bg-ink-200"
               }`}
             >
@@ -53,14 +53,14 @@ export function Sidebar({
                   <StatusDot status={s.status} />
                   {s.status === "running" || s.status === "error"
                     ? sessionStatusLabel(s.status)
-                    : new Date(s.updatedAt).toLocaleTimeString()}
+                    : new Date(s.updatedAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" })}
                 </div>
               </button>
               <button
                 type="button"
                 title="删除会话"
                 onClick={() => onDelete(s.id)}
-                className="mt-0.5 rounded p-1 text-ink-500 opacity-0 hover:bg-danger-soft hover:text-danger group-hover:opacity-100"
+                className="mt-0.5 rounded p-1 text-ink-500 opacity-0 hover:bg-danger-soft hover:text-danger group-hover:opacity-100 focus:opacity-100"
               >
                 <Trash2 size={13} />
               </button>

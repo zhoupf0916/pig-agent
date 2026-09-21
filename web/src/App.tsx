@@ -1,4 +1,4 @@
-import { Settings2 } from "lucide-react";
+import { Settings2, FolderOpen, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
@@ -105,6 +105,7 @@ import type {
 } from "./types";
 
 export function App() {
+  const [filesOpen, setFilesOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -825,19 +826,19 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
+      <header className="app-header flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
           className="flex shrink-0 items-center gap-3 text-left"
           aria-label="回到工作台"
           onClick={() => goWorkstation(activeId ?? undefined)}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
+          <div className="brand-mark flex h-10 w-10 items-center justify-center rounded-btn bg-accent text-sm font-semibold text-white">
             P
           </div>
-          <div className="hidden min-[420px]:block">
+          <div className="block">
             <div className="text-sm font-medium text-ink-800">Pig Agent</div>
-            <div className="text-meta text-ink-500">本机与云端同一协议</div>
+            <div className="text-meta text-ink-500">让想法成为成果</div>
           </div>
         </button>
         <div className="order-3 min-w-0 w-full flex-1 basis-full md:order-none md:max-w-lg md:basis-auto">
@@ -847,7 +848,7 @@ export function App() {
             onOpenHit={openHit}
           />
         </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="header-actions ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
             className={route.name === "projects" ? "btn-nav-active" : "btn-nav"}
@@ -880,7 +881,7 @@ export function App() {
           />
           <ThemeToggle theme={theme} onChange={setPersistedTheme} />
           <RuntimeChip surface={executionSurface} onClick={() => setSettingsOpen(true)} />
-          <div className="hidden max-w-[220px] truncate font-mono text-meta text-ink-500 xl:block" title={settings?.workspaceRoot}>
+          <div className="hidden max-w-[220px] truncate font-mono text-meta text-ink-500 min-[1600px]:block" title={settings?.workspaceRoot}>
             {settings?.workspaceRoot ?? ""}
           </div>
           <button
@@ -918,7 +919,19 @@ export function App() {
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      {route.name === "workstation" && (
+        <div className="mobile-workspace-bar items-center gap-2 border-b border-ink-300 bg-panel px-4 py-2">
+          <select aria-label="切换任务" className="field min-w-0 flex-1 md:hidden" value={activeId ?? ""} onChange={(e) => { void loadSession(e.target.value); goWorkstation(e.target.value); }}>
+            <option value="" disabled>选择任务</option>
+            {sessions.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+          </select>
+          <button className="btn-ghost md:hidden" onClick={() => void createSession()} aria-label="新建任务"><Plus size={16} /></button>
+          <button className="btn-ghost ml-auto shrink-0" aria-expanded={filesOpen} onClick={() => setFilesOpen(!filesOpen)}>
+            {filesOpen ? <X size={14} /> : <FolderOpen size={14} />}{filesOpen ? "关闭文件" : "文件与产物"}
+          </button>
+        </div>
+      )}
+      <div className={`workspace-shell flex min-h-0 min-w-0 flex-1 overflow-hidden ${filesOpen ? "show-files" : ""}`}>
         {route.name === "projects" ? (
           <ProjectsPanel
             selectedId={route.projectId}
