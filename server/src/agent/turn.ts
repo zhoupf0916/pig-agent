@@ -51,9 +51,9 @@ export function pickRunner(runtime: AgentRuntime) {
   return runAgent;
 }
 
-export function prepareUserMessage(session: Session, content: string): ChatMessage {
+export function prepareUserMessage(session: Session, content: string, clientMessageId?: string): ChatMessage {
   const userMsg: ChatMessage = {
-    id: newId("msg"),
+    id: clientMessageId ?? newId("msg"),
     role: "user",
     content: content.trim(),
     createdAt: nowIso(),

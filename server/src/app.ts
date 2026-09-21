@@ -54,11 +54,13 @@ const settingsSchema = z.object({
 
 const messageSchema = z.object({
   content: z.string().min(1).max(20_000),
+  clientMessageId: z.string().uuid().optional(),
 });
 
 const teamRunSchema = z.object({
   action: z.enum(["start", "continue", "stop"]).default("start"),
   content: z.string().min(1).max(20_000).optional(),
+  clientMessageId: z.string().uuid().optional(),
 });
 
 export function createApp(): Hono {
@@ -261,7 +263,10 @@ export function createApp(): Hono {
       return c.json({ error: "Message content is required" }, 400);
     }
 
-    const userMsg = prepareUserMessage(session, parsed.data.content);
+    if (parsed.data.clientMessageId && session.messages.some((m) => m.id === parsed.data.clientMessageId)) {
+      return c.json({ error: "这条消息已接收，请查看会话结果，不要重复发送。" }, 409);
+    }
+    const userMsg = prepareUserMessage(session, parsed.data.content, parsed.data.clientMessageId);
     await saveSession(session);
 
     return streamSSE(c, async (stream) => {
@@ -286,7 +291,7 @@ export function createApp(): Hono {
     if (!parsed.success) {
       return c.json({ error: "Invalid team-run body" }, 400);
     }
-    const { action, content } = parsed.data;
+    const { action, content, clientMessageId } = parsed.data;
 
     if (action === "stop") {
       const controller = runningTurns.get(id);
@@ -327,7 +332,10 @@ export function createApp(): Hono {
     } else {
       const prompt = content?.trim();
       if (prompt) {
-        prepareUserMessage(session, prompt);
+        if (clientMessageId && session.messages.some((m) => m.id === clientMessageId)) {
+          return c.json({ error: "这条消息已接收，请查看会话结果，不要重复发送。" }, 409);
+        }
+        prepareUserMessage(session, prompt, clientMessageId);
         await saveSession(session);
       } else if (!session.messages.some((m) => m.role === "user" && !m.content.startsWith("[harness]"))) {
         return c.json({ error: "Message content is required to start a team run." }, 400);

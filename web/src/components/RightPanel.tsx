@@ -236,6 +236,12 @@ export function RightPanel({
           </div>
         </div>
         <div className="h-[calc(100%-32px)] overflow-auto px-3 pb-3">
+          {previewPath && workspaceRoot && (
+            <div className="mb-2 break-all rounded border border-ink-300 bg-ink-100 p-2 text-xs text-ink-600">
+              <div>工作区文件位置</div>
+              <div className="mt-1 select-all font-mono">{`${workspaceRoot.replace(/\/+$/, "")}/${previewPath.replace(/^\/+/, "")}`}</div>
+            </div>
+          )}
           {!preview && !selected && <p className="text-xs text-ink-500">点击产物或工作区文件以预览。</p>}
           {mode === "diff" && selected?.before !== undefined && selected.after !== undefined && (
             <div>

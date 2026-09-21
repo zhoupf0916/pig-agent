@@ -67,6 +67,7 @@ import {
   applySyncPhase,
   CATCH_UP_STATUS,
   rememberEventSeq,
+  reconcileMessage,
   type TranscriptSyncPhase,
 } from "./lib/transcript-sync";
 import {
@@ -461,11 +462,7 @@ export function App() {
     if (event.type === "message") {
       setSession((prev) => {
         if (!prev) return prev;
-        const withoutStream = prev.messages.filter((m) => m.id !== "stream_live");
-        if (withoutStream.some((m) => m.id === event.message.id)) {
-          return { ...prev, messages: withoutStream };
-        }
-        return { ...prev, messages: [...withoutStream, event.message] };
+        return { ...prev, messages: reconcileMessage(prev.messages, event.message) };
       });
       return;
     }
@@ -551,7 +548,9 @@ export function App() {
         if (!first) setSyncPhase("catching_up");
         first = false;
         try {
-          await subscribeSessionEvents(activeId, lastSeqRef.current, applyEvent, controller.signal);
+          await subscribeSessionEvents(activeId, lastSeqRef.current, (event, seq) => {
+            if (!controller.signal.aborted && activeIdRef.current === activeId) applyEvent(event, seq);
+          }, controller.signal);
         } catch {
           if (controller.signal.aborted) break;
           setSyncPhase("catching_up");
@@ -568,8 +567,9 @@ export function App() {
   }, [activeId, applyEvent]);
 
   const send = useCallback(async () => {
-    if (!session || streaming || !draft.trim()) return;
+    if (!session || streaming || abortRef.current || session.status === "running" || !draft.trim()) return;
     const content = draft.trim();
+    const clientMessageId = crypto.randomUUID();
     setDraft("");
     clearComposerDraft(session.id, browserDraftStorage());
     setStreaming(true);
@@ -582,7 +582,7 @@ export function App() {
             messages: [
               ...prev.messages,
               {
-                id: `local_${Date.now()}`,
+                id: clientMessageId,
                 role: "user",
                 content,
                 createdAt: new Date().toISOString(),
@@ -594,7 +594,9 @@ export function App() {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      await streamMessage(session.id, content, applyEvent, controller.signal);
+      await streamMessage(session.id, content, (event, seq) => {
+        if (activeIdRef.current === session.id) applyEvent(event, seq);
+      }, controller.signal, clientMessageId);
     } catch (err) {
       if (controller.signal.aborted) {
         setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
@@ -636,7 +638,7 @@ export function App() {
   }, [session]);
 
   const retry = useCallback(async () => {
-    if (!session || streaming) return;
+    if (!session || streaming || abortRef.current) return;
     setStreaming(true);
     setLiveTools([]);
     setSession((prev) =>
@@ -673,8 +675,9 @@ export function App() {
   }, [applyEvent, refreshSessions, session, streaming]);
 
   const startTeamRun = useCallback(async () => {
-    if (!session || streaming) return;
+    if (!session || streaming || abortRef.current || session.status === "running") return;
     const content = draft.trim();
+    const clientMessageId = content ? crypto.randomUUID() : undefined;
     const canContinue = Boolean(
       session.teamRun &&
         session.teamRun.members.some(
@@ -700,7 +703,7 @@ export function App() {
               messages: [
                 ...prev.messages,
                 {
-                  id: `local_${Date.now()}`,
+                  id: clientMessageId!,
                   role: "user",
                   content,
                   createdAt: new Date().toISOString(),
@@ -717,8 +720,10 @@ export function App() {
     try {
       await streamTeamRun(
         session.id,
-        action === "start" && content ? { action, content } : { action },
-        applyEvent,
+        action === "start" && content ? { action, content, clientMessageId } : { action },
+        (event, seq) => {
+          if (activeIdRef.current === session.id) applyEvent(event, seq);
+        },
         controller.signal,
       );
     } catch (err) {
