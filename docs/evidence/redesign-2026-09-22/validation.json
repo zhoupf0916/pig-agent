@@ -39,7 +39,7 @@
     "initialHead": "866edf8",
     "initialOutcome": "Cluster job exposed a fixture precondition: recovered conversation after explicit retry had only one successful version; repeated local data had let F2 select another older session.",
     "correction": "Keep all version/content assertions; add actual follow-up and approval after retry to create two successful versions in the current recovered conversation. Fresh directory and explicit session selection prevent old-data fallback.",
-    "currentState": "Fresh local full suite passed; CI rerun pending.",
+    "currentState": "Fresh local full suite passed; per-commit CI outcomes: https://github.com/zhoupf0916/pig-agent/pull/84/checks",
     "productionCodeChangedForThisFix": false
   }
 }
