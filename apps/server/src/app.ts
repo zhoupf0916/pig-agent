@@ -1,3 +1,6 @@
+import { reconcileRemoteSession, isRemoteActive } from "./control-plane/run-state.ts";
+import { planeJson } from "./control-plane/client.ts";
+import { registerRemoteRoutes } from "./routes/remote.ts";
 import { registerConnectionTest } from "./routes/connection-test.ts";
 import { registerWorkbenchRoutes } from "./routes/workbench.ts";
 import { loadWorkbench } from "./store/workbench.ts";
@@ -119,6 +122,7 @@ export function createApp(): Hono {
   registerProjectRoutes(app);
   registerExpertRoutes(app);
   registerAutomationRoutes(app);
+  registerRemoteRoutes(app);
   registerArtifactRoutes(app);
   registerSearchRoutes(app);
   registerMemoryRoutes(app);
@@ -137,6 +141,13 @@ export function createApp(): Hono {
     const expertTeamId =
       typeof body.expertTeamId === "string" && body.expertTeamId.trim() ? body.expertTeamId.trim() : undefined;
     const session = await createSession({ projectId, expertId, expertTeamId });
+    const defaults = await loadSettings();
+    // Retain the legacy stub only when explicitly chosen in global settings.
+    if (defaults.runtime !== "cloud" || defaults.cloudMode === "remote") {
+      session.executionTarget = defaults.runtime === "cloud" ? "remote" : "local";
+      session.engine = defaults.runtime === "codex" ? "codex" : "pig";
+      await saveSession(session);
+    }
     if (projectId) await recordSessionBound(projectId, session.id);
     return c.json(session, 201);
   });
@@ -144,6 +155,10 @@ export function createApp(): Hono {
   app.get("/api/sessions/:id", async (c) => {
     const session = await getSession(c.req.param("id"));
     if (!session) return c.json({ error: "Session not found" }, 404);
+    if (session.remoteState && session.remoteRunId && !runningTurns.has(session.id)) {
+      try { await reconcileRemoteSession(session); await saveSession(session); }
+      catch { session.lastError = "控制面暂不可用，远端状态未确认"; }
+    }
     return c.json(session);
   });
 
@@ -155,7 +170,22 @@ export function createApp(): Hono {
       expertId?: string | null;
       expertTeamId?: string | null;
       title?: string;
+      executionTarget?: "local" | "remote";
+      engine?: "pig" | "codex";
     };
+    if (body.executionTarget !== undefined || body.engine !== undefined) {
+      if (runningTurns.has(session.id) || session.status === "running") return c.json({error:"运行期间不能切换执行配置"},409);
+      if (session.remoteState && isRemoteActive(session.remoteState)) {
+        try {await reconcileRemoteSession(session);} catch {return c.json({error:"先恢复控制面连接并确认远端运行已结束"},409);}
+        if (isRemoteActive(session.remoteState)) return c.json({error:"远端仍在运行，不能切换执行配置"},409);
+      }
+      const target = body.executionTarget ?? session.executionTarget ?? "local";
+      const engine = body.engine ?? session.engine ?? "pig";
+      if (!["local","remote"].includes(target) || !["pig","codex"].includes(engine) || (target === "remote" && engine !== "pig")) return c.json({error:"当前远端仅支持 Pig 引擎"},400);
+      if (target !== session.executionTarget) {delete session.remoteRunId;delete session.remoteState;delete session.remoteRetry;}
+      session.executionTarget = target;
+      session.engine = engine;
+    }
     if (typeof body.title === "string" && body.title.trim()) {
       session.title = body.title.trim();
     }
@@ -206,11 +236,19 @@ export function createApp(): Hono {
 
   app.post("/api/sessions/:id/abort", async (c) => {
     const id = c.req.param("id");
+    const before = await getSession(id);
+    if (before?.remoteState && before.remoteRunId && !runningTurns.has(id)) {
+      try {
+        await planeJson(`/v1/runs/${encodeURIComponent(before.remoteRunId)}/abort`,{method:"POST"});
+        await reconcileRemoteSession(before); await saveSession(before);
+        return c.json({ok:true,running:isRemoteActive(before.remoteState)});
+      } catch { return c.json({error:"控制面未确认停止，请从远端运行记录核验"},502); }
+    }
     const controller = runningTurns.get(id);
     controller?.abort();
     await waitForTurnRelease(id);
     const session = await getSession(id);
-    if (session && session.status === "running" && !runningTurns.has(id)) {
+    if (session && session.status === "running" && !session.remoteState && !runningTurns.has(id)) {
       await applyTeamRunStop(session);
       const latest = (await getSession(id)) ?? session;
       if (latest.status === "running") {
@@ -233,6 +271,7 @@ export function createApp(): Hono {
     }
     if (session.status === "running") {
       await releaseStaleRunningSession(session);
+      if (session.status === "running") return c.json({error:"远端任务仍在执行，请先查看或取消该运行"},409);
     }
     if (!hasRetryableUserGoal(session)) {
       session.localRetry = "unavailable";
@@ -270,7 +309,7 @@ export function createApp(): Hono {
           id: String(seq),
           event: event.type,
           data: JSON.stringify(event),
-        });
+        }).catch(() => undefined); // A detached client must not interrupt execution or persistence.
       };
       await runSessionTurn(session, { onEvent, teamAction: session.teamRun ? "continue" : undefined });
     });
@@ -285,6 +324,7 @@ export function createApp(): Hono {
     }
     if (session.status === "running") {
       await releaseStaleRunningSession(session);
+      if (session.status === "running") return c.json({error:"远端任务仍在执行，请先查看或取消该运行"},409);
     }
     const parsed = messageSchema.safeParse(await c.req.json());
     if (!parsed.success) {
@@ -304,7 +344,7 @@ export function createApp(): Hono {
           id: String(seq),
           event: event.type,
           data: JSON.stringify(event),
-        });
+        }).catch(() => undefined); // A detached client must not interrupt execution or persistence.
       };
       const first = await publishPersistedEvent(id, { type: "message", message: userMsg });
       await onEvent(first.event, first.seq);
@@ -322,6 +362,9 @@ export function createApp(): Hono {
     }
     const { action, content, clientMessageId } = parsed.data;
 
+    if (action === "stop" && (session.remoteState || session.executionTarget === "remote")) {
+      return c.json({error:"远端任务请使用取消运行接口"},409);
+    }
     if (action === "stop") {
       const controller = runningTurns.get(id);
       controller?.abort();
@@ -336,6 +379,7 @@ export function createApp(): Hono {
     }
     if (session.status === "running") {
       await releaseStaleRunningSession(session);
+      if (session.status === "running") return c.json({error:"远端任务仍在执行，请先查看或取消该运行"},409);
     }
     if (session.expertId) {
       return c.json(
@@ -384,7 +428,7 @@ export function createApp(): Hono {
           id: String(seq),
           event: event.type,
           data: JSON.stringify(event),
-        });
+        }).catch(() => undefined); // A detached client must not interrupt execution or persistence.
       };
       if (action === "start" && startedUser && content?.trim()) {
         const first = await publishPersistedEvent(id, { type: "message", message: startedUser });

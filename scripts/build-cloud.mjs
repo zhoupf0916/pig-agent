@@ -4,6 +4,7 @@ await rm("cloud-dist", { recursive: true, force: true });
 await mkdir("cloud-dist", { recursive: true });
 for (const [name, entry] of Object.entries({
   cloud: "apps/cloud/src/index.ts",
+  scheduler: "apps/cloud/src/schedules.ts",
   gateway: "apps/cloud/src/gateway.ts",
   worker: "apps/worker/src/index.ts",
   runner: "apps/server/src/cloud-runner.ts",

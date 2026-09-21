@@ -28,7 +28,8 @@
     "cloud:down": "node scripts/cloud-local.mjs down",
     "cloud:status": "node scripts/cloud-local.mjs status",
     "cloud:logs": "node scripts/cloud-local.mjs logs",
-    "cloud:smoke": "node scripts/smoke-cloud.mjs"
+    "cloud:smoke": "node scripts/smoke-cloud.mjs",
+    "cloud:smoke:schedules": "node scripts/smoke-cloud-schedules.mjs"
   },
   "engines": {
     "node": ">=22.13"

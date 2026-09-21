@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ try {
   });
   const now = new Date().toISOString();
   const session = {
-    id: "adapter-test",
+    id: `adapter-${randomUUID()}`,
     title: "Cloud adapter smoke",
     createdAt: now,
     updatedAt: now,
@@ -46,9 +47,11 @@ try {
     settings,
     signal: AbortSignal.timeout(45000),
     emit: () => {},
+    onRunCreated: async () => {},
   });
   assert.equal(result.lastError, undefined);
   assert.equal(result.status, "idle");
+  assert.equal(result.remoteState,"succeeded");
   assert.ok(
     result.messages.some(
       (m) => m.role === "assistant" && m.content.includes("容器执行验收通过"),

@@ -83,6 +83,8 @@ export const api = {
       expertId?: string | null;
       expertTeamId?: string | null;
       title?: string;
+      executionTarget?: "local" | "remote";
+      engine?: "pig" | "codex";
     },
   ) =>
     fetch(`/api/sessions/${id}`, {
@@ -294,7 +296,7 @@ export const api = {
   deleteExpertTeam: (id: string) =>
     fetch(`/api/expert-teams/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
 
-  automations: () => fetch("/api/automations").then((r) => json<{ automations: Automation[] }>(r)),
+  automations: () => fetch("/api/automations").then((r) => json<{ automations: Automation[]; remoteError?: string }>(r)),
 
   automation: (id: string) => fetch(`/api/automations/${id}`).then((r) => json<Automation>(r)),
 
@@ -306,12 +308,16 @@ export const api = {
     expertId?: string;
     expertTeamId?: string;
     projectId?: string;
+    executionTarget?: "local" | "remote";
+    engine?: "pig" | "codex";
+    timezone?: string;
+    misfirePolicy?: "skip" | "once";
     runtime?: AgentRuntime;
     saveArtifactsToProject?: boolean;
-  }) =>
+  }, requestKey = crypto.randomUUID()) =>
     fetch("/api/automations", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey },
       body: JSON.stringify(input),
     }).then((r) => json<Automation>(r)),
 
@@ -325,7 +331,11 @@ export const api = {
       expertId?: string | null;
       expertTeamId?: string | null;
       projectId?: string | null;
-      runtime?: AgentRuntime;
+      executionTarget?: "local" | "remote";
+    engine?: "pig" | "codex";
+    timezone?: string;
+    misfirePolicy?: "skip" | "once";
+    runtime?: AgentRuntime;
       saveArtifactsToProject?: boolean;
     },
   ) =>
@@ -338,9 +348,9 @@ export const api = {
   deleteAutomation: (id: string) =>
     fetch(`/api/automations/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
 
-  runAutomation: (id: string) =>
-    fetch(`/api/automations/${id}/run`, { method: "POST" }).then((r) =>
-      json<{ automation: Automation; session: Session }>(r),
+  runAutomation: (id: string, requestKey = crypto.randomUUID()) =>
+    fetch(`/api/automations/${id}/run`, { method: "POST", headers:{"Idempotency-Key":requestKey} }).then((r) =>
+      json<{ automation?: Automation; session?: Session; remoteRunId?: string }>(r),
     ),
 
   saveArtifactToProject: (sessionId: string, name: string) =>

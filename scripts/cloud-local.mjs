@@ -41,7 +41,7 @@ if (command === "setup") {
     );
     await writeFile(
       directory + "/access.txt",
-      `Web: http://127.0.0.1:8890/cloud\nAdmin: http://127.0.0.1:8890/admin/\nMember token: ${credentials.MEMBER_TOKEN}\nAdmin token: ${credentials.ADMIN_TOKEN}\n`,
+      `Execution diagnostics: http://127.0.0.1:8890/debug/runs\nAdmin: http://127.0.0.1:8890/admin/\nMember token: ${credentials.MEMBER_TOKEN}\nAdmin token: ${credentials.ADMIN_TOKEN}\n`,
       { mode: 0o600, flag: "wx" },
     );
     console.log(

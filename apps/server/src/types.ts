@@ -3,6 +3,7 @@ import type { Session, Settings, AgentEvent } from "@pig-agent/contracts";
 
 /** Shared options passed to pig / codex / cloud runners. */
 export type AgentRunOptions = {
+  onRunCreated?: (runId: string) => Promise<void>;
   session: Session;
   settings: Settings;
   signal: AbortSignal;

@@ -17,9 +17,9 @@
 
 ## 本机 Docker 云平台（开发预览）
 
-执行 `pnpm cloud:up` 会构建并启动 PostgreSQL、云端 API、模型网关和 Worker，真实任务在独立容器执行。用户入口为 [云工作台](http://127.0.0.1:8890/cloud)，管理员入口为 [管理后台](http://127.0.0.1:8890/admin/)，访问令牌在本机 `data/cloud-local/access.txt`。
+执行 `pnpm cloud:up` 会构建并启动 PostgreSQL、云端 API、模型网关和 Worker，真实任务在独立容器执行。用户继续使用现有 Web / Electron 工作台，并通过 Cloud / remote 适配器连接控制面；管理员入口为 [管理后台](http://127.0.0.1:8890/admin/)，访问令牌在本机 `data/cloud-local/access.txt`。
 
-当前默认模拟模型，用于验证容器执行、事件、产物和故障恢复；尚未接入公开注册或完整云会话同步。详见 [本地云平台运行与验收](docs/local-cloud.md) 和 [分阶段扩展计划](docs/platform-expansion-plan.md)。个人模型密钥不会自动配置到平台。
+会话顶部选择本地/远端执行，自动化可选择由控制面调度的远端计划，关闭客户端后仍执行。工作台内可查看远端运行与下载成果；后台支持节点排空和并发控制。当前默认模拟模型，用于验证容器执行、事件、产物和故障恢复；尚未接入公开注册或完整云会话同步。详见 [本地云平台运行与验收](docs/local-cloud.md) 和 [分阶段扩展计划](docs/platform-expansion-plan.md)。个人模型密钥不会自动配置到平台。
 
 ## 桌面版（macOS 内测）
 
@@ -80,7 +80,7 @@ tests/            测试环境隔离配置
 docs/             架构、使用、验收和运行时文档
 ```
 
-应用通过 workspace 包使用契约，禁止相互导入源码。未来云端作为独立 `apps/cloud` 应用接入；当前 Cloud 目录是服务端的客户端适配器，不代表已实现云平台。设计边界与演进规则见 [架构说明](docs/architecture.md)。
+应用通过 workspace 包使用契约，禁止相互导入源码。`apps/cloud` 是远端执行控制面，`apps/worker` 调度执行容器，`apps/admin` 提供管理后台；用户端继续复用同一工作台。控制面定时调度已实现，跨设备完整会话同步与持久工作区仍在实施计划中。设计边界与演进规则见 [架构说明](docs/architecture.md)。
 
 ## 验证与贡献
 

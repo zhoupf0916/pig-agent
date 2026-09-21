@@ -10,6 +10,7 @@ export async function runCloudAgent(options: {
   settings: Settings;
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
+  onRunCreated?: (runId: string) => Promise<void>;
   runsRoot?: string;
   fetchImpl?: typeof fetch;
   projectInstruction?: string;

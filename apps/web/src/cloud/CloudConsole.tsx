@@ -16,7 +16,7 @@ const labels: Record<string, string> = {
 export function CloudConsole() {
   const [modelMode, setModelMode] = useState("unknown");
   useEffect(() => {
-    document.title = "Pig Cloud · 云工作台";
+    document.title = "Pig Agent · 执行链路诊断";
     void fetch("/health")
       .then((r) => r.json())
       .then((data) => setModelMode(data.modelMode))
@@ -176,10 +176,10 @@ export function CloudConsole() {
   return (
     <div className="cloud-shell">
       <header>
-        <a href="/cloud" className="cloud-brand">
-          P<span>Pig Cloud</span>
+        <a href="/debug/runs" className="cloud-brand">
+          P<span>执行链路诊断</span>
         </a>
-        <span className="cloud-badge">本地 Docker · 预览版</span>
+        <span className="cloud-badge">开发工具 · 本地 Docker</span>
         <nav>
           <a href="/admin/">管理后台 ↗</a>
           {token && (

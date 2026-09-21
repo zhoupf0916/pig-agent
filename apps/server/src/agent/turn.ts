@@ -1,3 +1,4 @@
+import { reconcileRemoteSession } from "../control-plane/run-state.ts";
 import { resolveExpertPlaybook } from "../store/experts.ts";
 import { publishPersistedEvent } from "../store/events.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
@@ -27,7 +28,8 @@ export function isStaleRunningSession(session: Session): boolean {
 
 export async function releaseStaleRunningSession(session: Session): Promise<boolean> {
   if (!isStaleRunningSession(session)) return false;
-  session.status = "idle";
+  if (session.remoteState && session.remoteRunId) await reconcileRemoteSession(session);
+  else session.status = "idle";
   session.updatedAt = nowIso();
   await saveSession(session);
   return true;
@@ -87,7 +89,11 @@ export async function runSessionTurn(
   hooks: SessionTurnHooks = {},
 ): Promise<Session> {
   const settings = await loadSettings();
-  const runtime = hooks.runtime ?? settings.runtime;
+  const runtime = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
+  session.executionTarget = runtime === "cloud" && (session.executionTarget === "remote" || settings.cloudMode === "remote") ? "remote" : "local";
+  session.engine = runtime === "codex" ? "codex" : "pig";
+  if (session.executionTarget === "remote") settings.cloudMode = "remote";
+  await saveSession(session);
   if (runtime === "pig") session.deliveryMode = true;
   const controller = new AbortController();
   runningTurns.set(session.id, controller);
@@ -125,6 +131,7 @@ export async function runSessionTurn(
           projectInstruction: await resolveProjectInstruction(session.projectId),
           expertInstruction: playbook.instruction,
           preferredSkillIds: playbook.skillIds,
+          onRunCreated: async (runId: string) => { session.remoteRunId = runId; session.remoteState = "queued"; await saveSession(session); },
         });
     await writes;
     await saveSession(next);
