@@ -46,3 +46,16 @@ node node_modules/vite/bin/vite.js build --config web/vite.config.ts
 用户随后授权继续完成项目闭环。Codex 已在本机独立数据目录、8797 端口完成 Chrome 双标签实测：A 新建并删除待办，B 先打开有效 `?todo=`，恢复焦点后看板条目和查询参数自动清除，无整页刷新。顶栏仍为本机 Pig，页面布局正常，活动历史按原设计保留。可见页面没有密钥内容；本轮没有配置真实 Provider Key。
 
 BF-02 的 API/轮询约束通过代码复核和自动化验证确认；`?asset=` 保留和跨项目高亮保护有回归覆盖。以上是 Codex 本轮验收，不代表历史产品/UI bot 已签收。PR 按接手后的验证结果收尾；未向 bot 或交付群发送消息。
+
+## 接续闭环
+
+- BF / PR #71 已合并，main 提交 `6d02931a1a20ac4c5e32df3c76ee0b81c50b183f`。
+- 安装：将 esbuild 构建许可移至 pnpm 工作区配置，固定 pnpm 11.19.0（Node 22.13+），`pnpm install --frozen-lockfile` 通过。
+- 测试：每个测试文件分配独立 DATA_DIR，屏蔽本机 dotenv 配置、清除运行时配置环境变量，结束后清理临时数据。默认并行 `pnpm test` 通过，无需前述手动环境绕行。
+- 路径：`toRel` 与沙箱路径解析共用规范化工作区根目录，修复符号链接目录下产物出现 `../../private/...` 的问题；增加已有文件、新文件、根目录及越界路径回归测试。
+- 验证：71 个测试文件、543 项测试通过，类型检查与生产构建通过。
+- Chrome 端到端：项目中新建会话 → 本地 mock 调用更新计划、搜索、写文件 → 返回摘要 → README 产物和正文预览出现 → 保存到项目显示成功（1 个产物）。工作区使用 `data/demo-workspace`，真实模型调用未验证。
+
+本机验收服务：`http://127.0.0.1:8797`；模拟模型：`http://127.0.0.1:8798/v1`。数据位于 `data/bf-acceptance`，与默认数据目录隔离。服务停止后可分别运行 `MOCK_LLM_PORT=8798 pnpm mock:llm` 和 `DATA_DIR=./data/bf-acceptance PORT=8797 pnpm start` 恢复。此地址是离线演示，真实使用时在设置中填写兼容模型端点与 API Key。
+
+已交付范围以 README 的本地 Web Agent MVP 为准；真实远程控制面、Firecracker、多租户、计费与专家市场仍属于原项目明确排除的范围，不作为已完成功能宣称。

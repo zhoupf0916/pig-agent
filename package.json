@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.19.0",
   "description": "Pure-local, pure-web AI agent workstation",
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:web\"",
@@ -17,7 +18,7 @@
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
@@ -44,10 +45,5 @@
     "typescript": "^5.8.2",
     "vite": "^6.2.2",
     "vitest": "^3.0.9"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
   }
 }

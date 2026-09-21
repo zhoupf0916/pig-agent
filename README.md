@@ -31,6 +31,8 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 ### 快速开始
 
+环境要求：Node.js 22.13+（建议 24）和 pnpm 11.19.0。仓库通过 `packageManager` 固定 pnpm 版本；`pnpm-workspace.yaml` 只允许 esbuild 的依赖构建脚本。
+
 需要 [Node.js](https://nodejs.org/) 20+。推荐 pnpm（也可用 npm）。
 
 ```bash
@@ -160,6 +162,10 @@ pnpm start
 此时后端会托管 `web/dist`，可只打开 `http://127.0.0.1:8787`。
 
 ### 测试
+
+测试文件各自使用临时数据目录，不读取开发者的 `.env` / `.env.local`，不改写日常使用的 `data/settings.json`。macOS 临时目录会规范化，默认并行执行即可。
+
+GitHub Actions 会在 PR 和 main 更新时执行锁文件安装、全量测试、类型检查与生产构建。
 
 ```bash
 pnpm test
