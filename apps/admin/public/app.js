@@ -12,7 +12,10 @@ const labels = {
 async function api(path, init = {}) {
   const r = await fetch(path, {
     ...init,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type":"application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
   });
   const data = await r.json();
   if (!r.ok) throw Error(data.error || `HTTP ${r.status}`);
@@ -26,10 +29,14 @@ function node(tag, text) {
 async function refresh() {
   if (!token) return;
   try {
-    const [overview, list] = await Promise.all([
-      api("/v1/admin/overview"),
-      api("/v1/runs"),
-    ]);
+    const [overview, list, accountData, channelData, resourceData] =
+      await Promise.all([
+        api("/v1/admin/overview"),
+        api("/v1/runs"),
+        api("/v1/admin/accounts"),
+        api("/v1/admin/channels"),
+        api("/v1/admin/resources"),
+      ]);
     $("login").hidden = true;
     $("dashboard").hidden = false;
     $("error").textContent = "";
@@ -45,16 +52,138 @@ async function refresh() {
         return e;
       }),
     );
+    if (!$("resource-form").contains(document.activeElement))
+      $("resource-profile").value = resourceData.selected;
+    if (!$("accounts").contains(document.activeElement))
+      $("accounts").replaceChildren(
+        ...accountData.accounts
+          .filter((a) => a.enabled || $("show-disabled").checked)
+          .map((a) => {
+            const row = node(
+              "p",
+              `${a.name} · ${a.role} · 今日调用 ${a.calls_today}/${a.daily_call_limit} `,
+            );
+            const toggle = node("button", a.enabled ? "禁用" : "启用");
+            toggle.onclick = () =>
+              action(
+                `/v1/admin/accounts/${a.id}`,
+                { enabled: !a.enabled },
+                "PATCH",
+              );
+            const revoke = node("button", "撤销登录会话");
+            revoke.onclick = () =>
+              action(
+                `/v1/admin/accounts/${a.id}`,
+                { revokeSessions: true },
+                "PATCH",
+              );
+            const limit = node("input", "");
+            limit.type = "number";
+            limit.min = "0";
+            limit.max = "100000";
+            limit.value = a.daily_call_limit;
+            limit.setAttribute("aria-label", a.name + "每日调用限额");
+            const save = node("button", "保存限额");
+            save.onclick = () =>
+              action(
+                `/v1/admin/accounts/${a.id}`,
+                { dailyCallLimit: Number(limit.value) },
+                "PATCH",
+              );
+            row.append(toggle, revoke, limit, save);
+            if (a.enabled && a.role === "member") {
+              const login = node("button", "新设备登录 / 续期");
+              login.onclick = async () => {
+                try {
+                  const data = await api("/v1/admin/invitations", {
+                    method: "POST",
+                    body: JSON.stringify({ name: a.name, accountId: a.id }),
+                  });
+                  $("invite-result").textContent =
+                    `${a.name} 登录邀请码（24 小时有效）：${data.invite}`;
+                } catch (e) {
+                  $("error").textContent = e.message;
+                }
+              };
+              row.append(login);
+            }
+            return row;
+          }),
+      );
+    $("channels").replaceChildren(
+      ...channelData.channels.map((ch) => {
+        const row = node(
+          "p",
+          `${ch.enabled ? "● 已启用" : "○ 已停用"} · ${ch.name} · ${ch.model} · ${ch.base_url} `,
+        );
+        const toggle = node("button", ch.enabled ? "停用" : "启用");
+        toggle.onclick = () =>
+          action(`/v1/admin/channels/${ch.id}/activate`, {
+            enabled: !ch.enabled,
+          });
+        const test = node("button", "测试连接");
+        test.onclick = async () => {
+          try {
+            const result = await api(`/v1/admin/channels/${ch.id}/test`, {
+              method: "POST",
+            });
+            $("error").textContent = result.ok
+              ? "模型连接成功"
+              : `模型连接失败 ${result.status || result.error}`;
+          } catch (e) {
+            $("error").textContent = e.message;
+          }
+        };
+        row.append(toggle, test);
+        if (!ch.enabled) {
+          const remove = node("button", "删除");
+          remove.onclick = () =>
+            action(`/v1/admin/channels/${ch.id}`, undefined, "DELETE");
+          row.append(remove);
+        }
+        return row;
+      }),
+    );
     $("workers").replaceChildren(
-      ...overview.workers.map(w=>{
-        const row=node("p",`${w.online?"● 在线":"○ 离线"} · ${w.id} · ${w.enabled?"接收任务":"排空中"} · ${w.active}/${w.capacity} 槽位 `);
-        const toggle=node("button",w.enabled?"排空节点":"恢复接单");
-        toggle.onclick=async()=>{try{await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`,{method:"PATCH",body:JSON.stringify({enabled:!w.enabled})});await refresh();}catch(e){$("error").textContent=e.message;}};
+      ...overview.workers.map((w) => {
+        const row = node(
+          "p",
+          `${w.online ? "● 在线" : "○ 离线"} · ${w.id} · ${w.enabled ? "接收任务" : "排空中"} · ${w.active}/${w.capacity} 槽位 `,
+        );
+        const toggle = node("button", w.enabled ? "排空节点" : "恢复接单");
+        toggle.onclick = async () => {
+          try {
+            await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({ enabled: !w.enabled }),
+            });
+            await refresh();
+          } catch (e) {
+            $("error").textContent = e.message;
+          }
+        };
         row.append(toggle);
-        const slots=node("select","");slots.setAttribute("aria-label",`${w.id} 并发槽位`);
-        for(let n=1;n<=3;n++){const option=node("option",`${n} 并发`);option.value=String(n);option.selected=w.capacity===n;slots.append(option);}
-        slots.onchange=async()=>{try{await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`,{method:"PATCH",body:JSON.stringify({capacity:Number(slots.value)})});await refresh();}catch(e){$("error").textContent=e.message;}};
-        row.append(slots);return row;
+        const slots = node("select", "");
+        slots.setAttribute("aria-label", `${w.id} 并发槽位`);
+        for (let n = 1; n <= 3; n++) {
+          const option = node("option", `${n} 并发`);
+          option.value = String(n);
+          option.selected = w.capacity === n;
+          slots.append(option);
+        }
+        slots.onchange = async () => {
+          try {
+            await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({ capacity: Number(slots.value) }),
+            });
+            await refresh();
+          } catch (e) {
+            $("error").textContent = e.message;
+          }
+        };
+        row.append(slots);
+        return row;
       }),
     );
     $("runs").replaceChildren(
@@ -96,7 +225,14 @@ async function refresh() {
         return tr;
       }),
     );
-    $("schedules").replaceChildren(...(overview.schedules || []).map(s=>node("p",`${s.enabled ? "已启用" : "已停用"} · ${s.name} · ${s.owner_id} · ${s.cron || "仅手动"} · ${s.timezone} · 下次 ${s.next_fire_at ? new Date(s.next_fire_at).toLocaleString() : "—"}${s.last_error ? " · " + s.last_error : ""}`)));
+    $("schedules").replaceChildren(
+      ...(overview.schedules || []).map((s) =>
+        node(
+          "p",
+          `${s.enabled ? "已启用" : "已停用"} · ${s.name} · ${s.owner_id} · ${s.cron || "仅手动"} · ${s.timezone} · 下次 ${s.next_fire_at ? new Date(s.next_fire_at).toLocaleString() : "—"}${s.last_error ? " · " + s.last_error : ""}`,
+        ),
+      ),
+    );
     $("audit").replaceChildren(
       ...overview.audit
         .slice(0, 15)
@@ -126,7 +262,12 @@ $("login-form").onsubmit = async (e) => {
     token = "";
   }
 };
-$("logout").onclick = () => {
+$("logout").onclick = async () => {
+  try {
+    await api("/v1/logout", { method: "POST" });
+  } catch {}
+  $("invite-result").textContent = "";
+  $("channel-key").value = "";
   sessionStorage.removeItem("pig.cloud.token");
   token = "";
   $("login").hidden = false;
@@ -134,3 +275,55 @@ $("logout").onclick = () => {
 };
 void refresh();
 setInterval(() => void refresh(), 3000);
+
+async function action(path, body, method = "POST") {
+  try {
+    await api(path, { method, body: JSON.stringify(body) });
+    await refresh();
+  } catch (e) {
+    $("error").textContent = e.message;
+  }
+}
+$("invite-form").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    const data = await api("/v1/admin/invitations", {
+      method: "POST",
+      body: JSON.stringify({ name: $("invite-name").value }),
+    });
+    $("invite-result").textContent =
+      `一次性邀请码（24 小时有效）：${data.invite}`;
+    $("invite-name").value = "";
+  } catch (e) {
+    $("error").textContent = e.message;
+  }
+};
+$("channel-form").onsubmit = async (e) => {
+  e.preventDefault();
+  try {
+    await api("/v1/admin/channels", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("channel-name").value,
+        baseUrl: $("channel-base").value,
+        model: $("channel-model").value,
+        apiKey: $("channel-key").value,
+      }),
+    });
+    $("channel-key").value = "";
+    await refresh();
+  } catch (e) {
+    $("error").textContent = e.message;
+  }
+};
+
+$("resource-form").onsubmit = (e) => {
+  e.preventDefault();
+  void action(
+    "/v1/admin/resources",
+    { profile: $("resource-profile").value },
+    "PUT",
+  );
+};
+
+$("show-disabled").onchange = () => void refresh();

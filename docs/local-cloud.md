@@ -104,3 +104,45 @@ pnpm exec tsx scripts/smoke-cloud-workbench.ts  # 原工作台 API、断流继�
 ```
 
 调度故障测试会临时排空节点并重启控制面，只允许在无活动任务、无启用定时计划的开发栈运行。时间解析使用 [cron-parser](https://github.com/harrisiirak/cron-parser) 的时区支持，限制为分钟级且禁止同时限定日期与星期。
+
+## 远端会话、账号与资源
+
+在已有 Web / Electron 工作台选择远端执行。每次跟进创建独立 run，复用会话的最近完整工作区快照；同一会话拒绝并行写入，过期客户端必须刷新。工作台「远端运行记录」中点击「在工作台继续会话」，可在另一设备用同一账号恢复会话。打开已恢复的会话会向控制面核验最新一轮。
+
+「下载工作区版本」提供 tar.gz。当前快照保存在 PostgreSQL 持久卷，最多 400 个文件、4 MiB 总输入、单文件 512 KiB；排除 `.env*`、密钥、`.git`、依赖和构建目录。超限或节点硬故障没有完整检查点时，不会静默用旧文件继续。正常失败/取消尽力保存检查点；硬杀无法保证最后的内存工作区。文本成果可生成本地审阅变更单，批准时再次检查本地文件指纹，避免覆盖预览后修改。
+
+管理后台新增：
+
+- 24 小时一次性邀请。用户在工作台设置填写控制面 URL，兑换邀请码；访问会话 30 天有效。管理员可在原账号旁签发「新设备登录 / 续期」邀请，保留同一账号和全部远端历史。
+- 禁用账号、撤销登录会话、设置每日模型请求限额（UTC 日界线；请求失败也消耗预留调用）。内置运维令牌仍由 stack.env 管理。
+- 创建 HTTPS Chat Completions 模型渠道、测试连接、启用/停用。测试会发起一次最多 8 token 的真实请求。当前最多一个启用渠道，停用全部时回到部署默认模型。模型密钥以 AES-256-GCM 加密，ENCRYPTION_KEY 独立保存在忽略提交的 stack.env；密钥仅传给可信网关，不进入任务容器。
+- 轻量（0.5 CPU / 256 MiB / 120 秒）、标准（1 CPU / 512 MiB / 240 秒）、扩展（2 CPU / 1024 MiB / 600 秒）。规格在入队时固定，后台变更只影响新任务；attempt API 保留实际执行规格和节点。
+
+完整验证命令：
+
+```sh
+pnpm cloud:up
+pnpm cloud:smoke:schedules
+pnpm cloud:smoke
+pnpm cloud:smoke:conversations
+pnpm cloud:smoke:platform
+pnpm exec tsx scripts/smoke-cloud-adapter.ts
+pnpm exec tsx scripts/smoke-cloud-workbench.ts
+pnpm desktop:build
+pnpm desktop:smoke
+```
+
+调度/故障验收会暂时排空节点、重启控制面或 Worker；请在没有实际任务运行时执行。平台验收创建 10 个隔离账号，结束后禁用账号并撤销会话，保留运行审计。
+
+## 备份与恢复验证
+
+```sh
+pnpm cloud:backup
+pnpm cloud:restore:verify /absolute/path/to/backup.dump
+```
+
+备份写入 `data/cloud-local/backups`，文件权限 0600，并验证 PostgreSQL archive 目录。恢复验证创建临时数据库，完整导入并读取关键表，最后删除临时库，不替换当前数据库。
+
+异机灾备同时保存 dump 和受保护的 `data/cloud-local/stack.env`；缺失 ENCRYPTION_KEY 时无法解密已有模型渠道。生产替换前先暂停新任务、排空 Worker、备份当前库，在独立 PostgreSQL 恢复 dump，设置原密钥并验证后切换 DATABASE_URL。命令不会自动清空现有数据库。
+
+这仍是邀请制内测工作台：尚未提供组织共享项目、远端 Codex、云端工具审批恢复、S3 存储、自动保留期或桌面签名更新。

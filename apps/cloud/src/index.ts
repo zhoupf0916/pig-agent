@@ -6,6 +6,9 @@ import { bodyLimit } from "hono/body-limit";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { profiles, registerResourceRoutes } from "./resources.ts";
+import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
+import { registerConversationRoutes } from "./conversations.ts";
 import { inputSchema } from "./input.ts";
 import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
 import type { CloudEnv } from "./types.ts";
@@ -19,12 +22,18 @@ app.onError((err, c) => {
 });
 app.get("/health", async (c) => {
   await db.query("SELECT 1");
-  return c.json({ ok: true, modelMode: process.env.MODEL_MODE || "mock" });
+  return c.json({
+    ok: true,
+    modelMode: (await db.query("SELECT id FROM model_channels WHERE enabled"))
+      .rowCount
+      ? "provider"
+      : process.env.MODEL_MODE || "mock",
+  });
 });
 app.use("/v1/*", async (c, next) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
   const found = await db.query(
-    "SELECT id,role,name FROM principals WHERE token_hash=$1",
+    "SELECT id,role,name FROM principals WHERE enabled AND (token_hash=$1 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now()))",
     [hash(token)],
   );
   if (!found.rowCount)
@@ -43,12 +52,15 @@ app.use("/internal/*", async (c, next) => {
 async function runFor(id: string, p: Principal) {
   return (
     await db.query(
-      "SELECT id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND (owner_id=$2 OR $3)",
+      "SELECT id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND (owner_id=$2 OR $3)",
       [id, p.id, p.role === "admin"],
     )
   ).rows[0];
 }
+registerPlatformRoutes(app);
+registerResourceRoutes(app);
 registerScheduleRoutes(app);
+registerConversationRoutes(app);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
@@ -97,9 +109,14 @@ app.post("/v1/runs", async (c) => {
       return c.json({ error: "最多保留 5 个待执行或运行中的任务" }, 429);
     }
     const id = "run_" + randomUUID().replaceAll("-", "");
+    const conversationId = "conv_" + randomUUID().replaceAll("-", "");
     await client.query(
-      "INSERT INTO runs(id,owner_id,input,request_key) VALUES($1,$2,$3,$4)",
-      [id, p.id, parsed.data, key],
+      "INSERT INTO conversations(id,owner_id,title) VALUES($1,$2,$3)",
+      [conversationId, p.id, parsed.data.prompt.slice(0, 100)],
+    );
+    await client.query(
+      "INSERT INTO runs(id,owner_id,input,request_key,conversation_id) VALUES($1,$2,$3,$4,$5)",
+      [id, p.id, parsed.data, key, conversationId],
     );
     await client.query(
       "INSERT INTO audit(actor,action,run_id) VALUES($1,$2,$3)",
@@ -117,11 +134,6 @@ app.post("/v1/runs", async (c) => {
 app.get("/v1/runs/:id", async (c) => {
   const r = await runFor(c.req.param("id"), c.get("principal"));
   return r ? c.json(r) : c.json({ error: "任务不存在" }, 404);
-});
-app.post("/v1/runs/:id/follow-ups", async (c) => {
-  if (!(await runFor(c.req.param("id"), c.get("principal"))))
-    return c.json({ error: "Not found" }, 404);
-  return c.json({ error: "此版本使用新快照创建下一轮" }, 410);
 });
 app.post("/v1/runs/:id/abort", async (c) => {
   const id = c.req.param("id"),
@@ -247,7 +259,10 @@ app.get("/v1/admin/overview", async (c) => {
     ).rows,
     audit: (await db.query("SELECT * FROM audit ORDER BY id DESC LIMIT 50"))
       .rows,
-    modelMode: process.env.MODEL_MODE || "mock",
+    modelMode: (await db.query("SELECT id FROM model_channels WHERE enabled"))
+      .rowCount
+      ? "provider"
+      : process.env.MODEL_MODE || "mock",
   });
 });
 app.patch("/v1/admin/workers/:id", async (c) => {
@@ -315,11 +330,20 @@ app.post("/internal/claim", async (c) => {
     }
     const token = randomUUID() + randomUUID();
     const r = await client.query(
-      "UPDATE runs SET state='preparing',worker_id=$1,attempt_token=$2,lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=(SELECT id FROM runs WHERE state='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id",
+      "UPDATE runs SET state='preparing',worker_id=$1,attempt_token=$2,lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=(SELECT id FROM runs WHERE state='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,execution_profile",
       [workerId, hash(token)],
     );
+    const selected = r.rows[0]?.execution_profile as
+      | keyof typeof profiles
+      | undefined;
+    const resources = profiles[selected || "standard"] || profiles.standard;
+    if (r.rowCount)
+      await client.query(
+        "INSERT INTO execution_attempts(id,run_id,worker_id,resources) VALUES($1,$2,$3,$4)",
+        [randomUUID(), r.rows[0].id, workerId, resources],
+      );
     await client.query("COMMIT");
-    return c.json(r.rowCount ? { id: r.rows[0].id, token } : null);
+    return c.json(r.rowCount ? { id: r.rows[0].id, token, resources } : null);
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -354,7 +378,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
   try {
     await client.query("BEGIN");
     const r = await client.query(
-      "SELECT state,lease_until FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
+      "SELECT state,lease_until,conversation_id FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
       [id, hash(String(body.token))],
     );
     if (
@@ -364,6 +388,20 @@ app.post("/internal/runs/:id/finish", async (c) => {
     ) {
       await client.query("ROLLBACK");
       return c.json({ error: "Lease expired" }, 409);
+    }
+    const checkpoint = inputSchema.shape.workspace.safeParse({
+      snapshot: body.snapshot,
+    });
+    if (
+      body.ok &&
+      r.rows[0].conversation_id &&
+      (!checkpoint.success ||
+        !checkpoint.data?.snapshot ||
+        checkpoint.data.snapshot.truncated)
+    ) {
+      body.ok = false;
+      body.error =
+        "工作区超出快照限制或检查点未保存；可下载已保存成果，不能无损继续下一轮";
     }
     const state =
       r.rows[0].state === "cancelling"
@@ -379,7 +417,25 @@ app.post("/internal/runs/:id/finish", async (c) => {
         body.ok ? null : String(body.error || "容器执行失败").slice(0, 500),
       ],
     );
-    if (state === "succeeded" && Array.isArray(body.files)) {
+    const snapshot = inputSchema.shape.workspace.safeParse({
+      snapshot: body.snapshot,
+    });
+    if (
+      r.rows[0].conversation_id &&
+      snapshot.success &&
+      snapshot.data?.snapshot &&
+      !snapshot.data.snapshot.truncated
+    ) {
+      await client.query(
+        "INSERT INTO workspace_versions(run_id,conversation_id,snapshot) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
+        [id, r.rows[0].conversation_id, snapshot.data.snapshot],
+      );
+      await client.query(
+        "UPDATE conversations SET updated_at=now() WHERE id=$1",
+        [r.rows[0].conversation_id],
+      );
+    }
+    if (Array.isArray(body.files)) {
       for (const f of body.files.slice(0, 100)) {
         if (
           typeof f.path === "string" &&
@@ -419,11 +475,60 @@ app.post("/internal/authorize", async (c) => {
   );
   if (!r.rowCount) return c.json({ error: "Run credential expired" }, 401);
   if (reserve) {
-    const used = await db.query(
-      "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 RETURNING id",
-      [r.rows[0].id],
-    );
-    if (!used.rowCount) return c.json({ error: "模型调用次数已达上限" }, 429);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const run = (
+        await client.query("SELECT owner_id FROM runs WHERE id=$1", [
+          r.rows[0].id,
+        ])
+      ).rows[0];
+      const account = (
+        await client.query(
+          "SELECT enabled,daily_call_limit FROM principals WHERE id=$1 FOR UPDATE",
+          [run.owner_id],
+        )
+      ).rows[0];
+      const usage = (
+        await client.query(
+          "SELECT count(*) FROM model_usage WHERE owner_id=$1 AND created_at>=date_trunc('day',now())",
+          [run.owner_id],
+        )
+      ).rows[0];
+      if (!account.enabled || Number(usage.count) >= account.daily_call_limit) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "账号已禁用或当日模型预算不足" }, 429);
+      }
+      const used = await client.query(
+        "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 AND attempt_token=$2 AND lease_until>now() AND state IN ('preparing','running') RETURNING id",
+        [r.rows[0].id, hash(String(token))],
+      );
+      if (!used.rowCount) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "模型调用次数已达上限或运行已结束" }, 429);
+      }
+      await client.query(
+        "INSERT INTO model_usage(owner_id,run_id) VALUES($1,$2)",
+        [run.owner_id, r.rows[0].id],
+      );
+      const channel = (
+        await client.query("SELECT * FROM model_channels WHERE enabled")
+      ).rows[0];
+      const provider = channel
+        ? {
+            baseUrl: channel.base_url,
+            model: channel.model,
+            apiKey: decryptSecret(channel.secret),
+          }
+        : undefined;
+      await client.query("COMMIT");
+      return c.json({ id: r.rows[0].id, provider });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
   }
   return c.json({ id: r.rows[0].id, input: r.rows[0].input });
 });

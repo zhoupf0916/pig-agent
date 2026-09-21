@@ -32,8 +32,11 @@ app.post("/v1/chat/completions", async (c) => {
   );
   if (!auth.ok)
     return c.json({ error: "运行令牌失效或调用预算不足" }, auth.status as 401);
+  const { provider } = (await auth.json()) as {
+    provider?: { baseUrl: string; model: string; apiKey: string };
+  };
   const body = await c.req.json();
-  if ((process.env.MODEL_MODE || "mock") === "mock") {
+  if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const tools = (body.messages || []).filter(
       (m: { role: string }) => m.role === "tool",
@@ -82,23 +85,24 @@ app.post("/v1/chat/completions", async (c) => {
       choices: [{ message, finish_reason: call ? "tool_calls" : "stop" }],
     });
   }
-  if (!process.env.MODEL_API_KEY)
+  if (!provider?.apiKey && !process.env.MODEL_API_KEY)
     return c.json({ error: "平台尚未配置模型 Key" }, 503);
   const response = await fetch(
-    (process.env.MODEL_BASE_URL || "https://api.deepseek.com/v1").replace(
-      /\/$/,
-      "",
-    ) + "/chat/completions",
+    (
+      provider?.baseUrl ||
+      process.env.MODEL_BASE_URL ||
+      "https://api.deepseek.com/v1"
+    ).replace(/\/$/, "") + "/chat/completions",
     {
       method: "POST",
       redirect: "error",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.MODEL_API_KEY}`,
+        Authorization: `Bearer ${provider?.apiKey || process.env.MODEL_API_KEY}`,
       },
       body: JSON.stringify({
         ...body,
-        model: process.env.MODEL_NAME || "deepseek-chat",
+        model: provider?.model || process.env.MODEL_NAME || "deepseek-chat",
         max_tokens: Math.min(Number(body.max_tokens) || 4096, 4096),
       }),
       signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90000)]),

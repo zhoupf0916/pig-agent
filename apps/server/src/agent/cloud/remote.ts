@@ -80,6 +80,7 @@ export async function runRemoteCloudAgent(options: {
     }
     if (runId && !resume) {
       progress.begin("followup");
+      if (session.remoteState) session.remoteFollowUpPending = true;
       const follow = await postFollowUp(
         fetchFn,
         base,
@@ -90,9 +91,12 @@ export async function runRemoteCloudAgent(options: {
         signal,
         timeoutMs,
       );
-      if (follow !== "ok") {
+      delete session.remoteFollowUpPending;
+      if (follow === "expired") {
         runId = "";
         delete session.remoteRunId;
+      } else {
+        runId = follow;
       }
     }
 
@@ -206,11 +210,13 @@ export async function runRemoteCloudAgent(options: {
     return session;
   } catch (err) {
     releaseHeldUserAbort(eventsHold);
+    if (err && typeof err === "object" && "followUpRejected" in err && err.followUpRejected) delete session.remoteFollowUpPending;
     let aborted = isUserAbort(err, signal);
     let cancelState = "";
     if (aborted && !runId && createSubmitted) {aborted=false;err=Error("远端提交结果尚未确认，请先查看远端运行记录；重试会复用请求标识");}
     // Only user abort notifies the plane. Timeout / disconnect keep remoteRunId
     // so 重试 can follow-up instead of killing a still-running worker.
+    if (aborted && session.remoteFollowUpPending) {aborted=false;err=Error("跟进提交结果未确认，请重试以核验同一请求，或从远端运行记录停止任务");}
     if (aborted && runId) {
       try { cancelState = await abortRemoteRun(fetchFn, base, runId, headers); }
       catch { aborted = false; err = Error("停止请求尚未获控制面确认，远端可能仍在运行；请在远端运行记录核验或再次停止"); }
@@ -235,7 +241,7 @@ export async function runRemoteCloudAgent(options: {
       session.status = "error";
       session.lastError = message;
       session.remoteRetry = decideRemoteRetry(err, session.remoteRunId ?? runId);
-      if (session.remoteRetry === "create-run") {
+      if (session.remoteRetry === "create-run" && !session.remoteFollowUpPending) {
         delete session.remoteRunId;
       }
       emit({ type: "error", message });
@@ -304,20 +310,20 @@ async function postFollowUp(
   headers: Record<string, string>,
   signal: AbortSignal,
   timeoutMs: number,
-): Promise<"ok" | "expired"> {
+): Promise<string> {
   const body = buildFollowUpRequest(session);
   assertNoSecretsInPayload(body, settings);
   try {
     const res = await fetchUntilHeaders(
       fetchFn,
       `${base}${CLOUD_FOLLOW_UP_PATH(runId)}`,
-      { method: "POST", headers, body: JSON.stringify(body) },
+      { method: "POST", headers: {...headers, "Idempotency-Key":session.remoteRequestKey || `${session.id}:${session.messages.filter(m=>m.role === "user").at(-1)?.id || "initial"}`}, body: JSON.stringify(body) },
       signal,
       timeoutMs,
     );
-    if (res.ok) return "ok";
+    if (res.ok) return readRunId(await res.json()) || runId;
     if (res.status === 404 || res.status === 410) return "expired";
-    throw Error(`远端追加请求失败（HTTP ${res.status}），未创建替代运行`);
+    throw Object.assign(Error(`远端追加请求失败（HTTP ${res.status}），未创建替代运行`), {followUpRejected:res.status<500});
   } catch (err) {
     if (isUserAbort(err, signal)) {
       throw err instanceof Error ? err : new Error("Aborted");

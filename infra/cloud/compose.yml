@@ -23,6 +23,7 @@ services:
       }
     environment:
       DATABASE_URL: postgres://pig:${DB_PASSWORD}@postgres:5432/pig
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Run pnpm cloud:setup}
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       MEMBER_TOKEN: ${MEMBER_TOKEN}
       MEMBER2_TOKEN: ${MEMBER2_TOKEN}

@@ -54,7 +54,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       before: op.before.map((v) => ({ ...v, data: v.data === null ? null : Buffer.from(v.data, "base64").subarray(0, 36000).toString("base64") })),
       after: op.after.map((v) => ({ ...v, data: v.data === null ? null : Buffer.from(v.data, "base64").subarray(0, 36000).toString("base64") })),
     }));
-    return c.json({ ...state, operations, runtime: settings.runtime, currentRoot: normalizeWorkspaceRoot(settings.workspaceRoot), busy: runningTurns.has(id) || isWorkbenchBusy(id), checks: await operationChecks(state), remainingSteps: session.steps.filter((s) => s.status !== "done"), lastError: session.lastError });
+    return c.json({ ...state, operations, runtime: session.executionTarget ? (session.executionTarget === "remote" ? "cloud" : session.engine || "pig") : settings.runtime, currentRoot: normalizeWorkspaceRoot(settings.workspaceRoot), busy: runningTurns.has(id) || isWorkbenchBusy(id), checks: await operationChecks(state), remainingSteps: session.steps.filter((s) => s.status !== "done"), lastError: session.lastError });
   });
   app.put("/api/sessions/:id/workbench", async (c) => {
     const id = c.req.param("id");
@@ -82,7 +82,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       const session = await getSession(id);
       if (!session) return c.json({ error: "会话不存在" }, 404);
       const settings = await loadSettings();
-      if (settings.runtime !== "pig") throw new Error("请切换回本机 Pig 后再处理变更单。");
+      if (session.executionTarget ? session.executionTarget !== "local" || (session.engine || "pig") !== "pig" : settings.runtime !== "pig") throw new Error("请切换回本机 Pig 后再处理变更单。");
       const state = await loadWorkbench(id, settings.workspaceRoot);
       const op = state.operations.find((item) => item.id === c.req.param("op"));
       if (!op) return c.json({ error: "变更不存在" }, 404);
@@ -133,7 +133,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       const session = await getSession(id);
       if (!session) return c.json({ error: "会话不存在" }, 404);
       const settings = await loadSettings();
-      if (settings.runtime !== "pig") throw new Error("资料上传目前用于本机 Pig 工作区。");
+      if (session.executionTarget ? session.executionTarget !== "local" || (session.engine || "pig") !== "pig" : settings.runtime !== "pig") throw new Error("资料上传目前用于本机 Pig 工作区。");
       const state = await loadWorkbench(id, settings.workspaceRoot);
       if (state.root !== normalizeWorkspaceRoot(settings.workspaceRoot)) throw new Error("工作区已变化，请新建任务。");
       const body = await c.req.parseBody();

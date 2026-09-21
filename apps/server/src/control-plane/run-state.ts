@@ -5,10 +5,25 @@ export const isRemoteActive = (state?: string) =>
   ["queued", "preparing", "running", "cancelling"].includes(state || "");
 
 export async function reconcileRemoteSession(session: Session): Promise<void> {
-  if (!session.remoteRunId) return;
-  const remote = await planeJson<
+  if (!session.remoteRunId || session.remoteFollowUpPending) return;
+  let remote = await planeJson<
     import("@pig-agent/contracts/cloud").CloudRunSummary
   >(`/v1/runs/${encodeURIComponent(session.remoteRunId)}`);
+  let transcript: Session["messages"] | undefined;
+  if (remote.conversation_id) {
+    const conversation = await planeJson<{
+      runs: Array<{ id: string }>;
+      messages: Session["messages"];
+    }>(`/v1/conversations/${encodeURIComponent(remote.conversation_id)}`);
+    transcript = conversation.messages;
+    const latest = conversation.runs.at(-1);
+    if (latest && latest.id !== session.remoteRunId) {
+      remote = await planeJson<
+        import("@pig-agent/contracts/cloud").CloudRunSummary
+      >(`/v1/runs/${encodeURIComponent(latest.id)}`);
+      session.remoteRunId = latest.id;
+    }
+  }
   if (
     ![
       "queued",
@@ -28,6 +43,7 @@ export async function reconcileRemoteSession(session: Session): Promise<void> {
     if (event.type !== "status" && event.type !== "error")
       applyRemoteEvent(session, event);
   }
+  if (transcript?.length) session.messages = transcript;
   session.remoteState = remote.state;
   session.status = isRemoteActive(remote.state)
     ? "running"

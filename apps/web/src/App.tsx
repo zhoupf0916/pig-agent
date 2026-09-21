@@ -813,7 +813,7 @@ export function App() {
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
-      {remoteRunView !== null && <RemoteRunsPanel runId={remoteRunView || undefined} onClose={()=>setRemoteRunView(null)}/>}
+      {remoteRunView !== null && <RemoteRunsPanel runId={remoteRunView || undefined} onClose={()=>setRemoteRunView(null)} onOpenSession={id=>{setRemoteRunView(null);goWorkstation(id);void refreshSessions();void loadSession(id);}}/>}
       <header className="app-header flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
