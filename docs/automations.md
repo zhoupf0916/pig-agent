@@ -25,7 +25,7 @@ Due rule: the latest matching minute **at or before now** is strictly after `las
 
 The process polls about every **30 seconds**. The same automation will not start a second run while one is in flight (HTTP `409`).
 
-`createApp()` used by tests does **not** start the timer. `server/src/index.ts` does (`pnpm dev` / `pnpm start`).
+`createApp()` used by tests does **not** start the timer. `apps/server/src/index.ts` does (`pnpm dev` / `pnpm start`).
 
 ## Run path
 

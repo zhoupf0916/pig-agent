@@ -4,46 +4,36 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.19.0",
-  "description": "Pure-local, pure-web AI agent workstation",
+  "description": "Local-first AI agent workstation for desktop and web",
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,magenta \"pnpm dev:server\" \"pnpm dev:web\"",
-    "dev:server": "tsx watch server/src/index.ts",
-    "dev:web": "vite --config web/vite.config.ts",
-    "build": "pnpm typecheck && vite build --config web/vite.config.ts",
-    "start": "node --import tsx server/src/index.ts",
-    "mock:llm": "tsx server/src/dev/mock-llm.ts",
-    "mock:cloud": "tsx server/src/dev/mock-cloud.ts",
+    "dev:server": "pnpm --filter @pig-agent/server dev",
+    "dev:web": "pnpm --filter @pig-agent/web dev",
+    "build": "pnpm check:architecture && pnpm typecheck && pnpm --filter @pig-agent/web build",
+    "start": "pnpm --filter @pig-agent/server start",
+    "mock:llm": "pnpm --filter @pig-agent/server mock:llm",
+    "mock:cloud": "pnpm --filter @pig-agent/server mock:cloud",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p web/tsconfig.json --noEmit"
+    "typecheck": "pnpm --filter @pig-agent/contracts typecheck && pnpm --filter @pig-agent/server typecheck && pnpm --filter @pig-agent/web typecheck",
+    "desktop:build": "pnpm --filter @pig-agent/desktop build",
+    "desktop:dev": "pnpm --filter @pig-agent/desktop dev",
+    "desktop:pack": "pnpm --filter @pig-agent/desktop pack",
+    "desktop:dist": "pnpm --filter @pig-agent/desktop dist",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "desktop:smoke": "node scripts/smoke-desktop.mjs"
   },
   "engines": {
     "node": ">=22.13"
   },
-  "dependencies": {
-    "@hono/node-server": "^1.19.0",
-    "dotenv": "^16.6.1",
-    "hono": "^4.9.8",
-    "zod": "^3.24.2"
-  },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^26.5.1",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
-    "lucide-react": "^0.487.0",
-    "postcss": "^8.5.3",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "tailwindcss": "^3.4.17",
+    "esbuild": "0.28.2",
+    "prettier": "3.8.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vite": "^6.2.2",
     "vitest": "^3.0.9"
-  }
+  },
+  "author": "Pig Agent contributors"
 }

@@ -1,0 +1,22 @@
+appId: com.pigagent.desktop
+productName: Pig Agent
+directories:
+  output: ../../release
+files:
+  - src/**/*.cjs
+  - package.json
+  - "!node_modules/**/*"
+extraResources:
+  - from: ../../desktop-dist/runtime
+    to: runtime
+asar: true
+npmRebuild: false
+mac:
+  icon: assets/icon.icns
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  identity: null
+artifactName: Pig-Agent-${version}-${os}-${arch}.${ext}
+publish: null
