@@ -159,6 +159,7 @@ export async function getAutomation(id: string): Promise<Automation | null> {
 export async function updateAutomation(
   id: string,
   patch: Partial<AutomationInput> & {
+    remoteScheduleId?: string;
     lastRunAt?: string | null;
     lastSessionId?: string | null;
     lastError?: string | null;
@@ -179,6 +180,7 @@ export async function updateAutomation(
     automation.saveArtifactsToProject = patch.saveArtifactsToProject;
   }
   applyPins(automation, patch);
+  if (patch.remoteScheduleId) automation.remoteScheduleId = patch.remoteScheduleId;
   if (patch.lastRunAt === null) delete automation.lastRunAt;
   else if (typeof patch.lastRunAt === "string" && patch.lastRunAt.trim()) {
     automation.lastRunAt = patch.lastRunAt.trim();
@@ -235,7 +237,7 @@ export async function clearAutomationLastSessionId(sessionId: string): Promise<v
 }
 
 export function automationIsDue(automation: Automation, now: Date): boolean {
-  if (!automation.enabled) return false;
+  if (!automation.enabled || automation.runtime === "cloud" || automation.remoteScheduleId) return false;
   return isScheduleDue({
     schedule: automation.schedule,
     lastRunAt: automation.lastRunAt,

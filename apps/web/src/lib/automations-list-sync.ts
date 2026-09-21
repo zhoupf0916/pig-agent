@@ -105,6 +105,13 @@ export function sanitizeAutomation(automation: Automation): Automation {
     createdAt: automation.createdAt,
     updatedAt: automation.updatedAt,
   };
+  if (automation.executionTarget === "remote" || automation.executionTarget === "local") clean.executionTarget = automation.executionTarget;
+  if (automation.engine === "pig" || automation.engine === "codex") clean.engine = automation.engine;
+  if (automation.misfirePolicy === "skip" || automation.misfirePolicy === "once") clean.misfirePolicy = automation.misfirePolicy;
+  for (const field of ["timezone","nextFireAt","lastRemoteRunId","remoteScheduleId"] as const) {
+    const value=normalizeOptionalId(automation[field]);
+    if(value) clean[field]=value;
+  }
   const expertId = normalizeOptionalId(automation.expertId);
   const expertTeamId = normalizeOptionalId(automation.expertTeamId);
   const projectId = normalizeOptionalId(automation.projectId);
@@ -131,6 +138,8 @@ export function automationSyncKey(row: Automation): string {
     normalizeOptionalId(row.expertTeamId) ?? "",
     normalizeOptionalId(row.projectId) ?? "",
     normalizeRuntime(row.runtime),
+    row.executionTarget ?? "",row.engine ?? "",row.timezone ?? "",row.misfirePolicy ?? "",
+    row.nextFireAt ?? "",row.lastRemoteRunId ?? "",row.remoteScheduleId ?? "",
     row.saveArtifactsToProject ? "1" : "0",
     automationLastRunSyncKey(row),
     row.updatedAt ?? "",

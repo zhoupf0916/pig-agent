@@ -1,5 +1,5 @@
 import { Play, Plus, Trash2, Workflow } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import {
   applyAutomationDetailSnapshot,
@@ -20,6 +20,7 @@ export function AutomationsPanel({
   projects,
   onSelect,
   onOpenSession,
+  onOpenRemoteRun,
 }: {
   selectedId?: string;
   experts: Expert[];
@@ -27,9 +28,14 @@ export function AutomationsPanel({
   projects: ProjectSummary[];
   onSelect: (id?: string) => void;
   onOpenSession: (sessionId: string) => void;
+  onOpenRemoteRun: (id: string) => void;
 }) {
+  const createKey = useRef({ body: "", key: crypto.randomUUID() });
+  const runKey = useRef({ id: "", key: crypto.randomUUID() });
   const [items, setItems] = useState<Automation[]>([]);
   const [detail, setDetail] = useState<Automation | null>(null);
+  const [target, setTarget] = useState<"local" | "remote">("local");
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +50,14 @@ export function AutomationsPanel({
   });
 
   const refreshList = async () => {
-    const { automations } = await api.automations();
+    const { automations, remoteError } = await api.automations();
+    if (remoteError) {
+      setItems((prev) => [
+        ...automations,
+        ...prev.filter((a) => a.executionTarget === "remote"),
+      ]);
+      throw Error(remoteError);
+    }
     setItems(automations);
     return automations;
   };
@@ -84,13 +97,16 @@ export function AutomationsPanel({
   useEffect(() => {
     return startAutomationsListSync({
       fetchList: async () => {
-        const { automations } = await api.automations();
+        const { automations, remoteError } = await api.automations();
+        if (remoteError) throw Error(remoteError);
         return automations;
       },
-      onList: (next) => setItems((prev) => applyAutomationsListSnapshot(prev, next)),
+      onList: (next) =>
+        setItems((prev) => applyAutomationsListSnapshot(prev, next)),
       selectedId,
       fetchSelected: selectedId ? (id) => api.automation(id) : undefined,
-      onSelected: (next) => setDetail((prev) => applyAutomationDetailSnapshot(prev, next)),
+      onSelected: (next) =>
+        setDetail((prev) => applyAutomationDetailSnapshot(prev, next)),
       onOpenId: (nextId) => {
         onSelect(nextId ?? undefined);
         setDetail(null);
@@ -131,40 +147,68 @@ export function AutomationsPanel({
     [projects, detail?.projectId],
   );
 
-  const savePatch = async (patch: Parameters<typeof api.patchAutomation>[1]) => {
+  const savePatch = async (
+    patch: Parameters<typeof api.patchAutomation>[1],
+  ) => {
     if (!detail) return;
-    const next = await api.patchAutomation(detail.id, patch);
-    setDetail(next);
-    await refreshList();
+    try {
+      const next = await api.patchAutomation(detail.id, patch);
+      setDetail(next);
+      setError(null);
+      await refreshList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   return (
-    <section className="flex min-w-0 flex-1 overflow-hidden bg-ink-50">
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-ink-300 bg-ink-100">
+    <section className="flex min-w-0 flex-1 flex-col overflow-hidden bg-ink-50 md:flex-row">
+      <aside className="flex max-h-[280px] w-full shrink-0 flex-col border-b border-ink-300 bg-ink-100 md:max-h-none md:w-[240px] md:border-b-0 md:border-r">
         <div className="flex items-center justify-between px-4 pb-3 pt-4">
           <div>
-            <div className="text-meta uppercase tracking-[0.16em] text-ink-500">自动化</div>
-            <div className="mt-0.5 text-sm font-medium text-ink-800">本机定时 / 手动</div>
+            <div className="text-meta uppercase tracking-[0.16em] text-ink-500">
+              自动化
+            </div>
+            <div className="mt-0.5 text-sm font-medium text-ink-800">
+              本地 / 远端定时
+            </div>
           </div>
         </div>
         <form
           className="space-y-2 px-3 pb-3"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!name.trim() || !prompt.trim()) return;
+            if (creating || !name.trim() || !prompt.trim()) return;
+            setCreating(true);
             void (async () => {
               try {
-                const created = await api.createAutomation({
+                const input = {
                   name: name.trim(),
                   prompt: prompt.trim(),
                   schedule: null,
-                });
+                  executionTarget: target,
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                };
+                const signature = JSON.stringify(input);
+                if (createKey.current.body !== signature)
+                  createKey.current = {
+                    body: signature,
+                    key: crypto.randomUUID(),
+                  };
+                const created = await api.createAutomation(
+                  input,
+                  createKey.current.key,
+                );
+                createKey.current = { body: "", key: crypto.randomUUID() };
+                setError(null);
                 setName("");
                 setPrompt("");
                 await refreshList();
                 onSelect(created.id);
               } catch (err) {
                 setError(err instanceof Error ? err.message : String(err));
+              } finally {
+                setCreating(false);
               }
             })();
           }}
@@ -181,7 +225,20 @@ export function AutomationsPanel({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
-          <button type="submit" className="btn-primary w-full" disabled={!name.trim() || !prompt.trim()}>
+          <select
+            aria-label="自动化执行位置"
+            className="field"
+            value={target}
+            onChange={(e) => setTarget(e.target.value as "local" | "remote")}
+          >
+            <option value="local">本地执行</option>
+            <option value="remote">远端容器 · 控制面调度</option>
+          </select>
+          <button
+            type="submit"
+            className="btn-primary w-full"
+            disabled={creating || !name.trim() || !prompt.trim()}
+          >
             <Plus size={14} />
             新建自动化
           </button>
@@ -196,11 +253,20 @@ export function AutomationsPanel({
                 type="button"
                 onClick={() => onSelect(item.id)}
                 className={`w-full rounded-card px-2.5 py-2 text-left ${
-                  active ? "bg-accent-soft text-ink-800" : "text-ink-700 hover:bg-ink-200"
+                  active
+                    ? "bg-accent-soft text-ink-800"
+                    : "text-ink-700 hover:bg-ink-200"
                 }`}
               >
-                <div className="truncate text-[13px] font-medium">{item.name}</div>
+                <div className="truncate text-[13px] font-medium">
+                  {item.name}
+                </div>
                 <div className="mt-0.5 text-meta text-ink-500">
+                  {item.executionTarget === "remote"
+                    ? "远端 · "
+                    : item.runtime === "cloud"
+                      ? "待迁移 · "
+                      : "本地 · "}
                   {item.enabled ? "已启用" : "已停用"}
                   {item.schedule ? ` · ${item.schedule}` : " · 仅手动"}
                 </div>
@@ -213,7 +279,9 @@ export function AutomationsPanel({
                   </div>
                 )}
                 {listError && (
-                  <div className="mt-0.5 truncate text-meta text-danger">{listError}</div>
+                  <div className="mt-0.5 truncate text-meta text-danger">
+                    {listError}
+                  </div>
                 )}
               </button>
             );
@@ -226,16 +294,20 @@ export function AutomationsPanel({
         {!detail && (
           <div className="flex h-full flex-col items-center justify-center text-ink-500">
             <Workflow size={28} className="mb-3 text-ink-400" />
-            <p className="text-sm">选择或新建一个本机自动化</p>
+            <p className="text-sm">选择或新建一个自动化</p>
           </div>
         )}
         {detail && (
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-medium text-ink-800">{detail.name}</h2>
+                <h2 className="text-base font-medium text-ink-800">
+                  {detail.name}
+                </h2>
                 <p className="mt-1 text-xs text-ink-500">
-                  本机 JSON · 默认 pig 运行时 · 无公网 webhook
+                  {detail.executionTarget === "remote"
+                    ? "控制面持久调度 · 退出客户端仍执行 · Pig"
+                    : "本地调度 · 需要本地服务在线"}
                   {expertName ? ` · 专家 ${expertName}` : ""}
                   {teamName ? ` · 小队 ${teamName}` : ""}
                   {projectName ? ` · 项目 ${projectName}` : ""}
@@ -245,18 +317,35 @@ export function AutomationsPanel({
                 <button
                   type="button"
                   className="btn-primary"
-                  disabled={running}
+                  disabled={
+                    running ||
+                    (detail.runtime === "cloud" &&
+                      detail.executionTarget !== "remote")
+                  }
                   onClick={() => {
                     void (async () => {
                       setRunning(true);
                       setError(null);
                       try {
-                        const result = await api.runAutomation(detail.id);
-                        setDetail(result.automation);
+                        if (runKey.current.id !== detail.id)
+                          runKey.current = {
+                            id: detail.id,
+                            key: crypto.randomUUID(),
+                          };
+                        const result = await api.runAutomation(
+                          detail.id,
+                          runKey.current.key,
+                        );
+                        runKey.current = { id: "", key: crypto.randomUUID() };
+                        if (result.automation) setDetail(result.automation);
                         await refreshList();
-                        onOpenSession(result.session.id);
+                        if (result.session) onOpenSession(result.session.id);
+                        if (result.remoteRunId)
+                          onOpenRemoteRun(result.remoteRunId);
                       } catch (err) {
-                        setError(err instanceof Error ? err.message : String(err));
+                        setError(
+                          err instanceof Error ? err.message : String(err),
+                        );
                       } finally {
                         setRunning(false);
                       }
@@ -271,10 +360,14 @@ export function AutomationsPanel({
                   className="btn-ghost text-danger hover:bg-danger-soft"
                   onClick={() => {
                     void (async () => {
-                      await api.deleteAutomation(detail.id);
-                      setDetail(null);
-                      const list = await refreshList();
-                      onSelect(list[0]?.id);
+                      try {
+                        await api.deleteAutomation(detail.id);
+                        setDetail(null);
+                        const list = await refreshList();
+                        onSelect(list[0]?.id);
+                      } catch (e) {
+                        setError(String(e));
+                      }
                     })();
                   }}
                 >
@@ -294,11 +387,15 @@ export function AutomationsPanel({
             </label>
 
             <label className="block">
-              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">名称</span>
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                名称
+              </span>
               <input
                 className="field mt-1"
                 value={draft.name}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, name: e.target.value }))
+                }
                 onBlur={() => {
                   if (draft.name.trim() && draft.name.trim() !== detail.name) {
                     void savePatch({ name: draft.name.trim() });
@@ -308,11 +405,15 @@ export function AutomationsPanel({
             </label>
 
             <label className="block">
-              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">提示词</span>
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                提示词
+              </span>
               <textarea
                 className="field mt-1 min-h-[160px] resize-y font-mono text-[12px]"
                 value={draft.prompt}
-                onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, prompt: e.target.value }))
+                }
                 onBlur={() => {
                   if (draft.prompt.trim() && draft.prompt !== detail.prompt) {
                     void savePatch({ prompt: draft.prompt });
@@ -322,101 +423,196 @@ export function AutomationsPanel({
             </label>
 
             <label className="block">
-              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">计划</span>
+              <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                计划
+              </span>
               <input
                 className="field mt-1 font-mono"
                 placeholder="@daily / @hourly / 0 9 * * 1 / 留空=仅手动"
                 value={draft.schedule}
-                onChange={(e) => setDraft((d) => ({ ...d, schedule: e.target.value }))}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, schedule: e.target.value }))
+                }
                 onBlur={() => {
                   const next = draft.schedule.trim() || null;
-                  if (next !== detail.schedule) void savePatch({ schedule: next });
+                  if (next !== detail.schedule)
+                    void savePatch({ schedule: next });
                 }}
               />
               <p className="mt-1 text-xs text-ink-500">
-                五段 cron 或别名，按本机本地时区。进程内约 30 秒扫一次；同一自动化不会重叠跑。
+                {detail.executionTarget === "remote"
+                  ? "五段 cron 或别名，按所选时区；日期与星期不可同时限定。同一计划不重叠，超配额时跳过并记录原因。"
+                  : "五段 cron 或别名，按本机时区。本地服务需在线；同一自动化不会重叠跑。"}
               </p>
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-3">
-              <label className="block">
-                <span className="text-meta uppercase tracking-[0.16em] text-ink-500">专家</span>
-                <select
-                  className="field mt-1"
-                  value={draft.expertId}
-                  onChange={(e) => {
-                    const expertId = e.target.value || null;
-                    setDraft((d) => ({ ...d, expertId: e.target.value }));
-                    void savePatch({ expertId });
-                  }}
-                >
-                  <option value="">（不钉）</option>
-                  {experts.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-meta uppercase tracking-[0.16em] text-ink-500">小队</span>
-                <select
-                  className="field mt-1"
-                  value={draft.expertTeamId}
-                  onChange={(e) => {
-                    const expertTeamId = e.target.value || null;
-                    setDraft((d) => ({ ...d, expertTeamId: e.target.value }));
-                    void savePatch({ expertTeamId });
-                  }}
-                >
-                  <option value="">（不钉）</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-meta uppercase tracking-[0.16em] text-ink-500">项目</span>
-                <select
-                  className="field mt-1"
-                  value={draft.projectId}
-                  onChange={(e) => {
-                    const projectId = e.target.value || null;
-                    setDraft((d) => ({ ...d, projectId: e.target.value }));
-                    void savePatch({ projectId });
-                  }}
-                >
-                  <option value="">（不钉）</option>
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {detail.executionTarget === "remote" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm">
+                  时区
+                  <input
+                    key={detail.id + detail.timezone}
+                    defaultValue={detail.timezone || "Asia/Shanghai"}
+                    className="field mt-1"
+                    onBlur={(e) => {
+                      if (e.target.value !== detail.timezone)
+                        void savePatch({ timezone: e.target.value });
+                    }}
+                  />
+                </label>
+                <label className="text-sm">
+                  错过触发
+                  <select
+                    className="field mt-1"
+                    value={detail.misfirePolicy || "skip"}
+                    onChange={(e) =>
+                      void savePatch({
+                        misfirePolicy: e.target.value as "skip" | "once",
+                      })
+                    }
+                  >
+                    <option value="skip">跳过（迟到超过一分钟）</option>
+                    <option value="once">恢复后补跑一次</option>
+                  </select>
+                </label>
+                <p className="text-xs text-ink-500">
+                  下次触发：
+                  {detail.nextFireAt
+                    ? new Date(detail.nextFireAt).toLocaleString()
+                    : "无（已停用或仅手动）"}
+                </p>
+              </div>
+            )}
+            {detail.runtime === "cloud" &&
+              detail.executionTarget !== "remote" && (
+                <div className="rounded-card border border-warning p-3 text-sm">
+                  此旧计划需要迁入控制面，本地已停止定时触发。
+                  <button
+                    className="btn-ghost ml-2"
+                    onClick={async () => {
+                      try {
+                        const r = await fetch(
+                          `/api/automations/${detail.id}/migrate`,
+                          { method: "POST" },
+                        );
+                        const data = await r.json();
+                        if (!r.ok) throw Error(data.error);
+                        await refreshList();
+                        onSelect(data.id);
+                      } catch (e) {
+                        setError(String(e));
+                      }
+                    }}
+                  >
+                    迁入控制面
+                  </button>
+                </div>
+              )}
+            {detail.executionTarget !== "remote" && (
+              <>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                      专家
+                    </span>
+                    <select
+                      className="field mt-1"
+                      value={draft.expertId}
+                      onChange={(e) => {
+                        const expertId = e.target.value || null;
+                        setDraft((d) => ({ ...d, expertId: e.target.value }));
+                        void savePatch({ expertId });
+                      }}
+                    >
+                      <option value="">（不钉）</option>
+                      {experts.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                      小队
+                    </span>
+                    <select
+                      className="field mt-1"
+                      value={draft.expertTeamId}
+                      onChange={(e) => {
+                        const expertTeamId = e.target.value || null;
+                        setDraft((d) => ({
+                          ...d,
+                          expertTeamId: e.target.value,
+                        }));
+                        void savePatch({ expertTeamId });
+                      }}
+                    >
+                      <option value="">（不钉）</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-meta uppercase tracking-[0.16em] text-ink-500">
+                      项目
+                    </span>
+                    <select
+                      className="field mt-1"
+                      value={draft.projectId}
+                      onChange={(e) => {
+                        const projectId = e.target.value || null;
+                        setDraft((d) => ({ ...d, projectId: e.target.value }));
+                        void savePatch({ projectId });
+                      }}
+                    >
+                      <option value="">（不钉）</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
 
-            <label className="flex items-start gap-2 text-sm text-ink-700">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={Boolean(detail.saveArtifactsToProject)}
-                disabled={!detail.projectId}
-                onChange={(e) => void savePatch({ saveArtifactsToProject: e.target.checked })}
-              />
-              <span>
-                运行成功后把新产物保存到项目资产
-                <span className="mt-0.5 block text-xs text-ink-500">
-                  默认关。需先钉选项目；同一工作区路径会覆盖已有资产。
-                </span>
-              </span>
-            </label>
-
+                <label className="flex items-start gap-2 text-sm text-ink-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={Boolean(detail.saveArtifactsToProject)}
+                    disabled={!detail.projectId}
+                    onChange={(e) =>
+                      void savePatch({
+                        saveArtifactsToProject: e.target.checked,
+                      })
+                    }
+                  />
+                  <span>
+                    运行成功后把新产物保存到项目资产
+                    <span className="mt-0.5 block text-xs text-ink-500">
+                      默认关。需先钉选项目；同一工作区路径会覆盖已有资产。
+                    </span>
+                  </span>
+                </label>
+              </>
+            )}
             <div className="rounded-card border border-ink-300 bg-panel px-3 py-3 text-xs text-ink-600">
-              <div>运行时：{detail.runtime}（默认 pig，不改全局设置）</div>
-              <div className="mt-1">{automationLastRunLabel(detail.lastRunAt)}</div>
+              {detail.lastRemoteRunId && (
+                <button
+                  className="btn-ghost"
+                  onClick={() => onOpenRemoteRun(detail.lastRemoteRunId!)}
+                >
+                  查看上次远端运行与成果
+                </button>
+              )}
+              <div>执行：{detail.executionTarget === "remote" ? "远端容器 · Pig" : `本地 · ${detail.runtime}`}（计划独立配置）</div>
+              <div className="mt-1">
+                {automationLastRunLabel(detail.lastRunAt)}
+              </div>
               {detail.lastSessionId && (
                 <button
                   type="button"
@@ -427,7 +623,9 @@ export function AutomationsPanel({
                 </button>
               )}
               {detail.lastError ? (
-                <div className="mt-2 text-danger">{automationLastErrorLabel(detail.lastError)}</div>
+                <div className="mt-2 text-danger">
+                  {automationLastErrorLabel(detail.lastError)}
+                </div>
               ) : null}
             </div>
           </div>

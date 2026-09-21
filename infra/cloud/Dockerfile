@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim AS base
 WORKDIR /app
 FROM base AS cloud
-COPY cloud.mjs ./
+COPY cloud.mjs scheduler.mjs ./
 COPY web ./web
 COPY admin ./admin
 USER node

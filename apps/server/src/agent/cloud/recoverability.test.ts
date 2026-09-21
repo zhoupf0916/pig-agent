@@ -208,6 +208,11 @@ describe("Milestone L remote recoverability", () => {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+      if (req.method === "GET" && url === "/v1/runs/run_hang_l") {
+        res.writeHead(200,{"Content-Type":"application/json"});
+        res.end(JSON.stringify({state:eventSubs>1 ? "succeeded" : "cancelled"}));
+        return;
+      }
       res.statusCode = 404;
       res.end();
     });

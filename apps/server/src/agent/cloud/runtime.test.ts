@@ -400,6 +400,11 @@ describe("remote cloud runtime", () => {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+      if (req.method === "GET" && url === "/v1/runs/run_hang") {
+        res.writeHead(200,{"Content-Type":"application/json"});
+        res.end(JSON.stringify({state:aborted ? "cancelled" : "running"}));
+        return;
+      }
       res.statusCode = 404;
       res.end();
     });

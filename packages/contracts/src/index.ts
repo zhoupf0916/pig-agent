@@ -45,6 +45,9 @@ export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 export type LocalRetryKind = "turn" | "unavailable";
 
 export type Session = {
+  executionTarget?: "local" | "remote";
+  engine?: "pig" | "codex";
+  remoteState?: import("./cloud.ts").CloudRunState;
   deliveryMode?: boolean;
   id: string;
   title: string;
@@ -79,6 +82,8 @@ export type Session = {
    * IDLE user turns prefer `POST /v1/runs/:id/follow-ups`.
    */
   remoteRunId?: string;
+  /** Stable key for an explicit retry attempt; retained across uncertain submissions. */
+  remoteRequestKey?: string;
   /** Optional local expert / playbook pinned to this session. */
   expertId?: string;
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */
@@ -364,6 +369,14 @@ export type Automation = {
   projectId?: string;
   /** Default pig. Stored per automation; does not change global settings. */
   runtime: AgentRuntime;
+  executionTarget?: "local" | "remote";
+  engine?: "pig" | "codex";
+  timezone?: string;
+  misfirePolicy?: "skip" | "once";
+  nextFireAt?: string;
+  lastRemoteRunId?: string;
+  /** Local migration tombstone; remote schedule is authoritative after transfer. */
+  remoteScheduleId?: string;
   /**
    * After a successful run, copy new session artifacts into the bound project.
    * Default false — opt-in so scheduled jobs do not silently fill assets.

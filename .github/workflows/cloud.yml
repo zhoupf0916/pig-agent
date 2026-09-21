@@ -24,8 +24,10 @@ jobs:
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
       - run: pnpm cloud:up
+      - run: pnpm cloud:smoke:schedules
       - run: pnpm cloud:smoke
       - run: pnpm exec tsx scripts/smoke-cloud-adapter.ts
+      - run: pnpm exec tsx scripts/smoke-cloud-workbench.ts
       - if: failure()
         run: pnpm cloud:logs
       - if: always()

@@ -32,6 +32,7 @@ export async function runRemoteCloudAgent(options: {
   settings: Settings;
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
+  onRunCreated?: (runId: string) => Promise<void>;
   fetchImpl?: typeof fetch;
   projectInstruction?: string;
   expertInstruction?: string;
@@ -66,10 +67,18 @@ export async function runRemoteCloudAgent(options: {
 
   let runId = session.remoteRunId?.trim() ?? "";
   let eventsHold: Response | undefined;
+  let createSubmitted = false;
   const progress = new CreateRunProgress(session, emit);
 
   try {
-    if (runId) {
+    let resume = false;
+    if (runId && session.remoteState) {
+      const current = await fetchUntilHeaders(fetchFn,`${base}/v1/runs/${encodeURIComponent(runId)}`,{headers},signal,timeoutMs);
+      if (!current.ok) throw Error("无法核验远端运行状态，请恢复连接后重试");
+      const state = (await current.json() as {state:string}).state;
+      resume = ["queued","preparing","running","cancelling"].includes(state);
+    }
+    if (runId && !resume) {
       progress.begin("followup");
       const follow = await postFollowUp(
         fetchFn,
@@ -96,10 +105,11 @@ export async function runRemoteCloudAgent(options: {
       });
       assertNoSecretsInPayload(body, settings);
       progress.begin("create");
+      createSubmitted = true;
       const created = await fetchUntilHeaders(
         fetchFn,
         `${base}${CLOUD_CREATE_RUN_PATH}`,
-        { method: "POST", headers, body: JSON.stringify(body) },
+        { method: "POST", headers: {...headers,"Idempotency-Key":session.remoteRequestKey || `${session.id}:${session.messages.filter(m=>m.role === "user").at(-1)?.id || "initial"}`}, body: JSON.stringify(body) },
         signal,
         timeoutMs,
       );
@@ -118,6 +128,10 @@ export async function runRemoteCloudAgent(options: {
     }
 
     session.remoteRunId = runId;
+    if (options.onRunCreated) {
+      session.remoteState = "queued";
+      await options.onRunCreated(runId);
+    }
 
     const eventsRes = (eventsHold = await fetchUntilHeaders(
       fetchFn,
@@ -168,6 +182,13 @@ export async function runRemoteCloudAgent(options: {
     }
 
     if (signal.aborted) throw new Error("Aborted");
+    if (session.remoteState) {
+      const current = await fetchUntilHeaders(fetchFn,`${base}/v1/runs/${encodeURIComponent(runId)}`,{headers},signal,timeoutMs);
+      if (!current.ok) throw Error("无法核验远端终态，任务可能仍在运行");
+      const state = (await current.json() as {state:string}).state;
+      if (!["succeeded","failed","cancelled"].includes(state)) throw Error("远端尚未结束，请从远端运行记录查看进度");
+      session.remoteState = state as Session["remoteState"];
+    }
     if (session.status === "error") {
       session.lastError = formatCloudRemoteError(session.lastError ?? "云端远程执行失败。");
       session.remoteRetry = decideRemoteRetry(session.lastError, session.remoteRunId);
@@ -185,24 +206,28 @@ export async function runRemoteCloudAgent(options: {
     return session;
   } catch (err) {
     releaseHeldUserAbort(eventsHold);
-    const aborted = isUserAbort(err, signal);
+    let aborted = isUserAbort(err, signal);
+    let cancelState = "";
+    if (aborted && !runId && createSubmitted) {aborted=false;err=Error("远端提交结果尚未确认，请先查看远端运行记录；重试会复用请求标识");}
     // Only user abort notifies the plane. Timeout / disconnect keep remoteRunId
     // so 重试 can follow-up instead of killing a still-running worker.
     if (aborted && runId) {
-      await abortRemoteRun(fetchFn, base, runId, headers);
+      try { cancelState = await abortRemoteRun(fetchFn, base, runId, headers); }
+      catch { aborted = false; err = Error("停止请求尚未获控制面确认，远端可能仍在运行；请在远端运行记录核验或再次停止"); }
     }
     if (aborted) {
       progress.abort();
       const stop: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
-        content: deliverableSummary(session, "已停止。已完成的步骤和产物仍可在右侧审阅。"),
+        content: deliverableSummary(session, cancelState === "succeeded" ? "任务已在控制面完成。" : cancelState === "failed" ? "控制面确认任务执行失败。" : "控制面已确认：已停止。已完成的步骤和产物仍可审阅。"),
         createdAt: nowIso(),
       };
       session.messages.push(stop);
       emit({ type: "message", message: stop });
-      session.status = "idle";
-      session.lastError = undefined;
+      session.status = cancelState === "failed" ? "error" : "idle";
+      if (cancelState) session.remoteState = cancelState as Session["remoteState"];
+      session.lastError = cancelState === "failed" ? "远端执行失败" : undefined;
       session.remoteRetry = undefined;
     } else {
       progress.fail();
@@ -291,7 +316,8 @@ async function postFollowUp(
       timeoutMs,
     );
     if (res.ok) return "ok";
-    return "expired";
+    if (res.status === 404 || res.status === 410) return "expired";
+    throw Error(`远端追加请求失败（HTTP ${res.status}），未创建替代运行`);
   } catch (err) {
     if (isUserAbort(err, signal)) {
       throw err instanceof Error ? err : new Error("Aborted");
@@ -300,25 +326,26 @@ async function postFollowUp(
       throw err;
     }
     if (isCloudTimeoutError(err, signal)) throw cloudRemoteError("control_plane_timeout");
-    return "expired";
+    throw err;
   }
 }
 
 async function abortRemoteRun(
-  fetchFn: typeof fetch,
-  base: string,
-  runId: string,
-  headers: Record<string, string>,
-): Promise<void> {
-  try {
-    await fetchFn(`${base}${CLOUD_ABORT_PATH(runId)}`, {
-      method: "POST",
-      headers,
-      body: "{}",
-    });
-  } catch {
-    // Best-effort: the host AbortSignal already dropped the SSE.
+  fetchFn: typeof fetch, base: string, runId: string, headers: Record<string,string>,
+): Promise<string> {
+  const stopped = await fetchFn(`${base}${CLOUD_ABORT_PATH(runId)}`, {
+    method:"POST",headers,body:"{}",signal:AbortSignal.timeout(5000),
+  });
+  if (!stopped.ok) throw Error("Cancel request not accepted");
+  const deadline = Date.now()+30_000;
+  while (Date.now()<deadline) {
+    const response = await fetchFn(`${base}/v1/runs/${encodeURIComponent(runId)}`,{headers,signal:AbortSignal.timeout(5000)});
+    if (!response.ok) throw Error("Cancel state unavailable");
+    const state = (await response.json() as {state:string}).state;
+    if (["cancelled","succeeded","failed"].includes(state)) return state;
+    await new Promise(resolve=>setTimeout(resolve,500));
   }
+  throw Error("Cancel acknowledgement timeout");
 }
 
 function readRunId(raw: unknown): string {
@@ -333,7 +360,7 @@ function readRunId(raw: unknown): string {
   return "";
 }
 
-function applyRemoteEvent(session: Session, event: AgentEvent): void {
+export function applyRemoteEvent(session: Session, event: AgentEvent): void {
   if (event.type === "message") {
     if (!session.messages.some((m) => m.id === event.message.id)) {
       session.messages.push(event.message);

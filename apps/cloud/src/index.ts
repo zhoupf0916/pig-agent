@@ -6,9 +6,12 @@ import { bodyLimit } from "hono/body-limit";
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { inputSchema } from "./input.ts";
+import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
+import type { CloudEnv } from "./types.ts";
 import { db, hash, migrate, terminal } from "./db.ts";
 type Principal = { id: string; role: string; name: string };
-const app = new Hono<{ Variables: { principal: Principal } }>();
+const app = new Hono<CloudEnv>();
 app.use("*", bodyLimit({ maxSize: 7 * 1024 * 1024 }));
 app.onError((err, c) => {
   console.error(err.name);
@@ -37,57 +40,6 @@ app.use("/internal/*", async (c, next) => {
     return c.json({ error: "Unauthorized" }, 401);
   await next();
 });
-const inputSchema = z.object({
-  prompt: z.string().trim().min(1).max(32000),
-  sessionId: z.string().max(100).optional(),
-  files: z
-    .array(
-      z.object({
-        path: z
-          .string()
-          .min(1)
-          .max(100)
-          .regex(/^[^/\\]+$/)
-          .refine(
-            (p) =>
-              !p.startsWith(".") &&
-              !/[\x00-\x1f]/.test(p) &&
-              !/^id_(rsa|dsa|ed25519)$/i.test(p) &&
-              !/\.(pem|key|p12|pfx)$/i.test(p),
-            "Sensitive filename",
-          ),
-        content: z.string().max(200000),
-      }),
-    )
-    .max(20)
-    .optional(),
-  messages: z
-    .array(
-      z.object({
-        id: z.string(),
-        role: z.enum(["user", "assistant"]),
-        content: z.string().max(80000),
-        createdAt: z.string(),
-      }),
-    )
-    .max(40)
-    .default([]),
-  model: z.string().max(100).optional(),
-  workspace: z
-    .object({
-      snapshot: z
-        .object({
-          encoding: z.literal("tar.gz"),
-          data: z.string().max(6 * 1024 * 1024),
-          files: z.array(z.string()).max(400),
-          skipped: z.array(z.string()).default([]),
-          byteSize: z.number().max(4 * 1024 * 1024),
-          truncated: z.boolean().optional(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
 async function runFor(id: string, p: Principal) {
   return (
     await db.query(
@@ -96,6 +48,7 @@ async function runFor(id: string, p: Principal) {
     )
   ).rows[0];
 }
+registerScheduleRoutes(app);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
@@ -185,6 +138,18 @@ app.post("/v1/runs/:id/abort", async (c) => {
   ]);
   return c.json({ ok: true });
 });
+app.get("/v1/runs/:id/eventlog", async (c) => {
+  if (!(await runFor(c.req.param("id"), c.get("principal"))))
+    return c.json({ error: "Not found" }, 404);
+  return c.json({
+    events: (
+      await db.query(
+        "SELECT seq,event FROM (SELECT seq,event FROM events WHERE run_id=$1 ORDER BY seq DESC LIMIT 200) recent ORDER BY seq",
+        [c.req.param("id")],
+      )
+    ).rows,
+  });
+});
 app.get("/v1/runs/:id/events", async (c) => {
   const id = c.req.param("id");
   if (!(await runFor(id, c.get("principal"))))
@@ -267,9 +232,14 @@ app.get("/v1/admin/overview", async (c) => {
   if (c.get("principal").role !== "admin")
     return c.json({ error: "需要管理员权限" }, 403);
   return c.json({
+    schedules: (
+      await db.query(
+        "SELECT id,owner_id,name,cron,timezone,enabled,next_fire_at,last_run_id,last_error FROM schedules WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 100",
+      )
+    ).rows,
     workers: (
       await db.query(
-        "SELECT id,seen_at,seen_at>now()-interval '15 seconds' AS online FROM workers",
+        "SELECT id,seen_at,enabled,capacity,(SELECT count(*)::int FROM runs WHERE worker_id=workers.id AND state IN ('preparing','running','cancelling') AND lease_until>now()) AS active,seen_at>now()-interval '15 seconds' AS online FROM workers",
       )
     ).rows,
     counts: (
@@ -280,6 +250,41 @@ app.get("/v1/admin/overview", async (c) => {
     modelMode: process.env.MODEL_MODE || "mock",
   });
 });
+app.patch("/v1/admin/workers/:id", async (c) => {
+  const p = c.get("principal");
+  if (p.role !== "admin") return c.json({ error: "需要管理员权限" }, 403);
+  const parsed = z
+    .object({
+      enabled: z.boolean().optional(),
+      capacity: z.number().int().min(1).max(3).optional(),
+    })
+    .strict()
+    .safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "本地节点并发须为 1–3" }, 400);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const r = await client.query(
+      "UPDATE workers SET enabled=coalesce($2,enabled),capacity=coalesce($3,capacity) WHERE id=$1 RETURNING id,enabled,capacity",
+      [c.req.param("id"), parsed.data.enabled, parsed.data.capacity],
+    );
+    if (!r.rowCount) {
+      await client.query("ROLLBACK");
+      return c.json({ error: "节点不存在" }, 404);
+    }
+    await client.query("INSERT INTO audit(actor,action) VALUES($1,$2)", [
+      p.id,
+      `worker:${c.req.param("id")}:${JSON.stringify(parsed.data)}`,
+    ]);
+    await client.query("COMMIT");
+    return c.json(r.rows[0]);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+});
 // Worker credentials never go to an execution container.
 app.post("/internal/claim", async (c) => {
   const { workerId } = await c.req.json();
@@ -289,12 +294,38 @@ app.post("/internal/claim", async (c) => {
     "INSERT INTO workers(id) VALUES($1) ON CONFLICT(id) DO UPDATE SET seen_at=now()",
     [workerId],
   );
-  const token = randomUUID() + randomUUID();
-  const r = await db.query(
-    "UPDATE runs SET state='preparing',worker_id=$1,attempt_token=$2,lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=(SELECT id FROM runs WHERE state='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id",
-    [workerId, hash(token)],
-  );
-  return c.json(r.rowCount ? { id: r.rows[0].id, token } : null);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const worker = (
+      await client.query(
+        "SELECT enabled,capacity FROM workers WHERE id=$1 FOR UPDATE",
+        [workerId],
+      )
+    ).rows[0];
+    const active = (
+      await client.query(
+        "SELECT count(*)::int AS count FROM runs WHERE worker_id=$1 AND state IN ('preparing','running','cancelling') AND lease_until>now()",
+        [workerId],
+      )
+    ).rows[0].count;
+    if (!worker.enabled || active >= worker.capacity) {
+      await client.query("COMMIT");
+      return c.json(null);
+    }
+    const token = randomUUID() + randomUUID();
+    const r = await client.query(
+      "UPDATE runs SET state='preparing',worker_id=$1,attempt_token=$2,lease_until=now()+interval '20 seconds',updated_at=now() WHERE id=(SELECT id FROM runs WHERE state='queued' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id",
+      [workerId, hash(token)],
+    );
+    await client.query("COMMIT");
+    return c.json(r.rowCount ? { id: r.rows[0].id, token } : null);
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 });
 app.post("/internal/runs/:id/heartbeat", async (c) => {
   const { token } = await c.req.json();
@@ -404,14 +435,28 @@ app.get(
   }),
 );
 app.get("/assets/*", serveStatic({ root: "/app/web" }));
-app.get("/cloud", serveStatic({ path: "/app/web/index.html" }));
-app.get("/", (c) => c.redirect("/cloud"));
+app.get("/debug/runs", serveStatic({ path: "/app/web/index.html" }));
+app.get("/cloud", (c) => c.redirect("/debug/runs"));
+app.get("/", (c) => c.redirect("/admin/"));
 await migrate();
+let scheduling = false;
+const scheduleTimer = setInterval(async () => {
+  if (scheduling) return;
+  scheduling = true;
+  try {
+    await tickSchedules();
+  } catch {
+    console.error("Schedule tick unavailable");
+  } finally {
+    scheduling = false;
+  }
+}, 1000);
+scheduleTimer.unref();
 setInterval(
   () =>
     void db
       .query(
-        "UPDATE runs SET state=CASE WHEN state='cancelling' THEN 'cancelled' ELSE 'failed' END,error='执行节点失联；为避免重复副作用，请核验后重新提交',attempt_token=NULL,updated_at=now() WHERE state IN ('preparing','running','cancelling') AND lease_until<now()",
+        "UPDATE runs SET state='failed',error='执行节点失联；为避免重复副作用，请核验后重新提交',attempt_token=NULL,updated_at=now() WHERE state IN ('preparing','running','cancelling') AND lease_until<now()",
       )
       .catch(() => console.error("Lease sweep unavailable")),
   5000,

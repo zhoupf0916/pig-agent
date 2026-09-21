@@ -31,6 +31,16 @@ exports.runSmoke = async ({ app, win, origin, userData, accessVault }) => {
         localStorage.setItem('pig-agent.smoke-persistence', 'yes');
         return { redacted: settings.llmApiKey === '', configured: settings.llmApiKeyConfigured, testStatus: test.status };
       })()`);
+    if (process.env.PIG_DESKTOP_SMOKE_RESTART === "1") {
+      await win.webContents.executeJavaScript(`(async()=>{
+        const list=await (await fetch('/api/sessions')).json();
+        const records=await Promise.all(list.sessions.map(s=>fetch('/api/sessions/'+s.id).then(r=>r.json())));
+        if (!records.some(s=>s.engine==='codex' && s.executionTarget==='local')) throw Error('Pinned execution config lost on restart');
+        const fresh=await (await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+        if(fresh.engine!=='pig') throw Error('New session ignored default engine');
+        location.hash='#/sessions/'+fresh.id;
+      })()`);
+    }
     await win.webContents.executeJavaScript("localStorage.setItem('pig-agent.desktop-setup', 'complete')");
     await new Promise(resolve => { win.webContents.once('did-finish-load', resolve); win.webContents.reload(); });
     const uiChat = await win.webContents.executeJavaScript(`(async () => {

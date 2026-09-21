@@ -65,7 +65,9 @@ export function SettingsModal({
     cloudMode: form.cloudMode,
     cloudBaseUrl: form.cloudBaseUrl,
     effectiveBaseUrl:
-      form.cloudBaseUrl.trim() || settings?.cloudStatus?.effectiveBaseUrl || settings?.cloudBaseUrl,
+      form.cloudBaseUrl.trim() ||
+      settings?.cloudStatus?.effectiveBaseUrl ||
+      settings?.cloudBaseUrl,
   });
   const savedSurface = settings
     ? describeExecutionSurface({
@@ -76,7 +78,8 @@ export function SettingsModal({
         codexNetworkAccess: settings.codexNetworkAccess,
         cloudMode: settings.cloudMode,
         cloudBaseUrl: settings.cloudBaseUrl,
-        effectiveBaseUrl: settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl,
+        effectiveBaseUrl:
+          settings.cloudStatus?.effectiveBaseUrl || settings.cloudBaseUrl,
       })
     : previewSurface;
 
@@ -91,24 +94,35 @@ export function SettingsModal({
           <div>
             <h2 className="text-base font-medium text-ink-800">设置</h2>
             <p className="mt-1 text-xs text-ink-500">
-              {window.pigDesktop ? "设置保存在应用数据目录；密钥使用系统加密存储。密钥留空会保留已保存的值。" : "保存在本机 data/settings.json，覆盖 .env / .env.local。切勿把密钥提交到仓库。"}
+              {window.pigDesktop
+                ? "设置保存在应用数据目录；密钥使用系统加密存储。密钥留空会保留已保存的值。"
+                : "保存在本机 data/settings.json，覆盖 .env / .env.local。切勿把密钥提交到仓库。"}
             </p>
             <div className="mt-2 rounded-card border border-ink-300 bg-ink-100 px-3 py-2 text-xs text-ink-700">
               <div>
-                当前执行面：<span className="font-medium text-ink-800">{savedSurface.summary}</span>
+                当前执行面：
+                <span className="font-medium text-ink-800">
+                  {savedSurface.summary}
+                </span>
               </div>
               {previewSurface.summary !== savedSurface.summary && (
-                <div className="mt-1 text-ink-500">将切换为：{previewSurface.summary}</div>
+                <div className="mt-1 text-ink-500">
+                  将切换为：{previewSurface.summary}
+                </div>
               )}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="text-xs text-ink-500 hover:text-ink-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs text-ink-500 hover:text-ink-800"
+          >
             关闭
           </button>
         </div>
 
         <div className="space-y-3">
-          <Field label="Agent 运行时">
+          <Field label="新会话默认执行配置">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <RuntimeChoice
                 active={form.runtime === "pig"}
@@ -137,18 +151,21 @@ export function SettingsModal({
             </p>
           )}
 
-          {form.runtime === "cloud" && (
-            <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
+          <details
+            open={form.runtime === "cloud"}
+            className="rounded-card border border-ink-300 p-3"
+          >
+            <summary className="cursor-pointer text-sm font-medium">
+              远端控制面连接（会话与定时任务共用）
+            </summary>
+            <div className="mt-3 space-y-3">
               <p className="text-meta leading-relaxed text-ink-600">
-                工作台会话 / 计划 / 工具 / 产物语义不变，只换执行面。默认{" "}
-                <code className="font-mono text-ink-800">local-stub</code>
-                ：在 <code className="font-mono text-ink-800">data/cloud-runs/&lt;id&gt;/</code>{" "}
-                隔离工作区副本上跑本机 Pig 循环，密钥留在本机控制路径，不会写入 run 目录或提交
-                git。远程模式指向控制面（create-run 带工作区 snapshot → SSE → IDLE follow-up / abort），见{" "}
-                <code className="font-mono text-ink-800">docs/cloud-runtime.md</code>。
+                配置地址和令牌后，在会话或自动化中选择远端执行。远端计划由控制面调度，退出工作台仍会执行。当前远端执行支持
+                Pig 引擎。
               </p>
               <p className="text-xs text-ink-700">
-                生效：<span className="font-medium">{previewSurface.summary}</span>
+                生效：
+                <span className="font-medium">{previewSurface.summary}</span>
               </p>
               <Field label="云端模式">
                 <div className="grid grid-cols-2 gap-2">
@@ -156,7 +173,12 @@ export function SettingsModal({
                     active={form.cloudMode !== "remote"}
                     title="local-stub"
                     hint="本机隔离桩 · 测试默认"
-                    onClick={() => setForm({ ...form, cloudMode: "local-stub" satisfies CloudMode })}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        cloudMode: "local-stub" satisfies CloudMode,
+                      })
+                    }
                   />
                   <RuntimeChoice
                     active={form.cloudMode === "remote"}
@@ -169,7 +191,9 @@ export function SettingsModal({
               <Field label="控制面 Base URL（remote；不要带 /v1）">
                 <input
                   value={form.cloudBaseUrl}
-                  onChange={(e) => setForm({ ...form, cloudBaseUrl: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, cloudBaseUrl: e.target.value })
+                  }
                   className="field"
                   placeholder="http://127.0.0.1:8080"
                 />
@@ -178,7 +202,9 @@ export function SettingsModal({
                 <input
                   type="password"
                   value={form.cloudToken}
-                  onChange={(e) => setForm({ ...form, cloudToken: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, cloudToken: e.target.value })
+                  }
                   className="field"
                   placeholder="Bearer token 或从 PIG_CLOUD_TOKEN 读取"
                 />
@@ -186,19 +212,30 @@ export function SettingsModal({
               {form.cloudMode === "remote" && (
                 <div className="space-y-3 rounded-card border border-ink-300 bg-panel p-3">
                   <p className="text-meta leading-relaxed text-ink-600">
-                    非密钥仓库提示（create-run 的 <code className="font-mono text-ink-800">repoUrl</code> /{" "}
+                    非密钥仓库提示（create-run 的{" "}
+                    <code className="font-mono text-ink-800">repoUrl</code> /{" "}
                     <code className="font-mono text-ink-800">ref</code>
                     ）。优先级：本页填写 &gt; 仓库根目录{" "}
-                    <code className="font-mono text-ink-800">env.json</code> &gt; 环境变量{" "}
-                    <code className="font-mono text-ink-800">PIG_CLOUD_REPO_*</code>
-                    。Token / API Key 不要写入 env.json / environment.json。安装提示（deps / tools / setup）见{" "}
-                    <code className="font-mono text-ink-800">environment.json.example</code>
+                    <code className="font-mono text-ink-800">
+                      env.json
+                    </code>{" "}
+                    &gt; 环境变量{" "}
+                    <code className="font-mono text-ink-800">
+                      PIG_CLOUD_REPO_*
+                    </code>
+                    。Token / API Key 不要写入 env.json /
+                    environment.json。安装提示（deps / tools / setup）见{" "}
+                    <code className="font-mono text-ink-800">
+                      environment.json.example
+                    </code>
                     ，只指导 worker 预备，不会写入密钥。
                   </p>
                   <Field label="仓库 URL（可选；remote clone hint）">
                     <input
                       value={form.cloudRepoUrl ?? ""}
-                      onChange={(e) => setForm({ ...form, cloudRepoUrl: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, cloudRepoUrl: e.target.value })
+                      }
                       className="field"
                       placeholder="https://github.com/acme/app.git"
                     />
@@ -206,7 +243,9 @@ export function SettingsModal({
                   <Field label="仓库 Ref（可选）">
                     <input
                       value={form.cloudRepoRef ?? ""}
-                      onChange={(e) => setForm({ ...form, cloudRepoRef: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, cloudRepoRef: e.target.value })
+                      }
                       className="field"
                       placeholder="main"
                     />
@@ -223,9 +262,18 @@ export function SettingsModal({
                           if (!hints) return;
                           setForm({
                             ...form,
-                            cloudBaseUrl: form.cloudBaseUrl.trim() || hints.baseUrl || form.cloudBaseUrl,
-                            cloudRepoUrl: (form.cloudRepoUrl ?? "").trim() || hints.repoUrl || form.cloudRepoUrl,
-                            cloudRepoRef: (form.cloudRepoRef ?? "").trim() || hints.repoRef || form.cloudRepoRef,
+                            cloudBaseUrl:
+                              form.cloudBaseUrl.trim() ||
+                              hints.baseUrl ||
+                              form.cloudBaseUrl,
+                            cloudRepoUrl:
+                              (form.cloudRepoUrl ?? "").trim() ||
+                              hints.repoUrl ||
+                              form.cloudRepoUrl,
+                            cloudRepoRef:
+                              (form.cloudRepoRef ?? "").trim() ||
+                              hints.repoRef ||
+                              form.cloudRepoRef,
                           });
                         }}
                       >
@@ -237,7 +285,10 @@ export function SettingsModal({
               {settings?.cloudStatus && (
                 <ul className="space-y-1 text-meta text-ink-600">
                   <StatusLine
-                    ok={settings.cloudStatus.mode === "local-stub" || settings.cloudStatus.remoteUrlConfigured}
+                    ok={
+                      settings.cloudStatus.mode === "local-stub" ||
+                      settings.cloudStatus.remoteUrlConfigured
+                    }
                     label={
                       settings.cloudStatus.mode === "remote"
                         ? "远程控制面 URL 已配置"
@@ -245,7 +296,10 @@ export function SettingsModal({
                     }
                   />
                   <StatusLine
-                    ok={settings.cloudStatus.tokenPresent || settings.cloudStatus.mode === "local-stub"}
+                    ok={
+                      settings.cloudStatus.tokenPresent ||
+                      settings.cloudStatus.mode === "local-stub"
+                    }
                     label="控制面 Token（remote 可选）"
                   />
                   <StatusLine
@@ -260,7 +314,9 @@ export function SettingsModal({
                     <StatusLine
                       ok
                       label={`生效仓库 ${settings.cloudStatus.repoHint.repoUrl}${
-                        settings.cloudStatus.repoHint.ref ? `@${settings.cloudStatus.repoHint.ref}` : ""
+                        settings.cloudStatus.repoHint.ref
+                          ? `@${settings.cloudStatus.repoHint.ref}`
+                          : ""
                       }（${hintSourceLabel(settings.cloudStatus.repoHint.repoUrlSource)}）`}
                     />
                   )}
@@ -275,47 +331,95 @@ export function SettingsModal({
                 </ul>
               )}
             </div>
-          )}
+          </details>
 
           {form.runtime === "codex" && (
             <div className="space-y-3 rounded-card border border-accent bg-accent-soft p-3">
               <p className="text-meta leading-relaxed text-ink-600">
                 Codex CLI 负责规划和工具执行，模型由下面的 Responses 接口提供。
-                它使用独立密钥，不会自动使用 Pig 的密钥，也不使用此电脑上 Codex App 的登录账号。
-                多轮由工作台传入近期对话；Codex 文件操作使用自身的 workspace-write 沙箱，不经过 Pig 的写入审批。
-
+                它使用独立密钥，不会自动使用 Pig 的密钥，也不使用此电脑上 Codex
+                App 的登录账号。 多轮由工作台传入近期对话；Codex
+                文件操作使用自身的 workspace-write 沙箱，不经过 Pig 的写入审批。
               </p>
               <Field label="Codex 二进制路径（可选，留空则用 PATH 中的 codex）">
                 <input
                   value={form.codexBinaryPath}
-                  onChange={(e) => setForm({ ...form, codexBinaryPath: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, codexBinaryPath: e.target.value })
+                  }
                   className="field"
                   placeholder="codex 或 /usr/local/bin/codex"
                 />
               </Field>
               <Field label="Codex Responses 接口地址">
-                <input className="field" value={form.codexBaseUrl ?? "https://api.deepseek.com/"} onChange={e => setForm({ ...form, codexBaseUrl: e.target.value })} placeholder="https://api.deepseek.com/" />
+                <input
+                  className="field"
+                  value={form.codexBaseUrl ?? "https://api.deepseek.com/"}
+                  onChange={(e) =>
+                    setForm({ ...form, codexBaseUrl: e.target.value })
+                  }
+                  placeholder="https://api.deepseek.com/"
+                />
               </Field>
               <Field label="Codex 专用 API Key">
-                <input className="field" type="password" autoComplete="off" value={form.codexApiKey ?? ""} onChange={e => setForm({ ...form, codexApiKey: e.target.value })} placeholder={settings?.codexApiKeyConfigured ? "已保存；留空保持不变" : "填写 Responses 提供商的密钥"} />
-                <button type="button" className="btn-ghost mt-2 text-xs" disabled={saving} onClick={async () => {
-                  setSaving(true); setError(null);
-                  try {
-                    await onSave(form);
-                    const response = await fetch("/api/settings/codex/use-pig-key", { method: "POST" });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || "无法复用密钥");
-                    setForm(value => ({ ...value, codexApiKey: "", codexApiKeyConfigured: true }));
-                    setConnectionStatus("已将同一提供商的 Pig 密钥保存为 Codex 专用密钥，可继续测试连接。");
-                  } catch (err) { setError(err instanceof Error ? err.message : "保存失败"); }
-                  finally { setSaving(false); }
-                }}>同一提供商：使用已保存的 Pig 密钥</button>
-                <p className="mt-1 text-xs text-ink-500">桌面版加密保存；源码 Web 版保存在本机设置文件，也可使用 CODEX_API_KEY 环境变量。</p>
+                <input
+                  className="field"
+                  type="password"
+                  autoComplete="off"
+                  value={form.codexApiKey ?? ""}
+                  onChange={(e) =>
+                    setForm({ ...form, codexApiKey: e.target.value })
+                  }
+                  placeholder={
+                    settings?.codexApiKeyConfigured
+                      ? "已保存；留空保持不变"
+                      : "填写 Responses 提供商的密钥"
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn-ghost mt-2 text-xs"
+                  disabled={saving}
+                  onClick={async () => {
+                    setSaving(true);
+                    setError(null);
+                    try {
+                      await onSave(form);
+                      const response = await fetch(
+                        "/api/settings/codex/use-pig-key",
+                        { method: "POST" },
+                      );
+                      const result = await response.json();
+                      if (!response.ok)
+                        throw new Error(result.error || "无法复用密钥");
+                      setForm((value) => ({
+                        ...value,
+                        codexApiKey: "",
+                        codexApiKeyConfigured: true,
+                      }));
+                      setConnectionStatus(
+                        "已将同一提供商的 Pig 密钥保存为 Codex 专用密钥，可继续测试连接。",
+                      );
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "保存失败");
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  同一提供商：使用已保存的 Pig 密钥
+                </button>
+                <p className="mt-1 text-xs text-ink-500">
+                  桌面版加密保存；源码 Web 版保存在本机设置文件，也可使用
+                  CODEX_API_KEY 环境变量。
+                </p>
               </Field>
               <Field label="Codex 模型">
                 <input
                   value={form.codexModel}
-                  onChange={(e) => setForm({ ...form, codexModel: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, codexModel: e.target.value })
+                  }
                   className="field"
                   placeholder="deepseek-flash"
                 />
@@ -325,10 +429,14 @@ export function SettingsModal({
                   type="checkbox"
                   className="mt-0.5"
                   checked={form.codexNetworkAccess}
-                  onChange={(e) => setForm({ ...form, codexNetworkAccess: e.target.checked })}
+                  onChange={(e) =>
+                    setForm({ ...form, codexNetworkAccess: e.target.checked })
+                  }
                 />
                 <span>
-                  <span className="text-xs text-ink-800">允许 Codex 工作区外发网络</span>
+                  <span className="text-xs text-ink-800">
+                    允许 Codex 工作区外发网络
+                  </span>
                   <span className="mt-0.5 block text-meta text-ink-500">
                     默认关闭（sandbox_workspace_write.network_access=false）。显式勾选才会放开出站网络。
                   </span>
@@ -336,14 +444,22 @@ export function SettingsModal({
               </label>
               {form.codexNetworkAccess && (
                 <div className="rounded-card border border-warning bg-warning-soft px-3 py-2 text-meta leading-relaxed text-warning">
-                  警告：开启后 Codex 的 workspace-write 沙箱可以访问外网（下载、请求第三方 API
-                  等）。只在你信任当前工作区与任务时启用。不会开启 danger-full-access。
+                  警告：开启后 Codex 的 workspace-write
+                  沙箱可以访问外网（下载、请求第三方 API
+                  等）。只在你信任当前工作区与任务时启用。不会开启
+                  danger-full-access。
                 </div>
               )}
               {settings?.codexStatus && (
                 <ul className="space-y-1 text-meta text-ink-600">
-                  <StatusLine ok={settings.codexStatus.binaryFound} label="找到 Codex 二进制" />
-                  <StatusLine ok={settings.codexStatus.homeWritable} label="隔离 CODEX_HOME 可写" />
+                  <StatusLine
+                    ok={settings.codexStatus.binaryFound}
+                    label="找到 Codex 二进制"
+                  />
+                  <StatusLine
+                    ok={settings.codexStatus.homeWritable}
+                    label="隔离 CODEX_HOME 可写"
+                  />
                   <StatusLine
                     ok={settings.codexStatus.apiKeyPresent}
                     label="Codex 专用密钥已配置"
@@ -367,7 +483,13 @@ export function SettingsModal({
               value={form.llmApiKey}
               onChange={(e) => setForm({ ...form, llmApiKey: e.target.value })}
               className="field"
-              placeholder={window.pigDesktop ? (settings?.llmApiKeyConfigured ? "已安全保存；留空保持不变" : "输入 API Key") : "sk-… 或从 DEEPSEEK_API_KEY 读取"}
+              placeholder={
+                window.pigDesktop
+                  ? settings?.llmApiKeyConfigured
+                    ? "已安全保存；留空保持不变"
+                    : "输入 API Key"
+                  : "sk-… 或从 DEEPSEEK_API_KEY 读取"
+              }
             />
           </Field>
           <Field label="Pig 模型">
@@ -379,38 +501,94 @@ export function SettingsModal({
             />
           </Field>
           <Field label="工作区根目录（文件工具的访问范围）">
-            {window.pigDesktop && <button type="button" className="mb-2 text-xs text-accent" onClick={async () => { try { const folder = await window.pigDesktop?.chooseWorkspace(); if (folder) setForm(value => ({ ...value, workspaceRoot: folder })); } catch { setError("无法打开文件夹选择器"); } }}>选择本机文件夹…</button>}
+            {window.pigDesktop && (
+              <button
+                type="button"
+                className="mb-2 text-xs text-accent"
+                onClick={async () => {
+                  try {
+                    const folder = await window.pigDesktop?.chooseWorkspace();
+                    if (folder)
+                      setForm((value) => ({ ...value, workspaceRoot: folder }));
+                  } catch {
+                    setError("无法打开文件夹选择器");
+                  }
+                }}
+              >
+                选择本机文件夹…
+              </button>
+            )}
             <input
               value={form.workspaceRoot}
-              onChange={(e) => setForm({ ...form, workspaceRoot: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, workspaceRoot: e.target.value })
+              }
               className="field"
               placeholder="./sample-workspace"
             />
             <p className="mt-1 text-xs leading-5 text-ink-500">
-              文件写入此目录。要操作真实桌面，请填写桌面的完整路径；工作区里的 Desktop 子目录不是系统桌面。
-              本机 Pig 默认在主机执行命令；可在任务的「执行与验收」中选择 Docker。文件访问范围本身不等于操作系统隔离。
+              文件写入此目录。要操作真实桌面，请填写桌面的完整路径；工作区里的
+              Desktop 子目录不是系统桌面。 本机 Pig
+              默认在主机执行命令；可在任务的「执行与验收」中选择
+              Docker。文件访问范围本身不等于操作系统隔离。
             </p>
           </Field>
         </div>
 
-        {form.runtime !== "cloud" && <div className="mt-4 rounded-card border border-ink-300 p-3">
-          <button type="button" disabled={saving} className="btn-ghost" onClick={async () => {
-            setSaving(true); setError(null); setConnectionStatus("");
-            try {
-              await onSave(form);
-              const response = await fetch("/api/settings/test-connection", { method: "POST" });
-              const result = await response.json();
-              if (!response.ok) throw new Error(result.error || "连接失败");
-              setForm(value => ({ ...value, codexApiKey: "", ...(window.pigDesktop ? { llmApiKey: "", cloudToken: "" } : {}) }));
-              setConnectionStatus(form.runtime === "codex" ? "Codex CLI 已实际启动并收到模型回复。" : "模型连接成功。");
-            } catch (err) { setError(err instanceof Error ? err.message : "连接失败"); }
-            finally { setSaving(false); }
-          }}>{saving ? "正在检测…" : "保存并测试当前运行时"}</button>
-          <p className="mt-1 text-xs text-ink-500">测试会发起一次简短模型请求。Codex 测试在临时目录进行，不修改当前工作区。</p>
-          {connectionStatus && <p role="status" className="mt-2 text-sm text-success">{connectionStatus}</p>}
-        </div>}
+        {form.runtime !== "cloud" && (
+          <div className="mt-4 rounded-card border border-ink-300 p-3">
+            <button
+              type="button"
+              disabled={saving}
+              className="btn-ghost"
+              onClick={async () => {
+                setSaving(true);
+                setError(null);
+                setConnectionStatus("");
+                try {
+                  await onSave(form);
+                  const response = await fetch(
+                    "/api/settings/test-connection",
+                    { method: "POST" },
+                  );
+                  const result = await response.json();
+                  if (!response.ok) throw new Error(result.error || "连接失败");
+                  setForm((value) => ({
+                    ...value,
+                    codexApiKey: "",
+                    ...(window.pigDesktop
+                      ? { llmApiKey: "", cloudToken: "" }
+                      : {}),
+                  }));
+                  setConnectionStatus(
+                    form.runtime === "codex"
+                      ? "Codex CLI 已实际启动并收到模型回复。"
+                      : "模型连接成功。",
+                  );
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "连接失败");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? "正在检测…" : "保存并测试当前运行时"}
+            </button>
+            <p className="mt-1 text-xs text-ink-500">
+              测试会发起一次简短模型请求。Codex
+              测试在临时目录进行，不修改当前工作区。
+            </p>
+            {connectionStatus && (
+              <p role="status" className="mt-2 text-sm text-success">
+                {connectionStatus}
+              </p>
+            )}
+          </div>
+        )}
         <div className="mt-4 rounded-card border border-ink-300 bg-ink-100 p-3">
-          <div className="text-meta uppercase tracking-[0.14em] text-ink-500">本地技能</div>
+          <div className="text-meta uppercase tracking-[0.14em] text-ink-500">
+            本地技能
+          </div>
           <ul className="mt-2 space-y-1.5">
             {skills.map((s) => (
               <li key={s.name} className="text-xs text-ink-700">
@@ -418,7 +596,9 @@ export function SettingsModal({
                 <span className="text-ink-500"> — {s.description}</span>
               </li>
             ))}
-            {skills.length === 0 && <li className="text-xs text-ink-500">skills/ 下还没有技能文件</li>}
+            {skills.length === 0 && (
+              <li className="text-xs text-ink-500">skills/ 下还没有技能文件</li>
+            )}
           </ul>
           {form.runtime === "codex" && (
             <p className="mt-2 text-meta text-ink-500">
@@ -432,7 +612,15 @@ export function SettingsModal({
           )}
           {form.runtime === "cloud" && form.cloudMode === "remote" && (
             <p className="mt-2 text-meta text-ink-500">
-              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules / .git）。create-run 等待期间步骤条显示中文进度（准备快照 / 创建运行 / 连接事件流）；已有 remoteRunId 的 follow-up / 重连事件流显示继续跟进 / 重新连接事件流，完成后进入推流或失败横幅。仓库提示来自本页、env.json 或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；断连 / 超时 / 过期会显示中文原因并可重试（继续跟进或重新创建运行）。停止后下一轮可继续发送，不会留下僵尸运行。控制面若下发 plan / artifact 事件，工作台会按现有卡片渲染。密钥不会出现在进度或错误横幅里。
+              远程首轮会上传沙箱安全快照（跳过 .env* / 密钥 / node_modules /
+              .git）。create-run 等待期间步骤条显示中文进度（准备快照 / 创建运行
+              / 连接事件流）；已有 remoteRunId 的 follow-up /
+              重连事件流显示继续跟进 /
+              重新连接事件流，完成后进入推流或失败横幅。仓库提示来自本页、env.json
+              或 PIG_CLOUD_REPO_*。同一会话后续消息优先 follow-up；断连 / 超时 /
+              过期会显示中文原因并可重试（继续跟进或重新创建运行）。停止后下一轮可继续发送，不会留下僵尸运行。控制面若下发
+              plan / artifact
+              事件，工作台会按现有卡片渲染。密钥不会出现在进度或错误横幅里。
             </p>
           )}
         </div>
@@ -496,7 +684,9 @@ function RuntimeChoice({
 function StatusLine({ ok, label }: { ok: boolean; label: string }) {
   return (
     <li>
-      <span className={ok ? "text-success" : "text-warning"}>{ok ? "就绪" : "未就绪"}</span>
+      <span className={ok ? "text-success" : "text-warning"}>
+        {ok ? "就绪" : "未就绪"}
+      </span>
       <span className="text-ink-500"> · {label}</span>
     </li>
   );
@@ -537,7 +727,13 @@ function formatEnvJsonHints(hints: {
   return bits.length ? `：${bits.join(" · ")}` : "";
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
       <div className="mb-1 text-meta text-ink-500">{label}</div>

@@ -12,7 +12,7 @@ const labels = {
 async function api(path, init = {}) {
   const r = await fetch(path, {
     ...init,
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type":"application/json" },
   });
   const data = await r.json();
   if (!r.ok) throw Error(data.error || `HTTP ${r.status}`);
@@ -46,12 +46,16 @@ async function refresh() {
       }),
     );
     $("workers").replaceChildren(
-      ...overview.workers.map((w) =>
-        node(
-          "p",
-          `${w.online ? "● 在线" : "○ 离线"} · ${w.id} · 最后心跳 ${new Date(w.seen_at).toLocaleString()}`,
-        ),
-      ),
+      ...overview.workers.map(w=>{
+        const row=node("p",`${w.online?"● 在线":"○ 离线"} · ${w.id} · ${w.enabled?"接收任务":"排空中"} · ${w.active}/${w.capacity} 槽位 `);
+        const toggle=node("button",w.enabled?"排空节点":"恢复接单");
+        toggle.onclick=async()=>{try{await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`,{method:"PATCH",body:JSON.stringify({enabled:!w.enabled})});await refresh();}catch(e){$("error").textContent=e.message;}};
+        row.append(toggle);
+        const slots=node("select","");slots.setAttribute("aria-label",`${w.id} 并发槽位`);
+        for(let n=1;n<=3;n++){const option=node("option",`${n} 并发`);option.value=String(n);option.selected=w.capacity===n;slots.append(option);}
+        slots.onchange=async()=>{try{await api(`/v1/admin/workers/${encodeURIComponent(w.id)}`,{method:"PATCH",body:JSON.stringify({capacity:Number(slots.value)})});await refresh();}catch(e){$("error").textContent=e.message;}};
+        row.append(slots);return row;
+      }),
     );
     $("runs").replaceChildren(
       ...list.runs.map((run) => {
@@ -92,6 +96,7 @@ async function refresh() {
         return tr;
       }),
     );
+    $("schedules").replaceChildren(...(overview.schedules || []).map(s=>node("p",`${s.enabled ? "已启用" : "已停用"} · ${s.name} · ${s.owner_id} · ${s.cron || "仅手动"} · ${s.timezone} · 下次 ${s.next_fire_at ? new Date(s.next_fire_at).toLocaleString() : "—"}${s.last_error ? " · " + s.last_error : ""}`)));
     $("audit").replaceChildren(
       ...overview.audit
         .slice(0, 15)

@@ -221,7 +221,7 @@ describe("Milestone X follow-up / reconnect progress", () => {
     }
   });
 
-  it("abort during hung follow-up returns idle (no zombie running)", async () => {
+  it("does not claim stopped when control plane rejects cancellation", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-x-ab-"));
     writeFileSync(join(workspaceRoot, "ok.md"), "ok");
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -243,12 +243,12 @@ describe("Milestone X follow-up / reconnect progress", () => {
     controller.abort();
     const next = await pending;
     await close();
-    expect(next.status).toBe("idle");
-    expect(next.lastError).toBeUndefined();
-    expect(next.remoteRetry).toBeUndefined();
+    expect(next.status).toBe("error");
+    expect(next.lastError).toContain("停止请求尚未获控制面确认");
+    expect(next.remoteState).toBeUndefined(); // Never invent a control-plane state.
     expect(next.remoteRunId).toBe("run_x_live");
     expect(next.steps.every((s) => s.status !== "running")).toBe(true);
-    expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(true);
+    expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(false);
   });
 
   it("expired follow-up falls back to W create-run chips (catalogs do not mix)", async () => {

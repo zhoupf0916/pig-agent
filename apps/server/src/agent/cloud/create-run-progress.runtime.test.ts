@@ -205,7 +205,7 @@ describe("Milestone W create-run progress", () => {
     }
   });
 
-  it("abort during hung create-run returns idle (no zombie running)", async () => {
+  it("reports unknown submission after aborted create instead of claiming stopped", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-w-ab-"));
     writeFileSync(join(workspaceRoot, "ok.md"), "ok");
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -228,11 +228,11 @@ describe("Milestone W create-run progress", () => {
     controller.abort();
     const next = await pending;
     await close();
-    expect(next.status).toBe("idle");
-    expect(next.lastError).toBeUndefined();
-    expect(next.remoteRetry).toBeUndefined();
+    expect(next.status).toBe("error");
+    expect(next.lastError).toContain("远端提交结果尚未确认");
+    expect(next.remoteRunId).toBeUndefined();
     expect(next.steps.every((s) => s.status !== "running")).toBe(true);
-    expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(true);
+    expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(false);
   });
 
   it("surfaces the existing Chinese timeout on create-run (L path, not running)", async () => {

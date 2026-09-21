@@ -1461,3 +1461,15 @@ describe("automation lastSessionId after session delete (Milestone AW)", () => {
     stop();
   });
 });
+
+describe("remote automation polling",()=>{
+  it("retains control-plane fields and applies schedule/result changes without exposing unknown fields",()=>{
+    const row:Automation={...automation(),id:"ratm_example",runtime:"cloud",executionTarget:"remote",engine:"pig",timezone:"Asia/Shanghai",misfirePolicy:"once",nextFireAt:"2026-09-22T01:00:00Z",lastRemoteRunId:"run_first"};
+    const clean=sanitizeAutomation({...row,cloudToken:"must-not-appear"} as Automation);
+    expect(clean).toMatchObject({executionTarget:"remote",engine:"pig",timezone:"Asia/Shanghai",misfirePolicy:"once",lastRemoteRunId:"run_first"});
+    expect(clean).not.toHaveProperty("cloudToken");
+    const next={...row,lastRemoteRunId:"run_second",nextFireAt:"2026-09-23T01:00:00Z"};
+    expect(applyAutomationDetailSnapshot(row,next)).toMatchObject({executionTarget:"remote",lastRemoteRunId:"run_second",nextFireAt:next.nextFireAt});
+    expect(applyAutomationsListSnapshot([row],[next])[0]).toMatchObject({executionTarget:"remote",lastRemoteRunId:"run_second"});
+  });
+});

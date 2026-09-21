@@ -1,3 +1,5 @@
+import { ExecutionPicker } from "./components/ExecutionPicker";
+import { RemoteRunsPanel } from "./components/RemoteRunsPanel";
 import { DesktopSetup } from "./components/DesktopSetup";
 import { Settings2, FolderOpen, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -106,6 +108,7 @@ import type {
 } from "./types";
 
 export function App() {
+  const [remoteRunView,setRemoteRunView] = useState<string|null>(null);
   const [filesOpen, setFilesOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -619,11 +622,7 @@ export function App() {
       await api.abort(session.id);
     }
     setStreaming(false);
-    setSession((prev) =>
-      prev
-        ? { ...prev, status: "idle", lastError: undefined, remoteRetry: undefined, localRetry: undefined }
-        : prev,
-    );
+    await loadSession(session.id);
   }, [session]);
 
   const retry = useCallback(async () => {
@@ -809,11 +808,12 @@ export function App() {
     if (!settings) {
       return describeExecutionSurface({ runtime: "pig" });
     }
-    return surfaceFromSettings(settings);
-  }, [settings]);
+    return surfaceFromSettings(session?.executionTarget ? {...settings,runtime:session.executionTarget === "remote" ? "cloud" : session.engine || "pig",cloudMode:session.executionTarget === "remote" ? "remote" : settings.cloudMode} : settings);
+  }, [settings,session?.executionTarget,session?.engine]);
 
   return (
     <div className="flex h-full flex-col bg-ink-50">
+      {remoteRunView !== null && <RemoteRunsPanel runId={remoteRunView || undefined} onClose={()=>setRemoteRunView(null)}/>}
       <header className="app-header flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ink-300 bg-panel px-4 py-2.5 backdrop-blur-sm">
         <button
           type="button"
@@ -868,6 +868,14 @@ export function App() {
             }}
           />
           <ThemeToggle theme={theme} onChange={setPersistedTheme} />
+          <button className="btn-ghost text-xs" onClick={()=>setRemoteRunView(session?.remoteRunId || "")}>远端运行</button>
+          {route.name === "workstation" && session && (
+            <ExecutionPicker session={session} settings={settings} disabled={streaming || session.status === "running"}
+              onChange={async patch => {
+                try { setSession(await api.patchSession(session.id, patch)); }
+                catch (error) { setBootError(String(error)); }
+              }} />
+          )}
           <RuntimeChip surface={executionSurface} onClick={() => setSettingsOpen(true)} />
           <div className="hidden max-w-[220px] truncate font-mono text-meta text-ink-500 min-[1600px]:block" title={settings?.workspaceRoot}>
             {settings?.workspaceRoot ?? ""}
@@ -959,6 +967,7 @@ export function App() {
           />
         ) : route.name === "automations" ? (
           <AutomationsPanel
+            onOpenRemoteRun={id=>setRemoteRunView(id)}
             selectedId={route.automationId}
             experts={experts}
             teams={expertTeams}

@@ -68,6 +68,7 @@ export async function runAutomation(
   }
   const current = await getAutomation(id);
   if (!current) throw new AutomationNotFoundError();
+  if (current.runtime === "cloud" || current.remoteScheduleId) throw new Error("远端自动化须迁入控制面后运行");
   if (!current.prompt.trim()) throw new Error("prompt is required");
   await assertPins(current);
 
