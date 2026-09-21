@@ -108,6 +108,8 @@ export async function runAgent(options: {
   preferredSkillIds?: string[];
   /** Override pin injection (tests). Default: load recent in-scope pins. */
   memoryPins?: string[];
+  /** Remote control-plane gate; runs before any mutation and may wait for a durable decision. */
+  authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
 }): Promise<Session> {
   const { settings, signal, emit, projectInstruction, expertInstruction, preferredSkillIds } = options;
   const session: Session = {
@@ -296,6 +298,11 @@ export async function runAgent(options: {
 
         let output = "";
         let ok = true;
+        if (options.authorizeTool && MUTATIONS.has(call.name)) {
+          const approved = await options.authorizeTool({ callId: call.id, tool: call.name, args: parsed });
+          if (!approved) throw new Error("用户拒绝了远端操作，本次操作未执行");
+          if (signal.aborted) throw new Error("Aborted");
+        }
         try {
           if (workbench && MUTATIONS.has(call.name)) {
             const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);

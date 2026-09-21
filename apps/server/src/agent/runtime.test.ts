@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -103,6 +103,36 @@ function toolDelta(
 }
 
 describe("runAgent harness", () => {
+  it.each([true, false])("waits for mutation authorization and respects decision %s", async (approved) => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-approval-"));
+    const target = join(workspaceRoot, "approved.txt");
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [{ id: "write", name: "write_file", args: { path: "approved.txt", content: "authorized" } }]),
+      (_raw, res) => sse(res, { choices: [{ delta: { content: "完成" } }] }),
+    ]);
+    let decide!: (allowed: boolean) => void;
+    let reached!: () => void;
+    const pending = new Promise<boolean>((resolve) => { decide = resolve; });
+    const waiting = new Promise<void>((resolve) => { reached = resolve; });
+    try {
+      const running = runAgent({
+        session: emptySession(), settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal, emit: () => {},
+        authorizeTool: async (call) => {
+          expect(call).toEqual({ callId: "write", tool: "write_file", args: { path: "approved.txt", content: "authorized" } });
+          reached();
+          return pending;
+        },
+      });
+      await waiting;
+      expect(existsSync(target)).toBe(false);
+      decide(approved);
+      const result = await running;
+      expect(existsSync(target)).toBe(approved);
+      if (approved) expect(readFileSync(target, "utf8")).toBe("authorized");
+      else expect(result.lastError).toContain("用户拒绝了远端操作");
+    } finally { decide(false); await mock.close(); }
+  });
   it("leaves an unconfirmed plan pending when the model asks for a destination", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-pending-"));
     const mock = await startScriptedLlm([

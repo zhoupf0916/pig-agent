@@ -9,6 +9,8 @@ import { z } from "zod";
 import { profiles, registerResourceRoutes } from "./resources.ts";
 import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
 import { registerConversationRoutes } from "./conversations.ts";
+import { registerCollaborationRoutes } from "./collaboration.ts";
+import { registerApprovalRoutes } from "./approvals.ts";
 import { inputSchema } from "./input.ts";
 import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
 import type { CloudEnv } from "./types.ts";
@@ -17,6 +19,8 @@ type Principal = { id: string; role: string; name: string };
 const app = new Hono<CloudEnv>();
 app.use("*", bodyLimit({ maxSize: 7 * 1024 * 1024 }));
 app.onError((err, c) => {
+  if ("code" in err && err.code === "42501")
+    return c.json({ error: "没有共享项目的编辑权限" }, 403);
   console.error(err.name);
   return c.json({ error: "服务请求失败，请查看节点日志" }, 500);
 });
@@ -49,11 +53,11 @@ app.use("/internal/*", async (c, next) => {
     return c.json({ error: "Unauthorized" }, 401);
   await next();
 });
-async function runFor(id: string, p: Principal) {
+async function runFor(id: string, p: Principal, writing = false) {
   return (
     await db.query(
-      "SELECT id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND (owner_id=$2 OR $3)",
-      [id, p.id, p.role === "admin"],
+      "SELECT id,project_id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,coalesce((input->>'requireApproval')::boolean,false) AS require_approval,CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END AS can_write,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,$4) END)",
+      [id, p.id, p.role === "admin", writing],
     )
   ).rows[0];
 }
@@ -61,12 +65,14 @@ registerPlatformRoutes(app);
 registerResourceRoutes(app);
 registerScheduleRoutes(app);
 registerConversationRoutes(app);
+registerCollaborationRoutes(app);
+registerApprovalRoutes(app, runFor);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
     runs: (
       await db.query(
-        "SELECT id,state,error,created_at,updated_at,owner_id,model_calls,input->>'prompt' AS prompt FROM runs WHERE owner_id=$1 OR $2 ORDER BY created_at DESC LIMIT 100",
+        "SELECT id,project_id,state,error,created_at,updated_at,owner_id,model_calls,input->>'prompt' AS prompt FROM runs WHERE $2 OR CASE WHEN project_id IS NULL THEN owner_id=$1 ELSE project_access(project_id,$1,false) END ORDER BY created_at DESC LIMIT 100",
         [c.get("principal").id, c.get("principal").role === "admin"],
       )
     ).rows,
@@ -88,6 +94,18 @@ app.post("/v1/runs", async (c) => {
     await client.query("SELECT id FROM principals WHERE id=$1 FOR UPDATE", [
       p.id,
     ]);
+    if (
+      parsed.data.projectId &&
+      !(
+        await client.query("SELECT project_access($1,$2,true) AS allowed", [
+          parsed.data.projectId,
+          p.id,
+        ])
+      ).rows[0].allowed
+    ) {
+      await client.query("ROLLBACK");
+      return c.json({ error: "没有共享项目的编辑权限" }, 403);
+    }
     if (key) {
       const old = await client.query(
         "SELECT id,state,input FROM runs WHERE owner_id=$1 AND request_key=$2",
@@ -111,8 +129,13 @@ app.post("/v1/runs", async (c) => {
     const id = "run_" + randomUUID().replaceAll("-", "");
     const conversationId = "conv_" + randomUUID().replaceAll("-", "");
     await client.query(
-      "INSERT INTO conversations(id,owner_id,title) VALUES($1,$2,$3)",
-      [conversationId, p.id, parsed.data.prompt.slice(0, 100)],
+      "INSERT INTO conversations(id,owner_id,title,project_id) VALUES($1,$2,$3,$4)",
+      [
+        conversationId,
+        p.id,
+        parsed.data.prompt.slice(0, 100),
+        parsed.data.projectId || null,
+      ],
     );
     await client.query(
       "INSERT INTO runs(id,owner_id,input,request_key,conversation_id) VALUES($1,$2,$3,$4,$5)",
@@ -138,7 +161,7 @@ app.get("/v1/runs/:id", async (c) => {
 app.post("/v1/runs/:id/abort", async (c) => {
   const id = c.req.param("id"),
     p = c.get("principal");
-  if (!(await runFor(id, p))) return c.json({ error: "Not found" }, 404);
+  if (!(await runFor(id, p, true))) return c.json({ error: "Not found" }, 404);
   await db.query(
     "UPDATE runs SET state=CASE WHEN state='queued' THEN 'cancelled' ELSE 'cancelling' END,updated_at=now() WHERE id=$1 AND state IN ('queued','preparing','running')",
     [id],
@@ -173,6 +196,19 @@ app.get("/v1/runs/:id/events", async (c) => {
     return c.json({ error: "Invalid cursor" }, 400);
   return streamSSE(c, async (stream) => {
     while (!stream.aborted) {
+      if (!(await runFor(id, c.get("principal")))) break;
+      const credential = hash(
+        c.req.header("Authorization")?.replace(/^Bearer /, "") || "",
+      );
+      if (
+        !(
+          await db.query(
+            "SELECT id FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
+            [c.get("principal").id, credential],
+          )
+        ).rowCount
+      )
+        break;
       const rows = await db.query(
         "SELECT seq,event FROM events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 200",
         [id, after],

@@ -138,6 +138,18 @@ export function registerRemoteRoutes(app: Hono): void {
   app.all("/api/remote/*", async (c) => {
     const path = c.req.path.slice("/api/remote".length);
     const allowed =
+      (c.req.method === "GET" && /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals$/.test(path)) ||
+      (c.req.method === "POST" && /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals\/[a-zA-Z0-9_-]+\/decision$/.test(path)) ||
+      (c.req.method === "GET" &&
+        /^\/v1\/(spaces(?:\/[a-zA-Z0-9_-]+\/members)?|shared-projects(?:\/[a-zA-Z0-9_-]+\/runs)?)$/.test(
+          path,
+        )) ||
+      (c.req.method === "POST" &&
+        /^\/v1\/(spaces(?:\/join|\/[a-zA-Z0-9_-]+\/invitations)?|shared-projects)$/.test(
+          path,
+        )) ||
+      (["PATCH", "DELETE"].includes(c.req.method) &&
+        /^\/v1\/spaces\/[a-zA-Z0-9_-]+\/members\/[a-zA-Z0-9_-]+$/.test(path)) ||
       (c.req.method === "GET" &&
         /^\/v1\/conversations(?:\/[a-zA-Z0-9_-]+(?:\/workspace\/[a-zA-Z0-9_-]+)?)?$/.test(
           path,
@@ -160,7 +172,9 @@ export function registerRemoteRoutes(app: Hono): void {
         {
           method: c.req.method,
           headers,
-          body: c.req.method === "POST" ? await c.req.text() : undefined,
+          body: ["POST", "PATCH"].includes(c.req.method)
+            ? await c.req.text()
+            : undefined,
           // Dropping a stream only unsubscribes. Explicit POST abort cancels a run.
           signal: path.endsWith("/events") ? c.req.raw.signal : undefined,
         },

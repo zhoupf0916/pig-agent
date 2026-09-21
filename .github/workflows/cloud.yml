@@ -28,6 +28,8 @@ jobs:
       - run: pnpm cloud:smoke
       - run: pnpm cloud:smoke:conversations
       - run: pnpm cloud:smoke:platform
+      - run: pnpm cloud:smoke:collaboration
+      - run: pnpm cloud:smoke:approvals
       - run: pnpm exec tsx scripts/smoke-cloud-adapter.ts
       - run: pnpm exec tsx scripts/smoke-cloud-workbench.ts
       - if: failure()

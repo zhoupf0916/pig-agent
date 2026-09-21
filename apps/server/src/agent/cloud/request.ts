@@ -19,6 +19,7 @@ export function buildCreateRunRequest(
   const body: CloudCreateRunRequest = {
     prompt: prependBoundInstructions(lastUser?.content ?? "", bound ?? {}),
     sessionId: session.id,
+    ...(session.remoteRequireApproval ? {requireApproval:true} : {}),
     messages: session.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({

@@ -41,6 +41,7 @@ export type CloudWorkspaceHandoff = {
 };
 
 export type CloudCreateRunRequest = {
+  requireApproval?: boolean;
   prompt: string;
   sessionId: string;
   messages: Array<Pick<ChatMessage, "id" | "role" | "content" | "createdAt">>;
@@ -140,6 +141,9 @@ export type CloudRunSummary = {
   state: CloudRunState;
   prompt: string;
   owner_id?: string;
+  project_id?: string;
+  can_write?: boolean;
+  require_approval?: boolean;
   conversation_id?: string;
   parent_run_id?: string;
   error?: string;
@@ -148,3 +152,20 @@ export type CloudRunSummary = {
   model_calls: number;
 };
 export type CloudArtifactSummary = { id: string; path: string; size: number };
+
+export type CloudSpace = {
+  id: string;
+  name: string;
+  owner_id: string;
+  role: "viewer" | "editor" | "admin";
+};
+export type CloudSharedProject = {
+  id: string;
+  space_id: string;
+  name: string;
+  description: string;
+  space_name: string;
+  role: CloudSpace["role"];
+};
+
+export type CloudApproval = {id:string;call_id:string;tool:string;args:Record<string,unknown>;state:"pending"|"approved"|"rejected"|"consumed"|"expired";created_at:string;decided_at?:string;decided_by?:string};

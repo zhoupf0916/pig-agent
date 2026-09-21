@@ -40,7 +40,7 @@ export function registerResourceRoutes(app: Hono<CloudEnv>) {
     const p = c.get("principal");
     const run = (
       await db.query(
-        "SELECT id FROM runs WHERE id=$1 AND (owner_id=$2 OR $3)",
+        "SELECT id FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,false) END)",
         [c.req.param("id"), p.id, p.role === "admin"],
       )
     ).rows[0];

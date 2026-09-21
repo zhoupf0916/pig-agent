@@ -83,6 +83,7 @@ export const api = {
       expertId?: string | null;
       expertTeamId?: string | null;
       title?: string;
+      remoteRequireApproval?: boolean;
       executionTarget?: "local" | "remote";
       engine?: "pig" | "codex";
     },

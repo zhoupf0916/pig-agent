@@ -29,6 +29,7 @@ try {
     id: string;
     input: {
       prompt: string;
+      requireApproval?: boolean;
       files?: Array<{ path: string; content: string }>;
       messages: Session["messages"];
       workspace?: { snapshot: Parameters<typeof extractWorkspaceSnapshot>[0] };
@@ -50,7 +51,15 @@ try {
       content: input.prompt,
       createdAt: now,
     });
-  const deadline = AbortSignal.any([abort.signal, AbortSignal.timeout(Math.min(585,Math.max(30,Number(process.env.RUN_TIMEOUT_SECONDS)||210))*1000)]);
+  const deadline = AbortSignal.any([
+    abort.signal,
+    AbortSignal.timeout(
+      Math.min(
+        585,
+        Math.max(30, Number(process.env.RUN_TIMEOUT_SECONDS) || 210),
+      ) * 1000,
+    ),
+  ]);
   const result = await runAgent({
     session: {
       id,
@@ -71,6 +80,56 @@ try {
     signal: deadline,
     emit: (event) => emit({ kind: "event", event }),
     memoryPins: [],
+    authorizeTool: input.requireApproval
+      ? async (call) => {
+          async function approvalRequest(path: string, body: unknown) {
+            const r = await fetch(gateway + path, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(body),
+              signal: AbortSignal.any([deadline, AbortSignal.timeout(10000)]),
+            });
+            if (!r.ok) throw Error("无法核验云端审批，操作未执行");
+            return r.json() as Promise<{ id: string; state: string }>;
+          }
+          const approval = await approvalRequest("/approvals", call);
+          emit({
+            kind: "event",
+            event: {
+              type: "message",
+              message: {
+                id: approval.id,
+                role: "assistant",
+                content: `操作 ${call.tool} 等待审批，尚未执行。请打开「远端运行记录」审批；等待计入本次容器时限。`,
+                createdAt: new Date().toISOString(),
+              },
+            },
+          });
+          while (!deadline.aborted) {
+            const decision = await approvalRequest(
+              `/approvals/${approval.id}/poll`,
+              {},
+            );
+            if (decision.state === "approved") return true;
+            if (decision.state === "rejected") return false;
+            if (decision.state !== "pending")
+              throw Error("授权已被领取，执行结果需核验；不会自动重复操作");
+            await new Promise<void>((resolve) => {
+              const timeout = setTimeout(done, 700);
+              function done() {
+                clearTimeout(timeout);
+                deadline.removeEventListener("abort", done);
+                resolve();
+              }
+              deadline.addEventListener("abort", done, { once: true });
+            });
+          }
+          throw Error("Aborted");
+        }
+      : undefined,
     projectInstruction:
       "You are running inside an isolated cloud container. The workspace is /workspace. The control plane preserves the workspace between conversation turns. Network access is restricted.",
   });
@@ -115,7 +174,13 @@ try {
     ok: false,
     error: error instanceof Error ? error.message : "Runner failed",
     files: [],
-    snapshot: (() => { try { return packWorkspaceSnapshot("/workspace"); } catch { return undefined; } })(),
+    snapshot: (() => {
+      try {
+        return packWorkspaceSnapshot("/workspace");
+      } catch {
+        return undefined;
+      }
+    })(),
   });
   process.exitCode = 1;
 }

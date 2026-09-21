@@ -48,6 +48,12 @@ try {
     llmApiKey: "",
     codexApiKey: "",
   });
+  assert.ok(Array.isArray((await request("/api/remote/v1/spaces")).spaces));
+  assert.ok(Array.isArray((await request("/api/remote/v1/shared-projects")).projects));
+  await request("/api/remote/v1/admin/principals", "GET", undefined, 404);
+  await request("/api/remote/internal/approvals", "POST", {}, 404);
+  await request("/api/remote/v1/runs/run_missing/approvals", "GET", undefined, 404);
+  await request("/api/remote/v1/runs/run_missing/approvals/approval_missing/decision", "POST", { decision: "approve" }, 403);
   const schedule = await request(
     "/api/automations",
     "POST",
