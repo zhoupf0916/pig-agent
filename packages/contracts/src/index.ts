@@ -444,6 +444,9 @@ export type Settings = {
   runtime: AgentRuntime;
   /** Empty = look up `codex` on PATH (or `CODEX_BIN`). */
   codexBinaryPath: string;
+  /** Independent Responses provider; never implicitly uses Pig credentials. */
+  codexApiKey?: string;
+  codexBaseUrl?: string;
   /** Codex model slug, e.g. deepseek-flash. Not the pig Chat Completions model. */
   codexModel: string;
   /**
@@ -537,6 +540,7 @@ export type PublicSettings = Settings & {
   cloudStatus?: CloudStatus;
   executionSurface?: ExecutionSurface;
   llmApiKeyConfigured?: boolean;
+  codexApiKeyConfigured?: boolean;
   cloudTokenConfigured?: boolean;
 };
 export type ProjectDetail = Project & { sessions?: SessionSummary[] };

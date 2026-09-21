@@ -125,6 +125,7 @@ export function App() {
   const [liveTools, setLiveTools] = useState<LiveTool[]>([]);
   const [desktopSetup, setDesktopSetup] = useState(() => !!window.pigDesktop && localStorage.getItem("pig-agent.desktop-setup") !== "complete");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bootLoading, setBootLoading] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
   const [syncPhase, setSyncPhase] = useState<TranscriptSyncPhase>("idle");
   const [theme, setTheme] = useState<Theme>(() => loadPersistedTheme());
@@ -278,7 +279,7 @@ export function App() {
         }
       } catch (err) {
         setBootError(err instanceof Error ? err.message : String(err));
-      }
+      } finally { setBootLoading(false); }
     })();
   }, [loadSession, refreshExperts, refreshProjects, refreshTree]);
 
@@ -570,63 +571,48 @@ export function App() {
   }, [activeId, applyEvent]);
 
   const send = useCallback(async () => {
-    if (!session || streaming || abortRef.current || session.status === "running" || !draft.trim()) return;
+    if (streaming || abortRef.current || session?.status === "running" || !draft.trim()) return;
     const content = draft.trim();
     const clientMessageId = crypto.randomUUID();
-    setDraft("");
-    clearComposerDraft(session.id, browserDraftStorage());
-    setStreaming(true);
-    setLiveTools([]);
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: "running",
-            messages: [
-              ...prev.messages,
-              {
-                id: clientMessageId,
-                role: "user",
-                content,
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          }
-        : prev,
-    );
     const controller = new AbortController();
     abortRef.current = controller;
+    setStreaming(true);
+    setBootError(null);
+    let target = session;
     try {
-      await streamMessage(session.id, content, (event, seq) => {
-        if (activeIdRef.current === session.id) applyEvent(event, seq);
+      if (!target) {
+        target = await api.createSession();
+        seenSeqRef.current = new Set();
+        lastSeqRef.current = target.eventCheckpointSeq ?? 0;
+        activeIdRef.current = target.id;
+        setActiveId(target.id);
+        setSessions(prev => [target!, ...prev.filter(item => item.id !== target!.id)]);
+        setSession(target);
+        goWorkstation(target.id);
+      }
+      if (controller.signal.aborted) return;
+      setDraft("");
+      clearComposerDraft(target.id, browserDraftStorage());
+      setLiveTools([]);
+      setSession({ ...target, status: "running", messages: [...target.messages, { id: clientMessageId, role: "user", content, createdAt: new Date().toISOString() }] });
+      const targetId = target.id;
+      await streamMessage(targetId, content, (event, seq) => {
+        if (activeIdRef.current === targetId) applyEvent(event, seq);
       }, controller.signal, clientMessageId);
     } catch (err) {
-      if (controller.signal.aborted) {
-        setSession((prev) => (prev ? { ...prev, status: "idle" } : prev));
-      } else {
-        setSession((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: "idle",
-                lastError: redactSecretsForDisplay(
-                  err instanceof Error ? err.message : String(err),
-                ),
-                localRetry: "turn",
-              }
-            : prev,
-        );
-      }
+      if (!target) setBootError(err instanceof Error ? err.message : String(err));
+      else if (controller.signal.aborted) setSession(prev => prev?.id === target!.id ? { ...prev, status: "idle" } : prev);
+      else setSession(prev => prev?.id === target!.id ? { ...prev, status: "idle", lastError: redactSecretsForDisplay(err instanceof Error ? err.message : String(err)), localRetry: "turn" } : prev);
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setStreaming(false);
       void refreshSessions();
     }
-  }, [applyEvent, draft, refreshSessions, session, streaming]);
+  }, [applyEvent, draft, goWorkstation, refreshSessions, session, streaming]);
 
   const stop = useCallback(async () => {
-    if (!session) return;
     abortRef.current?.abort();
+    if (!session) return;
     try {
       await api.stopTeamRun(session.id);
     } catch {
@@ -996,6 +982,7 @@ export function App() {
               onDelete={(id) => void removeSession(id)}
             />
             <ChatPanel
+              initializing={bootLoading}
               session={session}
               draft={draft}
               streaming={streaming}

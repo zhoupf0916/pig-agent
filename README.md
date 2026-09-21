@@ -2,7 +2,7 @@
 
 一个本地优先的 AI 工作台：描述任务、审阅改动、执行工具，再核验交付结果。提供 **Web 工作台**与 **Electron 桌面客户端**，共用本地服务和接口契约。
 
-会话和工作文件保存在本机；选择 DeepSeek 等远程模型时，请求仍会发送到你配置的模型服务。支持 OpenAI 兼容 Chat Completions 接口。
+会话和工作文件保存在本机；选择 DeepSeek 等远程模型时，请求仍会发送到你配置的模型服务。Pig 使用 OpenAI 兼容 Chat Completions 接口；可选 Codex CLI 引擎使用独立的 Responses 接口。
 
 ## 能做什么
 
@@ -22,9 +22,11 @@ Electron 打包了界面和本地 Node 服务，使用者无需安装 Node.js �
 1. 选择工作目录。
 2. 填写模型接口地址、模型名和自己的 API Key。
 3. 点击「保存并测试连接」，然后进入工作台。测试会产生一次简短的模型请求。
-4. 创建任务，在「执行与验收」里审阅改动并核验产物。
+4. 直接输入即可自动创建任务，在「执行与验收」里审阅改动并核验产物。
 
 开发者可执行 `pnpm desktop:dist` 生成 DMG / ZIP，输出在根目录 `release/`。GitHub 的 **Desktop / Package macOS** workflow 也会生成可下载的构建附件。当前属于**未签名、未公证的内部测试包**；正式公开分发前仍需配置 Apple Developer 签名、公证和更新发布流程。暂未提供 Windows / Linux 安装包。
+
+0.1.1 已接入 Codex 独立密钥、同提供商显式复用与真实 CLI 连接检测。Codex 是执行引擎，模型仍由所配置的提供商决定；不复用当前 ChatGPT 应用账号。Codex 写入遵循自身沙箱，不经过 Pig 的逐项审阅。
 
 密钥通过 Electron `safeStorage` 加密，普通设置和会话保存在应用数据目录。菜单「帮助」提供数据目录入口与不含密钥、会话内容的诊断导出。详见 [桌面运行、打包与分发](docs/desktop.md)。
 
@@ -89,5 +91,6 @@ pnpm desktop:smoke      # 真 Electron + 本机假模型，验证鉴权与密钥
 - [架构与依赖规则](docs/architecture.md)
 - [桌面客户端](docs/desktop.md)
 - [交付链路与验收](docs/delivery-loop.md)
+- [2026-09-21 回归报告](docs/regression-2026-09-21.md)
 - [人工验收清单](MANUAL_TEST.md)
 - [Cloud 运行时](docs/cloud-runtime.md) / [Codex 运行时](docs/codex-runtime.md)

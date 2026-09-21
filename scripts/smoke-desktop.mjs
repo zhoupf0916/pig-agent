@@ -11,7 +11,7 @@ const data = await mkdtemp(join(tmpdir(), "pig-desktop-smoke-"));
 let calls = 0;
 const model = createServer(async (request, response) => {
   if (
-    request.url !== "/v1/chat/completions" ||
+    !["/v1/chat/completions", "/v1/responses"].includes(request.url) ||
     request.headers.authorization !== "Bearer desktop-smoke-fake-key"
   ) {
     response.writeHead(401).end();
@@ -21,7 +21,13 @@ const model = createServer(async (request, response) => {
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString());
   calls++;
-  if (body.stream) {
+  if (request.url === "/v1/responses") {
+    const item = { id: "msg_codex", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "CODEX_OK", annotations: [] }] };
+    const result = { id: "resp_codex", object: "response", created_at: Math.floor(Date.now()/1000), model: "deepseek-flash", status: "completed", output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } };
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    for (const event of [{ type: "response.created", response: { ...result, status: "in_progress", output: [] } }, { type: "response.output_item.done", output_index: 0, item }, { type: "response.completed", response: result }]) response.write(`data: ${JSON.stringify(event)}\n\n`);
+    response.end();
+  } else if (body.stream) {
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     response.write(
       "data: " +
@@ -67,6 +73,7 @@ try {
       env: {
         ...process.env,
         PIG_DESKTOP_SMOKE: "1",
+        PIG_DESKTOP_SMOKE_CODEX_BIN: join(root, "node_modules/.bin/codex"),
         PIG_DESKTOP_SMOKE_RESTART: String(attempt),
         PIG_DESKTOP_USER_DATA: data,
         PIG_DESKTOP_SMOKE_MODEL_URL: `http://127.0.0.1:${model.address().port}/v1`,
@@ -88,7 +95,7 @@ try {
       });
     });
     const result = JSON.parse(await readFile(join(data, "smoke.json"), "utf8"));
-    if (!result.ok || calls !== (attempt + 1) * 2)
+    if (!result.ok || calls !== (attempt + 1) * 5)
       throw new Error(
         `Desktop smoke failed: ${JSON.stringify(result)}, mock calls=${calls}`,
       );

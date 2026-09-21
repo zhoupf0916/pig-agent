@@ -16,6 +16,7 @@ import {
   DEFAULT_SETTINGS,
   ensureDir,
   resolveFromProject,
+  resolveCodexBaseUrl,
 } from "../config.ts";
 import type { AgentRuntime, CloudMode, Settings } from "../types.ts";
 import { atomicWriteJson } from "../util.ts";
@@ -71,6 +72,8 @@ export function normalizeSettings(raw: Partial<Settings> = {}): Settings {
     codexBinaryPath: (
       raw.codexBinaryPath ?? DEFAULT_SETTINGS.codexBinaryPath
     ).trim(),
+    codexApiKey: raw.codexApiKey ?? "",
+    codexBaseUrl: (raw.codexBaseUrl || resolveCodexBaseUrl()).trim(),
     codexModel: (raw.codexModel || DEFAULT_SETTINGS.codexModel).trim(),
     codexNetworkAccess: raw.codexNetworkAccess === true,
     cloudBaseUrl: normalizeCloudBaseUrl(
@@ -110,6 +113,8 @@ export async function saveSettings(
     workspaceRoot: patch.workspaceRoot ?? current.workspaceRoot,
     runtime: patch.runtime ?? current.runtime,
     codexBinaryPath: patch.codexBinaryPath ?? current.codexBinaryPath,
+    codexApiKey: patch.codexApiKey?.trim() || current.codexApiKey || "",
+    codexBaseUrl: patch.codexBaseUrl ?? current.codexBaseUrl,
     codexModel: patch.codexModel ?? current.codexModel,
     codexNetworkAccess:
       patch.codexNetworkAccess !== undefined
@@ -141,8 +146,9 @@ export async function saveSettings(
     await desktopSecrets.write({
       llmApiKey: next.llmApiKey,
       cloudToken: next.cloudToken,
+      codexApiKey: next.codexApiKey || "",
     });
-    await atomicWriteJson(FILE, { ...next, llmApiKey: "", cloudToken: "" });
+    await atomicWriteJson(FILE, { ...next, llmApiKey: "", cloudToken: "", codexApiKey: "" });
   } else {
     await atomicWriteJson(FILE, next);
   }
@@ -154,6 +160,7 @@ export async function saveSettings(
 
 export function publicSettings(settings: Settings): Settings & {
   llmApiKeyConfigured?: boolean;
+  codexApiKeyConfigured?: boolean;
   cloudTokenConfigured?: boolean;
   workspaceExists: boolean;
   codexStatus: ReturnType<typeof inspectCodexStatus>;
@@ -162,6 +169,8 @@ export function publicSettings(settings: Settings): Settings & {
 } {
   return {
     ...settings,
+    codexApiKey: "",
+    codexApiKeyConfigured: !!settings.codexApiKey,
     ...(desktopSecrets
       ? {
           llmApiKey: "",

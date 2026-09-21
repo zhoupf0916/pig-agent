@@ -18,16 +18,23 @@ export function DesktopSetup({
   });
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [savedKey, setSavedKey] = useState(!!settings.llmApiKeyConfigured);
   const [connected, setConnected] = useState(false);
   async function save(test: boolean) {
     setBusy(true);
     setStatus("");
     setConnected(false);
     try {
-      const next = await api.saveSettings(form);
+      const host = new URL(form.llmBaseUrl).hostname;
+      if (!form.llmApiKey.trim() && !savedKey && ["api.deepseek.com", "api.openai.com"].includes(host)) {
+        throw new Error("请先填写此模型服务的 API Key，再测试连接或进入工作台。");
+      }
+      const next = await api.saveSettings({ ...form, runtime: "pig" });
+      if (!next.workspaceExists) throw new Error("工作目录不存在，请选择已有文件夹。");
+      setSavedKey(!!next.llmApiKeyConfigured);
       setForm((value) => ({ ...value, llmApiKey: "" }));
       if (test) {
-        const response = await fetch("/api/desktop/test-connection", {
+        const response = await fetch("/api/settings/test-connection", {
           method: "POST",
         });
         const result = await response.json();

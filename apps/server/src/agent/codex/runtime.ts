@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { codexEnvironment } from "./environment.ts";
+import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { AgentEvent, Artifact, ChatMessage, Session, Settings } from "../../types.ts";
 import { capText, newId, nowIso } from "../../util.ts";
@@ -20,6 +21,7 @@ export async function runCodexAgent(options: {
   signal: AbortSignal;
   emit: (event: AgentEvent) => void;
   hooks?: CodexProcessHooks;
+  environment?: NodeJS.ProcessEnv;
   projectInstruction?: string;
   expertInstruction?: string;
 }): Promise<Session> {
@@ -45,8 +47,9 @@ export async function runCodexAgent(options: {
 
   try {
     progress.begin("env");
-    const { binary, home } = assertCodexReady(settings);
-    const synced = await syncCodexHome(settings, { home });
+    const env = codexEnvironment(settings, options.environment ?? process.env);
+    const { binary, home } = assertCodexReady(settings, env);
+    const synced = await syncCodexHome(settings, { home, env });
     const workspaceReal = synced.workspaceRealPath ?? resolveTrustedWorkspace(settings.workspaceRoot);
     assertCwdMatchesWorkspace(workspaceReal, workspaceReal);
 
@@ -60,6 +63,7 @@ export async function runCodexAgent(options: {
       throw new Error("No user/assistant text to send to Codex");
     }
 
+    const turnMessageStart = session.messages.length;
     const artifacts = new Map<string, Artifact>(session.artifacts.map((a) => [a.path, a]));
     const snapshot = snapshotTextFiles(workspaceReal);
     const pending = new Map<string, { name: string; args: unknown; startedAt: number; assistantId: string }>();
@@ -178,6 +182,7 @@ export async function runCodexAgent(options: {
     progress.begin("spawn");
     const result = await runCodexExec({
       binary,
+      env,
       prompt,
       workspaceReal,
       home,
@@ -205,7 +210,7 @@ export async function runCodexAgent(options: {
       return failCodexTurn(session, new CodexSessionError(detail), emit, releaseBootstrap);
     }
 
-    if (!session.messages.some((m) => m.role === "assistant" && m.content.trim())) {
+    if (!session.messages.slice(turnMessageStart).some((m) => m.role === "assistant" && m.content.trim())) {
       releaseBootstrap();
       const fallback: ChatMessage = {
         id: newId("msg"),
@@ -291,6 +296,7 @@ function recordArtifact(
   let before = snapshot.get(rel);
   if (action !== "deleted" && existsSync(abs)) {
     try {
+      if (!isInsideWorkspace(workspaceReal, realpathSync(abs))) return;
       after = readFileSync(abs, "utf8");
     } catch {
       after = undefined;
@@ -333,7 +339,8 @@ function snapshotTextFiles(root: string): Map<string, string> {
       if (name.startsWith(".") || name === "node_modules" || name === "dist") continue;
       const full = resolve(dir, name);
       try {
-        const st = statSync(full);
+        const st = lstatSync(full);
+        if (st.isSymbolicLink()) continue;
         if (st.isDirectory()) {
           walk(full, depth - 1);
         } else if (st.isFile() && st.size < 200_000) {

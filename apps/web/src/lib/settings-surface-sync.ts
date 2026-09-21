@@ -44,6 +44,10 @@ export function settingsFormSyncKey(settings: Settings | null): string {
     normalizeSettingsText(settings.workspaceRoot),
     normalizeSettingsText(settings.codexBinaryPath),
     normalizeSettingsText(settings.codexModel),
+    normalizeSettingsText(settings.codexBaseUrl),
+    JSON.stringify(settings.codexStatus),
+    String(settings.codexApiKeyConfigured),
+    String(settings.llmApiKeyConfigured),
     settings.codexNetworkAccess ? "1" : "0",
     normalizeSettingsText(settings.cloudBaseUrl),
     settings.cloudMode === "remote" ? "remote" : "local-stub",
@@ -64,6 +68,7 @@ function keepLocalSecrets(prev: Settings, next: Settings): Settings {
     ...next,
     llmApiKey: prev.llmApiKey,
     cloudToken: prev.cloudToken,
+    codexApiKey: prev.codexApiKey,
   };
 }
 
@@ -95,6 +100,8 @@ export function applyOpenSettingsFormSnapshot(prev: Settings, next: Settings): S
     runtime: next.runtime,
     codexBinaryPath: next.codexBinaryPath,
     codexModel: next.codexModel,
+    codexBaseUrl: next.codexBaseUrl,
+    codexApiKeyConfigured: next.codexApiKeyConfigured,
     codexNetworkAccess: next.codexNetworkAccess,
     cloudBaseUrl: next.cloudBaseUrl,
     cloudMode: next.cloudMode,
