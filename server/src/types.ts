@@ -10,6 +10,7 @@ export type ChatMessage = {
   id: string;
   role: Role;
   content: string;
+  reasoningContent?: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
   toolOk?: boolean;
@@ -44,6 +45,7 @@ export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 export type LocalRetryKind = "turn" | "unavailable";
 
 export type Session = {
+  deliveryMode?: boolean;
   id: string;
   title: string;
   createdAt: string;

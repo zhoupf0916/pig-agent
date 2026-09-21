@@ -1,6 +1,6 @@
 # Pig Agent
 
-纯本地、纯 Web 的 AI Agent 工作台（WorkBuddy 风格）。在浏览器里用自然语言描述目标，Agent **规划 → 调工具 → 校验 → 交付产物**，文件与命令只作用于本机沙箱工作区。
+纯本地、纯 Web 的 AI Agent 工作台（WorkBuddy 风格）。在浏览器里用自然语言描述目标，Agent **规划 → 调工具 → 校验 → 交付产物**，文件工具访问配置的工作区；命令可选择宿主机或 Docker 容器执行。宿主机模式不提供操作系统级隔离。
 
 A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent plans, calls sandboxed tools, verifies, and leaves reviewable artifacts. No Electron/Tauri. No mandatory cloud except the LLM endpoint you configure.
 
@@ -29,11 +29,17 @@ A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent
 
 这是协作 + 同步 + 本机专家 + 本机自动化 + 本机搜索 + 可写记忆的 **第一刀**，不是完整 neo-cloud-agent：没有 Desk Remote、Firecracker、Java Agent loop、管理台、专家市场、公网 webhook、向量记忆。默认运行时仍是 **pig**；已有 **codex** 与 **cloud**（local-stub / remote）保持可用。顶栏与设置会标出当前执行面（Pig / Codex / 云端含 remote URL）；本机 Pig 密钥/网关/工具失败、本机 Codex 缺二进制/启动失败/会话出错给出可读中文原因并可 **重试本轮**（不重复插入用户消息，会话回到 idle）；远程断连 / 超时 / 过期给出可读中文原因并可重试（继续跟进或重新创建运行），停止后下一轮不会僵尸。
 
+### 可审阅的任务交付
+
+本机 Pig 新增 **执行与验收** 抽屉：目标目录与命令环境确认、写入前差异审阅、逐项批准／拒绝、文件快照撤销、磁盘结果核验、上传资料、保留工具历史继续任务、用量与预算、Docker 命令运行、内置及自定义任务模板。新任务默认先审阅后写入；批准后点“继续任务”完成后续验证。
+
+详见 [交付链路与验收步骤](./docs/delivery-loop.md)。这些增强当前针对 Pig；不改变 Codex / 远程 Cloud 的执行协议。
+
 ### 快速开始
 
 环境要求：Node.js 22.13+（建议 24）和 pnpm 11.19.0。仓库通过 `packageManager` 固定 pnpm 版本；`pnpm-workspace.yaml` 只允许 esbuild 的依赖构建脚本。
 
-需要 [Node.js](https://nodejs.org/) 20+。推荐 pnpm（也可用 npm）。
+使用上述 Node.js 与 pnpm 版本以保持本地与 CI 一致。
 
 ```bash
 pnpm install

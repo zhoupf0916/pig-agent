@@ -1,0 +1,159 @@
+import { runningTurns } from "../agent/turn.ts";
+import { createServer } from "node:http";
+import { mkdtemp, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "../app.ts";
+import { createSession, getSession, saveSession } from "../store/sessions.ts";
+import { saveSettings } from "../store/settings.ts";
+import { applyOperation, loadWorkbench, saveWorkbench, stageOperation, undoOperation, locked } from "../store/workbench.ts";
+import { dockerArgs } from "../agent/docker.ts";
+
+let root: string;
+let requests = 0;
+let history: Array<{ role: string; content: string; tool_call_id?: string }> = [];
+const llm = createServer(async (req, res) => {
+  const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk);
+  const body = JSON.parse(Buffer.concat(chunks).toString()); history = body.messages;
+  requests++;
+  const delta = requests === 1 ? { tool_calls: [{ index: 0, id: "delivery_call", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "delivery.txt", content: "verified" }) } }] } : { content: "已读取执行记录，修改已批准。" };
+  res.writeHead(200, { "Content-Type": "text/event-stream" });
+  res.end(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } })}\n\ndata: [DONE]\n\n`);
+});
+const app = createApp();
+async function post(path: string, body?: unknown) { return app.request(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) }); }
+beforeAll(async () => {
+  root = await mkdtemp(join(tmpdir(), "pig-workbench-"));
+  await new Promise<void>((resolve) => llm.listen(0, "127.0.0.1", resolve));
+  const address = llm.address(); if (!address || typeof address === "string") throw new Error("address");
+  await saveSettings({ workspaceRoot: root, runtime: "pig", llmApiKey: "test", llmBaseUrl: `http://127.0.0.1:${address.port}` });
+});
+afterAll(async () => { llm.closeAllConnections(); await new Promise<void>((resolve) => llm.close(() => resolve())); await rm(root, { recursive: true, force: true }); });
+
+describe("delivery review and recovery", () => {
+  it("pauses before writing, approves once, preserves history on continue and records provider usage", async () => {
+    const session = await createSession();
+    const response = await post(`/api/sessions/${session.id}/messages`, { content: "write a file" });
+    expect(response.status).toBe(200); await response.text();
+    await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
+    const state = await loadWorkbench(session.id, root);
+    expect(state.operations).toHaveLength(1);
+    expect(state.operations[0]?.status).toBe("pending");
+    expect(state.usage).toMatchObject({ calls: 1, input: 100, output: 20, estimated: false });
+    expect((await getSession(session.id))?.status).toBe("idle");
+    const path = `/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/approve`;
+    const both = await Promise.all([post(path), post(path)]);
+    expect(both.map((r) => r.status).sort()).toEqual([200,409]);
+    expect(await readFile(join(root, "delivery.txt"), "utf8")).toBe("verified");
+    expect((await post(path)).status).toBe(409);
+    const resumed = await post(`/api/sessions/${session.id}/retry`); await resumed.text();
+    expect(history.some((m) => m.role === "tool" && m.tool_call_id === "delivery_call" && m.content.startsWith("applied:"))).toBe(true);
+    expect((await getSession(session.id))?.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    expect((await loadWorkbench(session.id, root)).usage.calls).toBe(2);
+    const undo = await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/undo`);
+    expect(undo.status).toBe(200); await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
+  });
+  it("blocks approval and undo if disk content changed externally", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    await writeFile(join(root, "conflict.txt"), "one");
+    const op = await stageOperation(state, "conflict", "write_file", { path: "conflict.txt", content: "two" });
+    await writeFile(join(root, "conflict.txt"), "outside");
+    await expect(applyOperation(session.id, state, op)).rejects.toThrow("已变化");
+    expect(await readFile(join(root, "conflict.txt"), "utf8")).toBe("outside");
+    await writeFile(join(root, "conflict.txt"), "one"); await applyOperation(session.id, state, op);
+    await writeFile(join(root, "conflict.txt"), "three"); await expect(undoOperation(session.id, state, op)).rejects.toThrow("已变化");
+  });
+  it("restores exact binary content for move and delete, and previews edits and patches", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    const binary = Buffer.from([0,1,255,17]); await writeFile(join(root, "binary.dat"), binary);
+    const move = await stageOperation(state, "move", "move_file", { from: "binary.dat", to: "moved.dat" });
+    await applyOperation(session.id, state, move); await undoOperation(session.id, state, move);
+    expect(await readFile(join(root, "binary.dat"))).toEqual(binary);
+    const del = await stageOperation(state, "delete", "delete_file", { path: "binary.dat" });
+    await applyOperation(session.id, state, del); await undoOperation(session.id, state, del);
+    expect(await readFile(join(root, "binary.dat"))).toEqual(binary);
+    await writeFile(join(root, "edit.txt"), "first\n");
+    const edit = await stageOperation(state, "edit", "edit_file", { path: "edit.txt", old_string: "first", new_string: "second" });
+    expect(Buffer.from(edit.after[0]!.data!, "base64").toString()).toBe("second\n");
+    await applyOperation(session.id, state, edit);
+    const patch = await stageOperation(state, "patch", "apply_patch", { path: "edit.txt", replacements: [{ old_string: "second", new_string: "third" }] });
+    await applyOperation(session.id, state, patch); expect(await readFile(join(root,"edit.txt"),"utf8")).toBe("third\n");
+  });
+  it("rejects paths outside the workspace and symlink escapes", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    await expect(stageOperation(state, "outside", "write_file", { path: "../outside.txt", content: "bad" })).rejects.toThrow();
+    await symlink(tmpdir(), join(root,"escape"));
+    await expect(stageOperation(state, "link", "write_file", { path: "escape/outside.txt", content: "bad" })).rejects.toThrow();
+  });
+  it("blocks new model requests once call budget is exhausted", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    state.policy.maxCalls = 1; state.usage.calls = 1; await saveWorkbench(session.id, state);
+    const before = requests;
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "do something" })).text();
+    expect(requests).toBe(before); expect((await getSession(session.id))?.lastError).toContain("预算");
+  });
+  it("uploads binary files without overwrites and supports undo", async () => {
+    const session = await createSession(); const binary = new Uint8Array([0,255,2]);
+    const form = new FormData(); form.append("file", new File([binary], "example.bin"));
+    const response = await app.request(`/api/sessions/${session.id}/upload`, { method: "POST", body: form });
+    expect(response.status).toBe(200); const { path } = await response.json() as { path: string };
+    expect(await readFile(join(root,path))).toEqual(Buffer.from(binary));
+    const state = await loadWorkbench(session.id, root); await undoOperation(session.id,state,state.operations[0]!);
+    await expect(readFile(join(root,path))).rejects.toThrow();
+  });
+  it("does not re-execute an interrupted applying operation", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    const op = await stageOperation(state,"interrupted","run_shell",{command:"echo unknown"}); op.status="applying"; await saveWorkbench(session.id,state);
+    session.messages.push({id:"goal",role:"user",content:"continue",createdAt:new Date().toISOString()}); await saveSession(session);
+    expect((await post(`/api/sessions/${session.id}/retry`)).status).toBe(409);
+    expect((await post(`/api/sessions/${session.id}/workbench/${op.id}/approve`)).status).toBe(409);
+  });
+  it("rejects a queued write without touching disk and binds approval to the original workspace", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id, root);
+    const op = await stageOperation(state,"root-check","write_file",{path:"root-check.txt",content:"no"}); await saveWorkbench(session.id,state);
+    const other = await mkdtemp(join(tmpdir(),"pig-other-"));
+    try {
+      await saveSettings({workspaceRoot:other});
+      expect((await post(`/api/sessions/${session.id}/workbench/${op.id}/approve`)).status).toBe(409);
+      expect((await post(`/api/sessions/${session.id}/workbench/${op.id}/reject`)).status).toBe(200);
+      await expect(readFile(join(root,"root-check.txt"))).rejects.toThrow();
+      await expect(readFile(join(other,"root-check.txt"))).rejects.toThrow();
+    } finally { await saveSettings({workspaceRoot:root}); await rm(other,{recursive:true,force:true}); }
+  });
+  it("enforces a configured cost limit before making the next request", async () => {
+    const session = await createSession(); const state = await loadWorkbench(session.id,root);
+    state.policy.maxCost=1; state.policy.inputPrice=1; state.usage.cost=1; await saveWorkbench(session.id,state);
+    const before=requests; await (await post(`/api/sessions/${session.id}/messages`,{content:"budget"})).text();
+    expect(requests).toBe(before); expect((await getSession(session.id))?.lastError).toContain("预算");
+  });
+  it("repairs interrupted tool protocol without replaying the tool", async () => {
+    const session=await createSession();
+    session.messages=[{id:"user",role:"user",content:"inspect",createdAt:"now"},{id:"assistant",role:"assistant",content:"",createdAt:"now",toolCalls:[{id:"lost-read",name:"read_file",arguments:'{"path":"unknown"}'}]}];
+    session.status="running"; await saveSession(session);
+    await (await post(`/api/sessions/${session.id}/retry`)).text();
+    expect(history.find((m)=>m.tool_call_id==="lost-read")?.content).toContain("结果未知");
+    expect((await getSession(session.id))?.messages.filter((m)=>m.toolCallId==="lost-read")).toHaveLength(1);
+  });
+  it("can stop an approved long-running command and requires review after interruption", async () => {
+    const session=await createSession(); const state=await loadWorkbench(session.id,root);
+    const op=await stageOperation(state,"slow","run_shell",{command:"sleep 20 & wait"}); await saveWorkbench(session.id,state);
+    const approval=post(`/api/sessions/${session.id}/workbench/${op.id}/approve`);
+    for(let i=0;i<100 && !runningTurns.has(session.id);i++) await new Promise((resolve)=>setTimeout(resolve,10));
+    expect(runningTurns.has(session.id)).toBe(true);
+    expect((await post(`/api/sessions/${session.id}/abort`)).status).toBe(200);
+    expect((await approval).status).toBe(409);
+    expect((await loadWorkbench(session.id,root)).operations[0]?.status).toBe("error");
+  });
+  it("persists custom templates", async () => {
+    const added = await post("/api/workbench/templates",{name:"我的模板",prompt:"检查资料"}); expect(added.status).toBe(200);
+    const item = await added.json() as { id: string; name: string; prompt: string }; const list = await (await app.request("/api/workbench/templates")).json(); expect(list).toContainEqual(item);
+    await app.request(`/api/workbench/templates/${item.id}`,{method:"DELETE"}); expect(await (await app.request("/api/workbench/templates")).json()).not.toContainEqual(item);
+  });
+  it("isolates Docker invocation and rejects concurrent mutation locks", async () => {
+    const args = dockerArgs(root,"echo hello","node:22-alpine",false,"test");
+    expect(args).toContain("--read-only"); expect(args).toContain("none"); expect(args).toContain(`type=bind,src=${root},dst=/workspace`);
+    expect(args).not.toContain("/var/run/docker.sock");
+    await locked("lock-test",async()=>{ await expect(locked("lock-test",async()=>{})).rejects.toThrow("另一项操作"); });
+  });
+});

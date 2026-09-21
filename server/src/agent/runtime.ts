@@ -1,3 +1,6 @@
+import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
+import { saveSession } from "../store/sessions.ts";
+import { normalizeWorkspaceRoot } from "./sandbox.ts";
 import type {
   AgentEvent,
   Artifact,
@@ -17,7 +20,7 @@ import {
 import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
-import { executeTool, summarizeToolArgs, type ToolContext } from "./tools.ts";
+import { executeTool, summarizeToolArgs, type ToolContext, TOOL_DEFINITIONS } from "./tools.ts";
 
 export const MAX_TURNS = 20;
 export const MAX_CONSECUTIVE_ERRORS = 3;
@@ -62,7 +65,7 @@ export async function buildSystemPrompt(
 
   return [
     "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
-    "Your file tools execute in the configured workspace. The local Pig runtime uses host processes, not a Docker/VM sandbox. Model inference uses the configured provider.",
+    "Your file tools execute in the configured workspace. File access is workspace-scoped; shell execution uses the configured host or Docker mode described below. Model inference uses the configured provider.",
     "",
     "How you work (every non-trivial task):",
     "1. Plan — call update_plan with concrete, ordered steps before changing files.",
@@ -115,6 +118,10 @@ export async function runAgent(options: {
     updatedAt: nowIso(),
   };
   emit({ type: "status", status: "running" });
+  const workbench = session.deliveryMode ? await loadWorkbench(session.id, settings.workspaceRoot) : undefined;
+  if (workbench && workbench.root !== normalizeWorkspaceRoot(settings.workspaceRoot)) throw new Error("工作区已改变。请切回任务原工作区，或新建任务。原位置：" + workbench.root);
+  if (workbench?.operations.some((op) => op.status === "pending" || op.status === "applying" || op.status === "error")) throw new Error("请先处理待批准的变更；执行中断的操作需要核对，不能自动重放。");
+  if (workbench) await saveWorkbench(session.id, workbench);
 
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
   const { suggested, loaded } = await loadSuggestedSkills(lastUser?.content ?? "");
@@ -149,12 +156,17 @@ export async function runAgent(options: {
     createdAt: nowIso(),
   };
 
+  if (workbench) system.content += `\nExecution mode: ${workbench.policy.shell}. File tools use ${workbench.root}. Shell commands ${workbench.policy.shell === "docker" ? "execute inside a Docker container at /workspace; only workspace is mounted, root filesystem is read-only" : "execute on the host"}. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed with a durable journal"}.`;
+
   const artifacts = new Map<string, Artifact>(
     session.artifacts.map((a) => [a.path, a]),
   );
 
   const ctx: ToolContext = {
     workspaceRoot: settings.workspaceRoot,
+    shellMode: workbench?.policy.shell,
+    dockerImage: workbench?.policy.image,
+    dockerNetwork: workbench?.policy.network,
     artifacts: session.artifacts,
     signal,
     recordArtifact: (path, action, extra) => {
@@ -190,15 +202,51 @@ export async function runAgent(options: {
         });
       }
 
-      const { content, toolCalls } = await complete(settings, history, {
+      const inputEstimate = history.reduce((n, m) => n + m.content.length + (m.reasoningContent?.length ?? 0) + JSON.stringify(m.toolCalls ?? []).length, 0) + JSON.stringify(TOOL_DEFINITIONS).length;
+      let remaining = workbench ? workbench.policy.maxTokens - workbench.usage.input - workbench.usage.output - inputEstimate : 4096;
+      if (workbench && workbench.policy.maxCost > 0) {
+        const moneyLeft = workbench.policy.maxCost - workbench.usage.cost - inputEstimate * workbench.policy.inputPrice / 1000000;
+        if (moneyLeft <= 0) remaining = 0;
+        else if (workbench.policy.outputPrice > 0) remaining = Math.min(remaining, Math.floor(moneyLeft * 1000000 / workbench.policy.outputPrice));
+      }
+      if (workbench && (workbench.usage.calls >= workbench.policy.maxCalls || remaining < 128)) throw new Error("任务预算已到上限。请在执行设置中增加调用或 token 预算后继续。");
+      let reported: { prompt_tokens: number; completion_tokens: number } | undefined;
+      const modelStarted = Date.now();
+      if (workbench) { workbench.usage.calls++; await saveWorkbench(session.id, workbench); }
+      const { content, toolCalls, reasoningContent } = await complete(settings, history, {
         signal,
+        maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
+        onUsage: workbench ? (usage) => { reported = usage; } : undefined,
         onDelta: (text) => emit({ type: "token", text }),
+      }).catch(async (err) => {
+        if (workbench) {
+          const reservedOutput = Math.min(4096, remaining);
+          workbench.usage.input += inputEstimate;
+          workbench.usage.output += reservedOutput;
+          workbench.usage.estimated = true;
+          workbench.usage.durationMs += Date.now() - modelStarted;
+          workbench.usage.cost += (inputEstimate * workbench.policy.inputPrice + reservedOutput * workbench.policy.outputPrice) / 1000000;
+          await saveWorkbench(session.id, workbench);
+        }
+        throw err;
       });
 
+      if (workbench) {
+        const valid = reported && Number.isFinite(reported.prompt_tokens) && Number.isFinite(reported.completion_tokens) && reported.prompt_tokens >= 0 && reported.completion_tokens >= 0;
+        const input = valid ? reported!.prompt_tokens : inputEstimate;
+        const output = valid ? reported!.completion_tokens : content.length + JSON.stringify(toolCalls).length;
+        workbench.usage.input += input;
+        workbench.usage.output += output;
+        workbench.usage.estimated ||= !valid;
+        workbench.usage.durationMs += Date.now() - modelStarted;
+        workbench.usage.cost += (input * workbench.policy.inputPrice + output * workbench.policy.outputPrice) / 1000000;
+        await saveWorkbench(session.id, workbench);
+      }
       const assistant: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
         content,
+        reasoningContent: reasoningContent ?? "",
         toolCalls: toolCalls.length ? toolCalls : undefined,
         createdAt: nowIso(),
       };
@@ -207,7 +255,7 @@ export async function runAgent(options: {
 
       if (toolCalls.length === 0 || forceSummary) {
         if (!content.trim() && session.artifacts.length > 0) {
-          const fallback = deliverableSummary(session, "工作已完成。");
+          const fallback = deliverableSummary(session, "模型未返回最终说明。已有产物如下，请根据验收清单核对；不能据此确认任务完成。");
           const extra: ChatMessage = {
             id: newId("msg"),
             role: "assistant",
@@ -221,6 +269,8 @@ export async function runAgent(options: {
       }
 
       let turnHadError = false;
+      let awaitingReview = false;
+      if (workbench) await saveSession(session);
       for (const call of toolCalls) {
         if (signal.aborted) throw new Error("Aborted");
         if (forceSummary) break;
@@ -247,14 +297,30 @@ export async function runAgent(options: {
         let output = "";
         let ok = true;
         try {
-          const result = await executeTool(call.name, parsed, ctx);
-          output = result.output;
+          if (workbench && MUTATIONS.has(call.name)) {
+            const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
+            await saveWorkbench(session.id, workbench);
+            if (workbench.policy.review) {
+              awaitingReview = true;
+              output = `待批准，尚未执行。变更单 ${op.id}；目标工作区 ${op.root}；环境 ${op.environment}。请在执行与验收中审阅。`;
+            } else {
+              await applyOperation(session.id, workbench, op, signal);
+              output = op.output ?? "已执行";
+              for (const artifact of op.artifacts ?? []) ctx.recordArtifact(artifact.path, artifact.action, artifact);
+            }
+          } else if (awaitingReview && call.name !== "update_plan") {
+            output = "前序变更等待批准，本工具未执行。批准后继续任务。";
+          } else {
+            const result = await executeTool(call.name, parsed, ctx);
+            output = result.output;
+          }
           if (call.name !== "update_plan") {
-            markToolStep(session, call.name, "done", output.slice(0, 180));
+            markToolStep(session, call.name, awaitingReview ? "pending" : "done", output.slice(0, 180));
             emit({ type: "steps", steps: session.steps });
           }
         } catch (err) {
           ok = false;
+          if (workbench?.operations.some((op) => op.callId === call.id && op.status === "error")) awaitingReview = true;
           turnHadError = true;
           output = err instanceof Error ? err.message : String(err);
           if (err instanceof SandboxError) {
@@ -277,8 +343,14 @@ export async function runAgent(options: {
         session.messages.push(toolMsg);
         emit({ type: "tool_end", id: call.id, name: call.name, ok, output, durationMs });
         emit({ type: "message", message: toolMsg });
+        if (workbench) await saveSession(session);
       }
 
+      if (awaitingReview) {
+        const notice: ChatMessage = { id: newId("msg"), role: "assistant", content: workbench?.operations.some((op) => op.status === "error") ? "变更执行异常，可能已有部分影响。请在「执行与验收」核对文件与执行记录，确认后再继续。" : "已准备好变更预览，尚未执行。请打开「执行与验收」核对目标路径、差异或命令，批准后点击「继续任务」。", createdAt: nowIso() };
+        session.messages.push(notice); emit({ type: "message", message: notice });
+        return finishIdle(session, emit);
+      }
       if (turnHadError) {
         consecutiveErrors += 1;
         session.messages.push({
@@ -394,7 +466,7 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
   if (!system) return messages;
   let kept = [...rest];
   const size = () =>
-    kept.reduce((n, m) => n + m.content.length + (m.toolCalls?.length ?? 0) * 80, 0);
+    kept.reduce((n, m) => n + m.content.length + (m.reasoningContent?.length ?? 0) + JSON.stringify(m.toolCalls ?? []).length, 0);
   while (kept.length > 8 && size() > MAX_HISTORY_CHARS) {
     kept = kept.slice(2);
   }
