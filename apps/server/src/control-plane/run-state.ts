@@ -44,6 +44,7 @@ export async function reconcileRemoteSession(session: Session): Promise<void> {
       applyRemoteEvent(session, event);
   }
   if (transcript?.length) session.messages = transcript;
+  session.remoteRequireApproval=remote.require_approval;
   session.remoteState = remote.state;
   session.status = isRemoteActive(remote.state)
     ? "running"

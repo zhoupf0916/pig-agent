@@ -173,8 +173,9 @@ export function createApp(): Hono {
       title?: string;
       executionTarget?: "local" | "remote";
       engine?: "pig" | "codex";
+      remoteRequireApproval?: boolean;
     };
-    if (body.executionTarget !== undefined || body.engine !== undefined) {
+    if (body.executionTarget !== undefined || body.engine !== undefined || body.remoteRequireApproval !== undefined) {
       if (runningTurns.has(session.id) || session.status === "running") return c.json({error:"运行期间不能切换执行配置"},409);
       if (session.remoteState && isRemoteActive(session.remoteState)) {
         try {await reconcileRemoteSession(session);} catch {return c.json({error:"先恢复控制面连接并确认远端运行已结束"},409);}
@@ -184,6 +185,11 @@ export function createApp(): Hono {
       const engine = body.engine ?? session.engine ?? "pig";
       if (!["local","remote"].includes(target) || !["pig","codex"].includes(engine) || (target === "remote" && engine !== "pig")) return c.json({error:"当前远端仅支持 Pig 引擎"},400);
       if (target !== session.executionTarget) {delete session.remoteRunId;delete session.remoteState;delete session.remoteRetry;}
+      if(body.remoteRequireApproval !== undefined){
+        if(typeof body.remoteRequireApproval !== "boolean")return c.json({error:"审批设置无效"},400);
+        if(session.remoteRunId && body.remoteRequireApproval !== !!session.remoteRequireApproval)return c.json({error:"审批策略已随远端会话固定，请新建会话调整"},409);
+        session.remoteRequireApproval=body.remoteRequireApproval;
+      }
       session.executionTarget = target;
       session.engine = engine;
     }

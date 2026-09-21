@@ -32,6 +32,8 @@
     "cloud:smoke:schedules": "node scripts/smoke-cloud-schedules.mjs",
     "cloud:smoke:conversations": "node scripts/smoke-cloud-conversations.mjs",
     "cloud:smoke:platform": "node scripts/smoke-cloud-platform.mjs",
+    "cloud:smoke:collaboration": "node scripts/smoke-cloud-collaboration.mjs",
+    "cloud:smoke:approvals": "node scripts/smoke-cloud-approvals.mjs",
     "cloud:backup": "node scripts/cloud-backup.mjs",
     "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore"
   },

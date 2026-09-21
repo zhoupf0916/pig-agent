@@ -1,5 +1,6 @@
 import pg from "pg";
 import { createHash } from "node:crypto";
+import { collaborationSchema } from "./collaboration-schema.ts";
 export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -55,6 +56,7 @@ export async function migrate() {
       outcome text NOT NULL, run_id text REFERENCES runs(id), PRIMARY KEY(schedule_id,scheduled_at)
     );
     CREATE TABLE IF NOT EXISTS events (seq bigserial PRIMARY KEY, run_id text NOT NULL REFERENCES runs(id), event jsonb NOT NULL);
+    CREATE TABLE IF NOT EXISTS approvals(id text PRIMARY KEY,run_id text NOT NULL REFERENCES runs(id),call_id text NOT NULL,tool text NOT NULL,args jsonb NOT NULL,state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','approved','rejected','consumed')),created_at timestamptz NOT NULL DEFAULT now(),decided_at timestamptz,decided_by text REFERENCES principals(id),UNIQUE(run_id,call_id));
     CREATE INDEX IF NOT EXISTS events_run ON events(run_id,seq);
     CREATE TABLE IF NOT EXISTS artifacts (id text PRIMARY KEY, run_id text NOT NULL REFERENCES runs(id), path text NOT NULL, content text NOT NULL);
     CREATE TABLE IF NOT EXISTS workers (id text PRIMARY KEY, seen_at timestamptz NOT NULL DEFAULT now());
@@ -62,6 +64,7 @@ export async function migrate() {
     ALTER TABLE workers ADD COLUMN IF NOT EXISTS capacity int NOT NULL DEFAULT 3 CHECK(capacity BETWEEN 1 AND 16);
     CREATE TABLE IF NOT EXISTS audit (id bigserial PRIMARY KEY, actor text NOT NULL, action text NOT NULL, run_id text, created_at timestamptz NOT NULL DEFAULT now());
   `);
+    await client.query(collaborationSchema);
     for (const [id, name, role, token] of [
       ["admin", "本机管理员", "admin", process.env.ADMIN_TOKEN],
       ["member", "本机体验账号", "member", process.env.MEMBER_TOKEN],

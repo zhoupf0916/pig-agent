@@ -86,6 +86,7 @@ export type Session = {
   remoteRequestKey?: string;
   /** Follow-up response is uncertain; retry the same parent and idempotency key. */
   remoteFollowUpPending?: boolean;
+  remoteRequireApproval?: boolean;
   /** Optional local expert / playbook pinned to this session. */
   expertId?: string;
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */

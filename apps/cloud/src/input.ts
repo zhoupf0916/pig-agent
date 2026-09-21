@@ -2,6 +2,8 @@ import { z } from "zod";
 export const inputSchema = z.object({
   prompt: z.string().trim().min(1).max(32000),
   sessionId: z.string().max(100).optional(),
+  projectId: z.string().regex(/^project_[a-f0-9]{32}$/).optional(),
+  requireApproval: z.boolean().optional(),
   files: z
     .array(
       z.object({

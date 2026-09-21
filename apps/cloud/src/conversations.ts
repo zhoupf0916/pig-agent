@@ -15,7 +15,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         await db.query(
           `SELECT c.*, r.id AS last_run_id,r.state FROM conversations c
      LEFT JOIN LATERAL (SELECT id,state FROM runs WHERE conversation_id=c.id ORDER BY created_at DESC LIMIT 1) r ON true
-     WHERE c.owner_id=$1 ORDER BY c.updated_at DESC LIMIT 100`,
+     WHERE CASE WHEN c.project_id IS NULL THEN c.owner_id=$1 ELSE project_access(c.project_id,$1,false) END ORDER BY c.updated_at DESC LIMIT 100`,
           [c.get("principal").id],
         )
       ).rows,
@@ -25,7 +25,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
     const p = c.get("principal");
     const conversation = (
       await db.query(
-        "SELECT * FROM conversations WHERE id=$1 AND (owner_id=$2 OR $3)",
+        "SELECT * FROM conversations WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,false) END)",
         [c.req.param("id"), p.id, p.role === "admin"],
       )
     ).rows[0];
@@ -60,7 +60,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
     const p = c.get("principal");
     const version = (
       await db.query(
-        `SELECT v.snapshot FROM workspace_versions v JOIN conversations c ON c.id=v.conversation_id WHERE c.id=$1 AND v.run_id=$2 AND (c.owner_id=$3 OR $4)`,
+        `SELECT v.snapshot FROM workspace_versions v JOIN conversations c ON c.id=v.conversation_id WHERE c.id=$1 AND v.run_id=$2 AND ($4 OR CASE WHEN c.project_id IS NULL THEN c.owner_id=$3 ELSE project_access(c.project_id,$3,false) END)`,
         [c.req.param("id"), c.req.param("run"), p.id, p.role === "admin"],
       )
     ).rows[0];
@@ -87,10 +87,10 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         p.id,
       ]);
       const parent = (
-        await client.query("SELECT * FROM runs WHERE id=$1 AND owner_id=$2", [
-          c.req.param("id"),
-          p.id,
-        ])
+        await client.query(
+          "SELECT * FROM runs WHERE id=$1 AND CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END",
+          [c.req.param("id"), p.id],
+        )
       ).rows[0];
       if (!parent) {
         await client.query("ROLLBACK");
@@ -120,8 +120,13 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         parent.conversation_id || "conv_" + randomUUID().replaceAll("-", "");
       if (!parent.conversation_id) {
         await client.query(
-          "INSERT INTO conversations(id,owner_id,title) VALUES($1,$2,$3)",
-          [conversationId, p.id, parent.input.prompt.slice(0, 100)],
+          "INSERT INTO conversations(id,owner_id,title,project_id) VALUES($1,$2,$3,$4)",
+          [
+            conversationId,
+            p.id,
+            parent.input.prompt.slice(0, 100),
+            parent.project_id || null,
+          ],
         );
         await client.query("UPDATE runs SET conversation_id=$2 WHERE id=$1", [
           parent.id,
