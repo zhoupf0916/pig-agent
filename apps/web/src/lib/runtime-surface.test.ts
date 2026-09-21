@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeExecutionSurface } from "./runtime-surface";
+import type { Settings } from "../types";
+import { describeExecutionSurface, surfaceForSession } from "./runtime-surface";
 
 describe("describeExecutionSurface", () => {
   it("keeps unknown runtimes on 本机 Pig", () => {
@@ -20,8 +21,53 @@ describe("describeExecutionSurface", () => {
   });
 
   it("flags remote without a URL instead of looking like local-stub", () => {
-    const surface = describeExecutionSurface({ runtime: "cloud", cloudMode: "remote" });
+    const surface = describeExecutionSurface({
+      runtime: "cloud",
+      cloudMode: "remote",
+    });
     expect(surface.kind).toBe("cloud-remote");
     expect(surface.detail).toBe("未配置控制面 URL");
+  });
+});
+
+describe("surfaceForSession", () => {
+  const local = {
+    runtime: "pig",
+    llmModel: "deepseek-chat",
+    llmBaseUrl: "https://api.deepseek.com/v1",
+    cloudMode: "remote",
+    cloudBaseUrl: "http://127.0.0.1:8892",
+    executionSurface: describeExecutionSurface({ runtime: "pig" }),
+  } as Settings;
+  const cloud = {
+    ...local,
+    runtime: "cloud",
+    executionSurface: describeExecutionSurface({
+      runtime: "cloud",
+      cloudMode: "remote",
+      cloudBaseUrl: local.cloudBaseUrl,
+    }),
+  } as Settings;
+  it("uses remote session instead of cached global Pig", () => {
+    expect(
+      surfaceForSession(local, { executionTarget: "remote", engine: "pig" }),
+    ).toMatchObject({
+      runtime: "cloud",
+      kind: "cloud-remote",
+      detail: local.cloudBaseUrl,
+    });
+  });
+  it("uses local Pig session instead of cached global cloud", () => {
+    expect(
+      surfaceForSession(cloud, { executionTarget: "local", engine: "pig" }),
+    ).toMatchObject({ runtime: "pig", kind: "pig" });
+  });
+  it("uses local Codex session instead of cached global cloud", () => {
+    expect(
+      surfaceForSession(cloud, { executionTarget: "local", engine: "codex" }),
+    ).toMatchObject({ runtime: "codex", kind: "codex" });
+  });
+  it("preserves the default server surface for sessions without an override", () => {
+    expect(surfaceForSession(cloud, {})).toBe(cloud.executionSurface);
   });
 });

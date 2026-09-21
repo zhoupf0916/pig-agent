@@ -1,0 +1,49 @@
+name: Cluster acceptance
+on:
+  pull_request:
+    paths:
+      - 'apps/cloud/**'
+      - 'apps/worker/**'
+      - 'apps/server/**'
+      - 'apps/web/**'
+      - 'apps/admin/**'
+      - 'packages/**'
+      - 'infra/cluster/**'
+      - 'scripts/*cluster*'
+      - 'scripts/*product*'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/cluster.yml'
+permissions:
+  contents: read
+jobs:
+  two-planes-two-runners:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v6
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm cluster:up
+      - run: pnpm cluster:smoke
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm product:smoke
+        env:
+          PIG_BROWSER_CHANNEL: chromium
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-acceptance-evidence
+          path: |
+            data/cluster-local/evidence/*.json
+            data/product-evidence/*.png
+            data/product-evidence/*.json
+          retention-days: 14
+      - if: failure()
+        run: pnpm cluster:logs
+      - if: always()
+        run: pnpm cluster:down

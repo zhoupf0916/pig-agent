@@ -1,4 +1,4 @@
-import type { ExecutionSurface, Settings } from "../types";
+import type { ExecutionSurface, Session, Settings } from "../types";
 
 export type ExecutionSurfaceInput = {
   runtime?: Settings["runtime"] | string;
@@ -12,8 +12,13 @@ export type ExecutionSurfaceInput = {
 };
 
 /** User-visible execution-surface chip. Default runtime stays pig. */
-export function describeExecutionSurface(input: ExecutionSurfaceInput): ExecutionSurface {
-  const runtime = input.runtime === "codex" || input.runtime === "cloud" ? input.runtime : "pig";
+export function describeExecutionSurface(
+  input: ExecutionSurfaceInput,
+): ExecutionSurface {
+  const runtime =
+    input.runtime === "codex" || input.runtime === "cloud"
+      ? input.runtime
+      : "pig";
 
   if (runtime === "codex") {
     const model = input.codexModel?.trim() || "deepseek-flash";
@@ -75,6 +80,22 @@ export function surfaceFromSettings(settings: Settings): ExecutionSurface {
     cloudMode: settings.cloudMode,
     cloudBaseUrl: settings.cloudBaseUrl,
     effectiveBaseUrl: settings.cloudStatus?.effectiveBaseUrl,
+  });
+}
+
+/** A session override outranks the server's cached GLOBAL execution surface. */
+export function surfaceForSession(
+  settings: Settings,
+  session?: Pick<Session, "executionTarget" | "engine"> | null,
+): ExecutionSurface {
+  if (!session?.executionTarget) return surfaceFromSettings(settings);
+  return surfaceFromSettings({
+    ...settings,
+    executionSurface: undefined,
+    runtime:
+      session.executionTarget === "remote" ? "cloud" : session.engine || "pig",
+    cloudMode:
+      session.executionTarget === "remote" ? "remote" : settings.cloudMode,
   });
 }
 

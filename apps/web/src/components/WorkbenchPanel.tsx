@@ -19,7 +19,7 @@ function decode(data: string | null | undefined) {
   return new TextDecoder().decode(raw).slice(0, 12000);
 }
 const labels: Record<string, string> = { pending: "待批准", applying: "执行结果待核对", applied: "已执行", rejected: "已拒绝／核对", undone: "已撤销", error: "执行失败" };
-export function WorkbenchPanel({ sessionId, running, onResume, onRefresh, onDraft }: { sessionId: string; running: boolean; onResume: () => void; onRefresh: () => void; onDraft: (text: string) => void }) {
+export function WorkbenchPanel({ sessionId, remote = false, remoteRequireApproval, onOpenRemote, running, onResume, onRefresh, onDraft }: { sessionId: string; remote?: boolean; remoteRequireApproval?: boolean; onOpenRemote?: () => void; running: boolean; onResume: () => void; onRefresh: () => void; onDraft: (text: string) => void }) {
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,7 +35,7 @@ export function WorkbenchPanel({ sessionId, running, onResume, onRefresh, onDraf
   const dialog = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (!open) return;
+    if (!open || remote) return;
     dialog.current?.focus();
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -48,10 +48,11 @@ export function WorkbenchPanel({ sessionId, running, onResume, onRefresh, onDraf
     };
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("keydown", keydown); trigger.current?.focus(); };
-  }, [open]);
+  }, [open, remote]);
   const base = `/api/sessions/${sessionId}`;
   const reload = async () => setState(await request<State>(`${base}/workbench`));
   useEffect(() => {
+    if (remote) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
@@ -62,9 +63,9 @@ export function WorkbenchPanel({ sessionId, running, onResume, onRefresh, onDraf
     void poll();
     void request<typeof templates>("/api/workbench/templates").then((data) => { if (active) setTemplates(data); }).catch(() => {});
     return () => { active = false; clearTimeout(timer); };
-  }, [base]);
+  }, [base, remote]);
   const pending = state?.operations.filter((op) => op.status === "pending") ?? [];
-  useEffect(() => { if (pending.length) setOpen(true); }, [pending.length]);
+  useEffect(() => { if (pending.length && !remote) setOpen(true); }, [pending.length, remote]);
   const disabled = busy || running || state?.busy;
   async function perform(work: () => Promise<unknown>) {
     if (busy) return;
@@ -85,19 +86,23 @@ export function WorkbenchPanel({ sessionId, running, onResume, onRefresh, onDraf
     });
     if (input.current) input.current.value = "";
   }
+  if (remote) return <section className="border-b border-ink-300 bg-panel px-6 py-3 text-xs">
+    <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><ShieldCheck size={15} className="text-accent" /><span className="font-medium">执行与验收</span><span className="text-ink-500">远端容器 · 控制面调度</span></div>{onOpenRemote && <button className="btn-ghost" onClick={onOpenRemote}>查看远端运行与审批</button>}</div>
+    <p className="mt-1 text-ink-500">{remoteRequireApproval ? "写入与命令需经控制面批准后执行。" : "本会话未开启写入前审批。"} 日志、审批决定与成果由控制面保存；下载的成果可另行审阅后导入本机。</p>
+  </section>;
   if (!state) return error ? <p className="px-6 py-2 text-xs text-danger">{error}</p> : null;
   return (
     <div className="border-b border-ink-300 bg-panel">
       <button ref={trigger} className="flex w-full items-center gap-2 px-6 py-3 text-left text-xs" onClick={() => setOpen(!open)} aria-expanded={open}>
         <ShieldCheck size={15} className="text-accent" /><span className="font-medium">执行与验收</span>
-        <span className="min-w-0 flex-1 truncate text-ink-500">{state.runtime !== "pig" ? "当前运行时需使用本机 Pig 审阅" : pending.length ? `${pending.length} 项变更待批准` : `${state.policy.shell === "docker" ? "Docker" : "宿主机"} · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}</span>
+        <span className="min-w-0 flex-1 truncate text-ink-500">{state.runtime !== "pig" ? (state.runtime === "codex" ? "本机 Codex · 使用引擎自身执行权限" : "本机隔离桩 · 本地执行") : pending.length ? `${pending.length} 项变更待批准` : `${state.policy.shell === "docker" ? "Docker" : "宿主机"} · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}</span>
         <ChevronDown size={14} className={open ? "rotate-180" : ""} />
       </button>
       {open && <><button type="button" aria-label="关闭执行与验收遮罩" className="fixed inset-0 z-30 cursor-default bg-overlay" onClick={() => setOpen(false)} /><div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="执行与验收" className="fixed inset-y-4 right-4 z-40 w-[min(640px,calc(100vw-32px))] space-y-4 overflow-auto rounded-2xl border border-ink-300 bg-panel p-5 text-xs shadow-lift">
         <div className="flex items-center justify-between"><h2 className="text-base font-semibold">执行与验收</h2><button className="btn-quiet" aria-label="关闭执行与验收" onClick={() => setOpen(false)}><X size={18} /></button></div>
         <div className="rounded-xl bg-ink-100 p-3"><div className="mb-1 font-medium">本任务目标工作区</div><code className="break-all select-all">{state.root}</code><p className="mt-2 text-ink-500">批准仅适用于下列路径和命令。上传资料写入此目录的 uploads 子目录。</p></div>
         {state.currentRoot !== state.root && <p className="text-danger">设置中的工作区已改变，请切回原位置或新建任务。</p>}
-        {state.runtime !== "pig" && <p className="text-warning">以下执行审阅、预算及 Docker 仅用于本机 Pig；请在全局设置切换运行时。</p>}
+        {state.runtime !== "pig" && <p className="text-warning">以下审阅与预算仅用于本机 Pig。当前运行时不通过此面板批准写入；新任务可在顶部选择 Pig。</p>}
         {error && <p role="alert" className="rounded-lg bg-danger-soft p-3 text-danger">{error}</p>}
         <div className="flex flex-wrap gap-2">
           <button className="btn-primary" disabled={disabled || state.runtime !== "pig" || pending.length > 0 || state.operations.some((op) => (op.status === "applying" || op.status === "error"))} onClick={() => { setOpen(false); onResume(); }}>继续任务</button>

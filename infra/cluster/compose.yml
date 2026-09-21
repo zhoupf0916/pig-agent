@@ -1,0 +1,85 @@
+name: pig-agent-cluster
+x-cloud: &cloud
+  image: pig-agent-cluster-cloud:local
+  build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: cloud }
+  environment: &control-env
+    DATABASE_URL: postgres://pig:${DB_PASSWORD}@postgres:5432/pig
+    ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    ADMIN_TOKEN: ${ADMIN_TOKEN}
+    MEMBER_TOKEN: ${MEMBER_TOKEN}
+    MEMBER2_TOKEN: ${MEMBER2_TOKEN}
+    WORKER_TOKEN: ${WORKER_TOKEN}
+    MODEL_MODE: mock
+  networks: [control]
+  depends_on:
+    postgres: { condition: service_healthy }
+  healthcheck:
+    test: [CMD, node, -e, "fetch('http://127.0.0.1:8890/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 3s
+    timeout: 3s
+    retries: 20
+x-worker: &worker
+  image: pig-agent-cluster-worker:local
+  build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: worker }
+  environment: &worker-env
+    CONTROL_URL: http://control:8890
+    WORKER_TOKEN: ${WORKER_TOKEN}
+    RUNNER_IMAGE: pig-agent-cluster-runner:local
+    WORKER_CAPACITY: 2
+    WORKER_NAMESPACE: pig-agent-cluster
+    GATEWAY_CONTAINER: pig-agent-cluster-gateway-1
+  volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+  networks: [control]
+  stop_grace_period: 40s
+  depends_on:
+    control: { condition: service_started }
+    gateway: { condition: service_started }
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: pig, POSTGRES_DB: pig, POSTGRES_PASSWORD: "${DB_PASSWORD}" }
+    volumes: ["database:/var/lib/postgresql/data"]
+    networks: [control]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U pig]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  cloud-a:
+    <<: *cloud
+    ports: ["127.0.0.1:8893:8890"]
+  cloud-b:
+    <<: *cloud
+    ports: ["127.0.0.1:8894:8890"]
+  control:
+    image: nginx:1.28-alpine
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+    ports: ["127.0.0.1:8892:8890"]
+    networks: [control]
+    depends_on:
+      cloud-a: { condition: service_healthy }
+      cloud-b: { condition: service_healthy }
+  gateway:
+    image: pig-agent-cluster-gateway:local
+    build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: gateway }
+    environment:
+      CONTROL_URL: http://control:8890
+      WORKER_TOKEN: ${WORKER_TOKEN}
+      MODEL_MODE: mock
+    networks: [control]
+    depends_on: [control]
+  runner-a:
+    <<: *worker
+    hostname: pig-cluster-runner-a
+  runner-b:
+    <<: *worker
+    hostname: pig-cluster-runner-b
+  runner-image:
+    image: pig-agent-cluster-runner:local
+    build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: runner }
+    profiles: [build]
+    network_mode: none
+volumes:
+  database:
+networks:
+  control:

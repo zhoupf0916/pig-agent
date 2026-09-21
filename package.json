@@ -1,6 +1,6 @@
 {
   "name": "pig-agent",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.19.0",
@@ -35,13 +35,20 @@
     "cloud:smoke:collaboration": "node scripts/smoke-cloud-collaboration.mjs",
     "cloud:smoke:approvals": "node scripts/smoke-cloud-approvals.mjs",
     "cloud:backup": "node scripts/cloud-backup.mjs",
-    "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore"
+    "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore",
+    "cluster:up": "pnpm cloud:build && node scripts/cluster-local.mjs up",
+    "cluster:down": "node scripts/cluster-local.mjs down",
+    "cluster:status": "node scripts/cluster-local.mjs status",
+    "cluster:logs": "node scripts/cluster-local.mjs logs",
+    "cluster:smoke": "node scripts/smoke-cluster-control.mjs && node scripts/smoke-cluster-runners.mjs",
+    "product:smoke": "pnpm build && node scripts/smoke-product.mjs"
   },
   "engines": {
     "node": ">=22.13"
   },
   "devDependencies": {
     "@openai/codex": "0.153.4",
+    "@playwright/test": "1.63.0",
     "@types/node": "^26.5.1",
     "concurrently": "^9.1.2",
     "esbuild": "0.28.2",

@@ -1,7 +1,20 @@
 import http from "node:http";
+import { createContainerStopper } from "./stop-container.ts";
+import { StringDecoder } from "node:string_decoder";
 import { hostname } from "node:os";
+import { randomUUID } from "node:crypto";
 const control = process.env.CONTROL_URL || "http://cloud:8890",
-  workerId = hostname();
+  workerId = process.env.WORKER_ID || hostname();
+const instanceId = randomUUID();
+const namespace = process.env.WORKER_NAMESPACE || "pig-agent-cloud";
+const slots = Number(process.env.WORKER_CAPACITY || 3);
+if (!Number.isInteger(slots) || slots < 1 || slots > 16)
+  throw Error("WORKER_CAPACITY must be 1..16");
+const profiles = (
+  process.env.WORKER_PROFILES || "compact,standard,large"
+).split(",");
+let draining = false;
+const activeStops = new Set<() => Promise<void>>();
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function api(path: string, body: unknown) {
   const r = await fetch(control + path, {
@@ -11,10 +24,20 @@ async function api(path: string, body: unknown) {
       Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(4000),
   });
   if (!r.ok) throw Error(`Control ${r.status}`);
   return r.json() as Promise<any>;
+}
+async function sendEvent(path: string, body: unknown) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await api(path, body);
+    } catch (error) {
+      if (attempt >= 2 || /Control 4\d\d/.test(String(error))) throw error;
+      await delay(200 * (attempt + 1));
+    }
+  }
 }
 function docker(method: string, path: string, body?: unknown): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -47,7 +70,11 @@ function docker(method: string, path: string, body?: unknown): Promise<any> {
     request.end(body ? JSON.stringify(body) : undefined);
   });
 }
-async function logs(id: string, onLine: (line: string) => void) {
+async function logs(
+  id: string,
+  onLine: (line: string) => void,
+  timeoutMs: number,
+) {
   await new Promise<void>((resolve, reject) => {
     const request = http.get(
       {
@@ -55,6 +82,7 @@ async function logs(id: string, onLine: (line: string) => void) {
         path: `/v1.45/containers/${id}/logs?stdout=1&stderr=1&follow=1`,
       },
       (response) => {
+        const decoder = new StringDecoder("utf8");
         let buffer = Buffer.alloc(0),
           text = "",
           total = 0;
@@ -74,7 +102,7 @@ async function logs(id: string, onLine: (line: string) => void) {
             if (buffer.length < 8 + length) break;
             const channel = buffer[0];
             if (channel === 1)
-              text += buffer.subarray(8, 8 + length).toString();
+              text += decoder.write(buffer.subarray(8, 8 + length));
             buffer = buffer.subarray(8 + length);
             let end;
             while ((end = text.indexOf("\n")) >= 0) {
@@ -87,10 +115,16 @@ async function logs(id: string, onLine: (line: string) => void) {
         response.on("error", reject);
       },
     );
+    const timeout = setTimeout(
+      () => request.destroy(Error("Container log deadline exceeded")),
+      timeoutMs,
+    );
+    request.on("close", () => clearTimeout(timeout));
     request.on("error", reject);
   });
 }
-const gatewayContainer = "pig-agent-cloud-gateway-1";
+const gatewayContainer =
+  process.env.GATEWAY_CONTAINER || "pig-agent-cloud-gateway-1";
 async function cleanupNetwork(id: string) {
   await docker("POST", `/networks/${id}/disconnect`, {
     Container: gatewayContainer,
@@ -98,8 +132,22 @@ async function cleanupNetwork(id: string) {
   }).catch(() => {});
   await docker("DELETE", `/networks/${id}`).catch(() => {});
 }
-async function execute(job: { id: string; token: string; resources?: {memoryMiB:number;cpu:number;pids:number;timeoutSeconds:number} }) {
-  const resource=job.resources || {memoryMiB:512,cpu:1,pids:128,timeoutSeconds:240};
+async function execute(job: {
+  id: string;
+  token: string;
+  resources?: {
+    memoryMiB: number;
+    cpu: number;
+    pids: number;
+    timeoutSeconds: number;
+  };
+}) {
+  const resource = job.resources || {
+    memoryMiB: 512,
+    cpu: 1,
+    pids: 128,
+    timeoutSeconds: 240,
+  };
   let eventError: unknown;
   let network = "";
   let container = "",
@@ -109,17 +157,27 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
     heartbeatBusy = false,
     leaseLost = false;
   const started = Date.now();
+  let eventSequence = 0;
+  const stopper = createContainerStopper(docker, () => container);
   async function stop() {
-    if (stopping || !container) return;
     stopping = true;
-    await docker("POST", `/containers/${container}/stop?t=2`).catch(() => {});
+    try {
+      await stopper.stop();
+    } catch {
+      console.error(
+        "Container stop unconfirmed; next pulse will retry",
+        job.id,
+      );
+    }
   }
+  activeStops.add(stop);
   const pulse = setInterval(() => {
     if (heartbeatBusy) return;
     heartbeatBusy = true;
-    void api(`/internal/runs/${job.id}/heartbeat`, { token: job.token })
+    void sendEvent(`/internal/runs/${job.id}/heartbeat`, { token: job.token })
       .then(async (r) => {
         if (
+          stopper.requested ||
           r.state === "cancelling" ||
           r.state === "expired" ||
           Date.now() - started > resource.timeoutSeconds * 1000
@@ -140,7 +198,12 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
     const isolated = await docker("POST", "/networks/create", {
       Name: "pig-" + job.id,
       Internal: true,
-      Labels: { "pig-agent.managed": "true", "pig-agent.worker": workerId },
+      Labels: {
+        "pig-agent.managed": "true",
+        "pig-agent.worker": workerId,
+        "pig-agent.instance": instanceId,
+        "pig-agent.cluster": namespace,
+      },
     });
     network = isolated.Id;
     await docker("POST", `/networks/${network}/connect`, {
@@ -155,7 +218,7 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
         User: "1000:1000",
         Env: [
           `RUN_TOKEN=${job.token}`,
-          `RUN_TIMEOUT_SECONDS=${Math.max(30,resource.timeoutSeconds-15)}`,
+          `RUN_TIMEOUT_SECONDS=${Math.max(30, resource.timeoutSeconds - 15)}`,
           "GATEWAY_URL=http://gateway:8891",
           "PIG_DESKTOP=1",
           "PIG_APP_ROOT=/app",
@@ -165,6 +228,8 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
         Labels: {
           "pig-agent.managed": "true",
           "pig-agent.worker": workerId,
+          "pig-agent.instance": instanceId,
+          "pig-agent.cluster": namespace,
           "pig-agent.run": job.id,
         },
         HostConfig: {
@@ -187,33 +252,41 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
       },
     );
     container = created.Id;
-    const lease = await api(`/internal/runs/${job.id}/heartbeat`, {
+    const lease = await sendEvent(`/internal/runs/${job.id}/heartbeat`, {
       token: job.token,
     });
     if (leaseLost || lease.state === "expired" || lease.state === "cancelling")
       throw Error("任务已取消或租约失效");
+    await sendEvent(`/internal/runs/${job.id}/start`, { token: job.token });
+    if (leaseLost || stopping) throw Error("Lease lost before container start");
     await docker("POST", `/containers/${container}/start`);
-    await api(`/internal/runs/${job.id}/start`, { token: job.token });
-    await logs(container, (line) => {
-      try {
-        const item = JSON.parse(line);
-        if (item.kind === "result") result = item;
-        else if (item.kind === "event" && item.event?.type !== "token")
-          writes = writes
-            .then(() =>
-              api(`/internal/runs/${job.id}/event`, {
-                token: job.token,
-                event: item.event,
-              }),
-            )
-            .then(() => {})
-            .catch((error) => {
-              eventError = error;
-            });
-      } catch {
-        /* non-protocol stdout */
-      }
-    });
+    await logs(
+      container,
+      (line) => {
+        try {
+          const item = JSON.parse(line);
+          if (item.kind === "result") result = item;
+          else if (item.kind === "event" && item.event?.type !== "token") {
+            const eventId = `${job.id}:${++eventSequence}`;
+            writes = writes
+              .then(() =>
+                sendEvent(`/internal/runs/${job.id}/event`, {
+                  token: job.token,
+                  event: item.event,
+                  eventId,
+                }),
+              )
+              .then(() => {})
+              .catch((error) => {
+                eventError = error;
+              });
+          }
+        } catch {
+          /* non-protocol stdout */
+        }
+      },
+      (resource.timeoutSeconds + 30) * 1000,
+    );
     await writes;
     if (eventError) throw eventError;
     const inspected = await docker("GET", `/containers/${container}/json`);
@@ -234,6 +307,7 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
     }).catch(() => {});
   } finally {
     clearInterval(pulse);
+    activeStops.delete(stop);
     if (container)
       await docker("DELETE", `/containers/${container}?force=1&v=1`).catch(
         () => {},
@@ -241,35 +315,97 @@ async function execute(job: { id: string; token: string; resources?: {memoryMiB:
     if (network) await cleanupNetwork(network);
   }
 }
-// Reconcile containers left by a terminated worker before accepting more work.
-async function reap() {
-  const all = await docker(
-    "GET",
-    "/containers/json?all=1&filters=" +
-      encodeURIComponent(JSON.stringify({ label: ["pig-agent.managed=true"] })),
+// Snapshot IDs BEFORE registration. A delayed older process must never discover
+// and delete containers belonging to a generation that registered after it.
+async function orphanSnapshot() {
+  const filter = encodeURIComponent(
+    JSON.stringify({
+      label: ["pig-agent.managed=true", "pig-agent.worker=" + workerId],
+    }),
   );
-  for (const c of all) {
-    if (c.Labels?.["pig-agent.worker"] === workerId)
-      await docker("DELETE", `/containers/${c.Id}?force=1&v=1`);
-  }
-  const networks = await docker(
+  const containers = await docker(
     "GET",
-    "/networks?filters=" +
-      encodeURIComponent(JSON.stringify({ label: ["pig-agent.managed=true"] })),
+    "/containers/json?all=1&filters=" + filter,
   );
-  for (const n of networks)
-    if (n.Labels?.["pig-agent.worker"] === workerId) await cleanupNetwork(n.Id);
+  const networks = await docker("GET", "/networks?filters=" + filter);
+  return {
+    containers: containers.map((c: { Id: string }) => c.Id),
+    networks: networks.map((n: { Id: string }) => n.Id),
+  };
 }
-await reap();
-console.log("Worker ready", workerId);
+const orphans = await orphanSnapshot();
+for (let attempt = 0; ; attempt++) {
+  try {
+    await api("/internal/workers/register", {
+      workerId,
+      instanceId,
+      capacity: slots,
+      profiles,
+    });
+    break;
+  } catch (error) {
+    if (attempt >= 11 || /Control 4\d\d/.test(String(error))) throw error;
+    console.error(
+      "Registration temporarily unavailable; retrying same generation",
+      workerId,
+    );
+    await delay(Math.min(2000, 500 * (attempt + 1)));
+  }
+}
+for (const id of orphans.containers)
+  await docker("DELETE", `/containers/${id}?force=1&v=1`).catch((error) => {
+    if (!String(error).includes("Docker 404")) throw error;
+  });
+for (const id of orphans.networks) await cleanupNetwork(id);
+console.log("Worker ready", workerId, "slots", slots);
+let nodePulseBusy = false;
+const nodePulse = setInterval(() => {
+  if (nodePulseBusy) return;
+  nodePulseBusy = true;
+  void api("/internal/workers/heartbeat", { workerId, instanceId, draining })
+    .catch((error) => {
+      // A stale process must never re-register itself and displace its replacement.
+      if (String(error).includes("409")) {
+        draining = true;
+        void Promise.allSettled([...activeStops].map((stop) => stop()));
+      }
+      console.error("Node heartbeat unavailable");
+    })
+    .finally(() => {
+      nodePulseBusy = false;
+    });
+}, 3000);
+let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
+function shutdown() {
+  if (draining) return;
+  draining = true;
+  console.log("Worker draining", workerId);
+  void api("/internal/workers/heartbeat", {
+    workerId,
+    instanceId,
+    draining: true,
+  }).catch(() => {});
+  shutdownTimer = setTimeout(
+    () => {
+      void Promise.allSettled([...activeStops].map((stop) => stop()));
+    },
+    Number(process.env.WORKER_SHUTDOWN_SECONDS || 25) * 1000,
+  );
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 await Promise.all(
-  Array.from({ length: 3 }, async () => {
-    while (true) {
+  Array.from({ length: slots }, async () => {
+    while (!draining) {
       try {
-        const job = await api("/internal/claim", { workerId });
+        const job = await api("/internal/claim", { workerId, instanceId });
         if (job) await execute(job);
         else await delay(1000);
       } catch (error) {
+        if (String(error).includes("409")) {
+          draining = true;
+          break;
+        }
         console.error(
           error instanceof Error ? error.message : "Worker unavailable",
         );
@@ -278,3 +414,6 @@ await Promise.all(
     }
   }),
 );
+clearInterval(nodePulse);
+if (shutdownTimer) clearTimeout(shutdownTimer);
+console.log("Worker drained", workerId);

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /** Container entry point: reuse the local Pig engine without sharing host storage or credentials. */
 import { mkdir, readdir, readFile, lstat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -83,18 +84,44 @@ try {
     authorizeTool: input.requireApproval
       ? async (call) => {
           async function approvalRequest(path: string, body: unknown) {
-            const r = await fetch(gateway + path, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(body),
-              signal: AbortSignal.any([deadline, AbortSignal.timeout(10000)]),
-            });
-            if (!r.ok) throw Error("无法核验云端审批，操作未执行");
-            return r.json() as Promise<{ id: string; state: string }>;
+            for (let attempt = 0; ; attempt++) {
+              try {
+                const r = await fetch(gateway + path, {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(body),
+                  signal: AbortSignal.any([
+                    deadline,
+                    AbortSignal.timeout(4000),
+                  ]),
+                });
+                if (!r.ok) {
+                  const error = Object.assign(
+                    new Error("无法核验云端审批，操作未执行"),
+                    { terminal: r.status < 500 },
+                  );
+                  throw error;
+                }
+                return (await r.json()) as { id: string; state: string };
+              } catch (error) {
+                if (
+                  deadline.aborted ||
+                  attempt >= 2 ||
+                  (error as { terminal?: boolean }).terminal
+                )
+                  throw error;
+                await new Promise((resolve) =>
+                  setTimeout(resolve, 300 * (attempt + 1)),
+                );
+              }
+            }
           }
+          // Stable for this tool call: a lost response may replay the same receipt,
+          // never a new authorization or a restarted tool execution.
+          const requestId = randomUUID();
           const approval = await approvalRequest("/approvals", call);
           emit({
             kind: "event",
@@ -111,7 +138,7 @@ try {
           while (!deadline.aborted) {
             const decision = await approvalRequest(
               `/approvals/${approval.id}/poll`,
-              {},
+              { requestId },
             );
             if (decision.state === "approved") return true;
             if (decision.state === "rejected") return false;
