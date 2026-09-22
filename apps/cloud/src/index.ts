@@ -158,7 +158,8 @@ app.post("/v1/runs", async (c) => {
       return c.json({ error: "最多保留 5 个待执行或运行中的任务" }, 429);
     }
     const defaults = await loadUserSettings(p.id,client);
-    const effectiveInput = {...parsed.data,...executionPolicy(rawInput,defaults)};
+    const sharedProject = parsed.data.projectId ? Boolean((await client.query("SELECT space_id FROM shared_projects WHERE id=$1",[parsed.data.projectId])).rows[0]?.space_id) : false;
+    const effectiveInput = {...parsed.data,...executionPolicy(rawInput,defaults,{sharedProject})};
     let capabilityContext:string;
     try { capabilityContext=await resolveCapabilityContext(p.id,effectiveInput,client); }
     catch(e) {await client.query("ROLLBACK");return c.json({error:(e as Error).message},400);}

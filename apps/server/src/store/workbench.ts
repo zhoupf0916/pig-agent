@@ -25,7 +25,7 @@ function file(id: string) {
   return join(DATA_DIR, "workbench", `${id}.json`);
 }
 export async function loadWorkbench(id: string, root: string): Promise<Workbench> {
-  try { const state = JSON.parse(await readFile(file(id), "utf8")) as Workbench; state.policy = { ...DEFAULT_POLICY, ...state.policy }; if (state.policy.shell === "docker") state.policy.shell = "native"; for (const op of state.operations) if (op.environment === "docker") op.environment = "native"; return state; }
+  try { const state = JSON.parse(await readFile(file(id), "utf8")) as Workbench; state.policy = { ...DEFAULT_POLICY, ...state.policy }; if (state.policy.shell !== "native") state.policy.shell = "native"; for (const op of state.operations) if (op.environment !== "native") op.environment = "native"; return state; }
   catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
   return { root: normalizeWorkspaceRoot(root), policy: { ...DEFAULT_POLICY }, operations: [], usage: { calls: 0, input: 0, output: 0, estimated: false, durationMs: 0, cost: 0 } };
 }

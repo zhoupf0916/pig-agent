@@ -5,6 +5,7 @@ import {
   parseHttpUrl,
   resolvePublicIps,
   safeHttpFetch,
+  createPinnedLookup,
   SsrfError,
 } from "./ssrf.ts";
 
@@ -50,11 +51,13 @@ describe("SSRF guards", () => {
       { allowlist: ["example.com"] },
       {
         lookup: async () => ["1.1.1.1"],
-        fetch: async () =>
-          new Response("# hello\n", {
+        connect: async (_url, ips) => {
+          expect(ips).toEqual(["1.1.1.1"]);
+          return new Response("# hello\n", {
             status: 200,
             headers: { "content-type": "text/markdown" },
-          }),
+          });
+        },
       },
     );
     expect(result.status).toBe(200);
@@ -66,11 +69,18 @@ describe("SSRF guards", () => {
         {},
         {
           lookup: async () => ["1.1.1.1"],
-          fetch: async () =>
+          connect: async () =>
             new Response("", { status: 302, headers: { Location: "http://127.0.0.1/" } }),
         },
       ),
     ).rejects.toThrow(/redirect/i);
+  });
+
+  it("pins the later connection to the addresses already checked", () => {
+    const lookup = createPinnedLookup(["203.0.113.10"]);
+    lookup("changed.example", { all: true }, (_err, addresses) => {
+      expect(addresses).toEqual([{ address: "203.0.113.10", family: 4 }]);
+    });
   });
 
   it("blocks allowlisted-but-private resolution", async () => {

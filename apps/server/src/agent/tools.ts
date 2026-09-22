@@ -335,6 +335,9 @@ export async function executeTool(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   if (ctx.signal?.aborted) throw new Error("Aborted");
+  if (process.env.PIG_FILE_HELPER !== "1" && ctx.shellMode === "host" && (FILE_TOOLS.has(name) || name === "run_shell")) {
+    throw new Error("沙箱未启用，已拒绝在主机上执行。");
+  }
   if (process.env.PIG_FILE_HELPER !== "1" && FILE_TOOLS.has(name) && (process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker")) return nativeFileTool(name, rawArgs, ctx);
   const args = asObject(rawArgs);
   switch (name) {
@@ -435,6 +438,7 @@ async function readWorkspaceFile(
   limit?: number,
 ): Promise<ToolResult> {
   const abs = resolveInWorkspace(ctx.workspaceRoot, userPath, { mustExist: true });
+  if (isSecretName(abs.split(/[/\\]/).pop() ?? "")) throw new Error("Refusing to read a secret file");
   const st = await stat(abs);
   if (st.isDirectory()) {
     throw new Error("Path is a directory; use list_dir");
@@ -805,7 +809,44 @@ async function httpFetchTool(ctx: ToolContext, args: Json): Promise<ToolResult> 
   }
 }
 
+export function shellSegments(command: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (quote) {
+      current += ch;
+      if (ch === quote && command[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "\n" || ch === ";") {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    if (ch === "&" || (ch === "|" && command[i + 1] === "|")) {
+      parts.push(current);
+      current = "";
+      if (ch === "&" && command[i + 1] === "&") i += 1;
+      if (ch === "|" && command[i + 1] === "|") i += 1;
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
 export function shellRejectedReason(command: string): string | null {
+  if (shellSegments(command).length > 1) {
+    return "Command rejected: approve one command at a time. Split ';', '&&', '||', '&', and newlines into separate run_shell calls. The operating-system sandbox is the isolation boundary; this check only keeps each approval to one command.";
+  }
   const lower = command.toLowerCase();
   if (/(^|[\s;|&])cd\s+\.\.(?:\s|$|[;/])/i.test(command)) {
     return "Command rejected: looks like a workspace escape";
@@ -818,7 +859,7 @@ export function shellRejectedReason(command: string): string | null {
   }
   for (const rule of SHELL_DENY) {
     if (rule.test(command)) {
-      return "Command rejected: dangerous or out-of-sandbox pattern";
+      return "Command rejected: pattern refused before sandbox execution. Isolation is the operating-system sandbox, not this denylist.";
     }
   }
   return null;
@@ -830,13 +871,18 @@ export function isPreferredShell(command: string): boolean {
   return PREFERRED_SHELL.includes(base);
 }
 
+function isSecretName(name: string): boolean {
+  return /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx)$|id_(?:rsa|dsa|ed25519)(?:\.pub)?|credentials\.json|secrets\.json)$/i.test(name);
+}
+
 function shouldHide(name: string): boolean {
   return (
     name === ".git" ||
     name === "node_modules" ||
     name === ".DS_Store" ||
     name === "dist" ||
-    name === "coverage"
+    name === "coverage" ||
+    isSecretName(name)
   );
 }
 

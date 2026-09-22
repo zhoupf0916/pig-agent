@@ -175,9 +175,9 @@ export async function runAgent(options: {
     createdAt: nowIso(),
   };
 
-  if (workbench) system.content += `\nExecution mode: ${workbench.policy.shell}. File tools use ${workbench.root}. Shell commands ${workbench.policy.shell === "native" ? "execute inside an operating-system sandbox, restricted to this workspace" : workbench.policy.shell === "docker" ? "use the migrated native operating-system sandbox" : "execute directly on the host without OS isolation"}. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed with a durable journal"}.`;
+  if (workbench) system.content += `\nExecution mode: native sandbox. File tools and shell commands stay inside the operating-system sandbox for ${workbench.root}. The command denylist is an extra refusal, not the isolation boundary. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed inside the sandbox with a durable journal"}. Each run_shell call may contain one command; split ';', '&&', '||', '&', and newlines into separate calls so each can be reviewed.`;
 
-  if (workbench) system.content += "\nHTTP requests always require a one-time review, independent of write review. If sandbox shell networking is blocked, use http_fetch for a specific URL; this queues an approval and does not grant shell network access. Host shell processes are not network-isolated.";
+  if (workbench) system.content += "\nHTTP requests always require a one-time review, independent of write review. http_fetch connects only to addresses checked before the request and does not follow redirects. Shell networking follows the task network switch and stays inside the sandbox.";
 
   const artifacts = new Map<string, Artifact>(
     session.artifacts.map((a) => [a.path, a]),

@@ -55,7 +55,7 @@ pnpm desktop:dist    # macOS 安装包，输出 release/
 - 网络默认逐次审批，通过的只是这一次 HTTPS GET，不会放开沙箱任意联网。
 - 审批最多等待 30 分钟，等待期间仍占用执行名额。
 - 附件支持文本、PDF、DOCX。图片只保存原件，不做识别。Web 单文件 4 MiB，单次最多 10 个，每条消息合计 8 MiB。
-- 桌面安装包未签名、未公证，目前只有 macOS。Codex 使用自己的密钥和沙箱，不走 Pig 的逐项审批。
+- 桌面安装包未签名、未公证，目前只有 macOS。执行固定走 Pig 的沙箱和审批，不能改成直接在主机上跑命令。
 - 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测，没有账号计费和公网生产部署方案。
 
-架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。
+架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。改代码的顺序和测试要求见 [AGENTS.md](AGENTS.md)。

@@ -202,7 +202,7 @@ describe("delivery review and recovery", () => {
   });
   it("can stop an approved long-running command and requires review after interruption", async () => {
     const session=await createSession(); const state=await loadWorkbench(session.id,root);
-    const op=await stageOperation(state,"slow","run_shell",{command:"sleep 20 & wait"}); await saveWorkbench(session.id,state);
+    const op=await stageOperation(state,"slow","run_shell",{command:"sleep 20"}); await saveWorkbench(session.id,state);
     const approval=post(`/api/sessions/${session.id}/workbench/${op.id}/approve`);
     for(let i=0;i<100 && !runningTurns.has(session.id);i++) await new Promise((resolve)=>setTimeout(resolve,10));
     expect(runningTurns.has(session.id)).toBe(true);

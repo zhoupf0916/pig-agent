@@ -38,6 +38,7 @@ import type {
   CloudSpace,
 } from "@pig-agent/contracts/cloud";
 import { redactSecretsForDisplay } from "../lib/remote-retry";
+import { accountNamePattern } from "./account-name";
 import "./cloud-workspace.css";
 
 type WorkspaceProject = CloudSharedProject & {
@@ -602,6 +603,10 @@ export function CloudWorkspace({
   }, [current?.messages.length, live, liveMessages.length, approvals.length]);
   useEffect(() => {
     if (project) setProjectBranch(project.kind);
+    if (project?.kind === "collaborative") {
+      setRequireApproval(true);
+      setApprovalChanged(true);
+    }
   }, [project?.id, project?.kind]);
   useEffect(() => {
     let valid = true;
@@ -740,7 +745,7 @@ export function CloudWorkspace({
                 <input
                   required
                   autoComplete="username"
-                  pattern="[a-zA-Z0-9][a-zA-Z0-9._-]{2,31}"
+                  pattern={accountNamePattern}
                   minLength={3}
                   maxLength={32}
                   value={username}
@@ -1372,15 +1377,16 @@ export function CloudWorkspace({
                         操作审批
                         <select
                           aria-label="操作审批"
-                          value={requireApproval ? "ask" : "auto"}
+                          value={project?.kind === "collaborative" || requireApproval ? "ask" : "auto"}
                           onChange={(e) => {
                             setApprovalChanged(true);
                             setRequireApproval(e.target.value === "ask");
                           }}
                         >
                           <option value="ask">写入与命令需审批</option>
-                          <option value="auto">沙箱内自动执行</option>
+                          {project?.kind !== "collaborative" && <option value="auto">沙箱内自动执行</option>}
                         </select>
+                        {project?.kind === "collaborative" && <small>协同项目的写入和命令必须逐次审批。</small>}
                       </label>
                       <label>
                         网络访问

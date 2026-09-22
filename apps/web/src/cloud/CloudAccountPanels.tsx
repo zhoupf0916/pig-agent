@@ -86,7 +86,7 @@ export function CloudSettingsPanel() {
               <option value="auto">沙箱内自动执行</option>
             </select>
             <small>审批档逐次确认文件变更和所有命令；读取、搜索无需审批。自动档允许上述操作在沙箱内直接执行，网络规则保持独立。</small>
-            <small>适用于新任务与新建自动化；已有任务和计划保留已保存的策略。</small>
+            <small>适用于个人项目的新任务与新建自动化。协同项目忽略自动档，写入和命令仍要逐次审批。已有任务和计划保留已保存的策略。</small>
           </label>
           <label className="cloud-check">
             <input

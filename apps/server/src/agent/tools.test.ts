@@ -115,10 +115,10 @@ describe("workspace tools", () => {
     expect(readFileSync(join(root, "doc.md"), "utf8")).toBe("Title\nbody\nEND\n");
   });
 
-  it("runs a shell command in the workspace cwd and captures exit codes", async () => {
+  it("runs one shell command in the workspace and rejects a chained script", async () => {
     const root = mkdtempSync(join(tmpdir(), "pig-tools-"));
     writeFileSync(join(root, "a.txt"), "ok");
-    const result = await executeTool("run_shell", { command: "pwd && ls" }, ctx(root));
+    const result = await executeTool("run_shell", { command: "pwd" }, ctx(root));
     const payload = JSON.parse(result.output) as {
       stdout: string;
       exit_code: number;
@@ -127,9 +127,37 @@ describe("workspace tools", () => {
     expect(payload.exit_code).toBe(0);
     expect(payload.preferred_command).toBe(true);
     expect(payload.stdout).toContain(root);
-    expect(payload.stdout).toContain("a.txt");
-
+    const listed = JSON.parse((await executeTool("run_shell", { command: "ls" }, ctx(root))).output) as { stdout: string };
+    expect(listed.stdout).toContain("a.txt");
+    await expect(executeTool("run_shell", { command: "pwd && ls" }, ctx(root))).rejects.toThrow(/one command/i);
+    await expect(executeTool("run_shell", { command: "echo \"a && b\"" }, ctx(root))).resolves.toBeTruthy();
     await expect(executeTool("run_shell", { command: "exit 7" }, ctx(root))).rejects.toThrow('"exit_code": 7');
+  });
+
+  it("refuses host execution instead of running on the service process", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-tools-"));
+    await expect(
+      executeTool("run_shell", { command: "pwd" }, { ...ctx(root), shellMode: "host" }),
+    ).rejects.toThrow(/沙箱未启用/);
+    await expect(
+      executeTool("write_file", { path: "x.txt", content: "no" }, { ...ctx(root), shellMode: "host" }),
+    ).rejects.toThrow(/沙箱未启用/);
+  });
+
+  it("does not return secret files to the model", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-tools-"));
+    writeFileSync(join(root, ".env"), "TOKEN=secret");
+    writeFileSync(join(root, "notes.txt"), "visible TOKEN");
+    mkdirSync(join(root, "keys"));
+    writeFileSync(join(root, "keys", "id_rsa"), "private");
+    const listed = JSON.parse((await executeTool("list_dir", { path: "." }, ctx(root))).output) as { entries: Array<{ name: string }> };
+    expect(listed.entries.map((entry) => entry.name)).not.toContain(".env");
+    expect(listed.entries.map((entry) => entry.name)).toContain("notes.txt");
+    await expect(executeTool("read_file", { path: ".env" }, ctx(root))).rejects.toThrow(/secret file/i);
+    await expect(executeTool("read_file", { path: "keys/id_rsa" }, ctx(root))).rejects.toThrow(/secret file/i);
+    const found = await executeTool("search_files", { query: "TOKEN", path: "." }, ctx(root));
+    expect(found.output).not.toContain("secret");
+    expect(found.output).toContain("notes.txt");
   });
 
   it("rejects obvious path-escaping and dangerous shell commands", async () => {

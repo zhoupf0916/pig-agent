@@ -781,14 +781,17 @@ async function refresh() {
   } catch (e) {
     if (before !== generation) return;
     if (e.status === 401 || e.status === 403) {
+      const hadSession = !!snapshot || !!token;
       connected(false);
       token = "";
       cookieLogin = false;
       sessionStorage.removeItem("pig.cloud.token");
-      $("connection").textContent = "需要重新登录";
+      $("connection").textContent = hadSession ? "需要重新登录" : "未登录";
       $("connection").dataset.state = "offline";
-      $("connection").title = "需要重新登录";
-      showError("登录已过期或没有管理员权限，请使用管理员账号登录。");
+      $("connection").title = $("connection").textContent;
+      showError(
+        hadSession ? "登录已过期或没有管理员权限，请使用管理员账号登录。" : "",
+      );
     } else {
       connectionError = true;
       $("connection").textContent = "连接中断 · 正在自动重试";

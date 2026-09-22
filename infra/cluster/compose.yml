@@ -30,7 +30,7 @@ x-worker: &worker
   volumes: ["worker-outbox:/app/data/worker-outbox"]
   init: true
   cap_drop: [ALL]
-  security_opt: ["no-new-privileges:true", "seccomp=../cloud/runner-seccomp.json", "systempaths=unconfined"]
+  security_opt: ["no-new-privileges:true", "apparmor=unconfined", "seccomp=../cloud/runner-seccomp.json", "systempaths=unconfined"]
   mem_limit: 4g
   pids_limit: 1024
   networks: [control]

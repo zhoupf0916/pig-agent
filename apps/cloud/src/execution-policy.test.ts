@@ -15,6 +15,11 @@ describe("effective execution consent", () => {
       ),
     ).toEqual({ requireApproval: true, networkPolicy: "ask" });
   });
+  it("keeps approval on for a shared project when the request turns it off", () => {
+    expect(
+      executionPolicy({ requireApproval: false }, defaults, { sharedProject: true }),
+    ).toEqual({ ...defaults, requireApproval: true });
+  });
   it("automatic file operations never change the separate network policy", () => {
     expect(
       executionPolicy(

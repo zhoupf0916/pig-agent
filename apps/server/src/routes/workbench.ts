@@ -14,7 +14,7 @@ import { loadSessionSettings } from "../store/settings.ts";
 import { applyOperation, isWorkbenchBusy, loadWorkbench, locked, operationChecks, saveWorkbench, stageOperation, undoOperation } from "../store/workbench.ts";
 import { newId, nowIso } from "../util.ts";
 
-const policySchema = z.object({ review: z.boolean(), shell: z.enum(["host", "native", "docker"]).transform((value) => value === "docker" ? "native" as const : value), network: z.boolean(), image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/), maxCalls: z.number().int().min(1).max(500), maxTokens: z.number().int().min(1000).max(5000000), maxCost: z.number().min(0).max(10000).default(0), inputPrice: z.number().min(0).max(10000), outputPrice: z.number().min(0).max(10000) });
+const policySchema = z.object({ review: z.boolean(), shell: z.enum(["host", "native", "docker"]).transform(() => "native" as const), network: z.boolean(), image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/), maxCalls: z.number().int().min(1).max(500), maxTokens: z.number().int().min(1000).max(5000000), maxCost: z.number().min(0).max(10000).default(0), inputPrice: z.number().min(0).max(10000), outputPrice: z.number().min(0).max(10000) });
 type Template = { id: string; name: string; prompt: string; builtin?: boolean };
 const BUILTINS: Template[] = [
   { id: "review", name: "代码审查", prompt: "审查工作区代码，重点检查错误处理、安全边界与测试缺口。先输出带文件路径的审查报告，不要修改文件。", builtin: true },

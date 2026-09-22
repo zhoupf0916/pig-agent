@@ -35,7 +35,6 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
 }) {
   const [form, setForm] = useState<Settings>(emptyForm);
   const [section, setSection] = useState<Section>("model");
-  const [modelTab, setModelTab] = useState<"pig" | "codex">("pig");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
@@ -69,11 +68,11 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
     if (!settings) return;
     // A background status poll must never erase an unsaved non-secret draft either.
     if (!primed.current || (!dirtyRef.current && !saving)) {
-      const next = { ...emptyForm, ...settings };
+      const next = { ...emptyForm, ...settings, ...(settings.runtime === "codex" ? { runtime: "pig" as const } : {}) };
       setForm(next); setBaseline(draftKey(next));
     }
     if (!primed.current) {
-      primed.current = true; setSection("model"); setModelTab(settings.runtime === "codex" ? "codex" : "pig");
+      primed.current = true; setSection("model");
       setError(null); setFeedback(""); setInvite(""); setDiscardOpen(false);
     }
   }, [open, settings, saving]);
@@ -113,20 +112,8 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
       await onSave(form); markSaved(form);
       const response = await fetch(remote ? "/api/remote/v1/runs" : "/api/settings/test-connection", { method: remote ? "GET" : "POST", signal: AbortSignal.timeout(40000) });
       const result = await response.json(); if (!response.ok) throw Error(result.error || "连接失败");
-      setFeedback(remote ? "已保存，控制面连接正常，访问权限已验证。" : form.runtime === "codex" ? "已保存，Codex 已启动并收到模型回复。" : "已保存，模型已返回有效回复。");
+      setFeedback(remote ? "已保存，控制面连接正常，访问权限已验证。" : "已保存，模型已返回有效回复。");
     } catch (e) { setError(`${e instanceof Error ? e.message : "连接失败或超时"}。已保存的设置会保留，可修改后重新测试。`); }
-    finally { setSaving(false); }
-  };
-  const reuseKey = async () => {
-    if (!validate()) return;
-    setSaving(true); setError(null); setFeedback("");
-    try {
-      await onSave(form); markSaved(form);
-      const response = await fetch("/api/settings/codex/use-pig-key", { method: "POST" });
-      const result = await response.json(); if (!response.ok) throw Error(result.error || "无法复用密钥");
-      const next = { ...form, codexApiKey: "", codexApiKeyConfigured: true };
-      markSaved(next); setFeedback("已将同一提供商的 Pig 密钥保存为 Codex 专用密钥。");
-    } catch (e) { setError(e instanceof Error ? e.message : "保存失败"); }
     finally { setSaving(false); }
   };
   const acceptInvite = async () => {
@@ -164,35 +151,19 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
           <fieldset disabled={saving} className="settings-fields">
           {section === "model" && <>
             <div className="settings-scope">本机模型由这里配置；远端任务使用控制面管理员分配的模型。</div>
-            <div className="settings-segment" role="group" aria-label="模型引擎">
-              <button type="button" aria-pressed={modelTab === "pig"} onClick={() => setModelTab("pig")}>Pig 模型</button>
-              <button type="button" aria-pressed={modelTab === "codex"} onClick={() => setModelTab("codex")}>Codex 模型</button>
-            </div>
-            {modelTab === "pig" ? <>
-              <Field label="模型接口地址" hint="支持 DeepSeek、OpenAI 兼容接口和本机 Ollama。"><input className="field" value={form.llmBaseUrl} onChange={e => patch({ llmBaseUrl: e.target.value })} placeholder="https://api.deepseek.com/v1" /></Field>
-              <Field label="API Key" hint={settings?.llmApiKeyConfigured ? "已保存密钥，留空保持不变。" : "Ollama 等本机服务可留空。"}><input className="field" type="password" autoComplete="off" value={form.llmApiKey} onChange={e => patch({ llmApiKey: e.target.value })} placeholder={settings?.llmApiKeyConfigured ? "已保存；留空保持不变" : "填写提供商密钥"} /></Field>
-              <Field label="Pig 模型"><input className="field" value={form.llmModel} onChange={e => patch({ llmModel: e.target.value })} placeholder="deepseek-chat" /></Field>
-            </> : <>
-              <Field label="Codex Responses 接口地址"><input className="field" value={form.codexBaseUrl ?? ""} onChange={e => patch({ codexBaseUrl: e.target.value })} placeholder="https://api.deepseek.com/" /></Field>
-              <Field label="Codex 专用 API Key" hint="独立于 Pig 密钥和 Codex App 登录账号；留空保留已保存值。"><input className="field" type="password" autoComplete="off" value={form.codexApiKey ?? ""} onChange={e => patch({ codexApiKey: e.target.value })} placeholder={settings?.codexApiKeyConfigured ? "已保存；留空保持不变" : "填写 Responses 提供商密钥"} /></Field>
-              <button type="button" className="btn-quiet" onClick={() => void reuseKey()}>同一提供商：使用已保存的 Pig 密钥</button>
-              <Field label="Codex 模型"><input className="field" value={form.codexModel} onChange={e => patch({ codexModel: e.target.value })} placeholder="deepseek-flash" /></Field>
-            </>}
-            {form.runtime !== "cloud" ? <div className="settings-action-row"><button type="button" className="btn-secondary" onClick={() => void test(false)}>保存并测试当前运行时</button><p>测试当前默认引擎（{form.runtime === "codex" ? "Codex" : "Pig"}），会发起一次简短模型请求。</p></div> : <p className="settings-note">当前默认远端执行，请在「远端连接」检查控制面。本机模型可保存供本地任务使用。</p>}
+            <Field label="模型接口地址" hint="支持 DeepSeek、OpenAI 兼容接口和本机 Ollama。"><input className="field" value={form.llmBaseUrl} onChange={e => patch({ llmBaseUrl: e.target.value })} placeholder="https://api.deepseek.com/v1" /></Field>
+            <Field label="API Key" hint={settings?.llmApiKeyConfigured ? "已保存密钥，留空保持不变。" : "Ollama 等本机服务可留空。"}><input className="field" type="password" autoComplete="off" value={form.llmApiKey} onChange={e => patch({ llmApiKey: e.target.value })} placeholder={settings?.llmApiKeyConfigured ? "已保存；留空保持不变" : "填写提供商密钥"} /></Field>
+            <Field label="模型"><input className="field" value={form.llmModel} onChange={e => patch({ llmModel: e.target.value })} placeholder="deepseek-chat" /></Field>
+            {form.runtime !== "cloud" ? <div className="settings-action-row"><button type="button" className="btn-secondary" onClick={() => void test(false)}>保存并测试连接</button><p>会发起一次简短模型请求。</p></div> : <p className="settings-note">当前默认远端执行，请在「远端连接」检查控制面。本机模型可保存供本地任务使用。</p>}
           </>}
           {section === "execution" && <>
-            <div className="settings-scope">仅作为新会话默认值。已有会话可在任务配置中单独选择执行位置、引擎和审批。</div>
+            <div className="settings-scope">仅作为新会话默认值。已有会话可在任务配置中单独选择执行位置和审批。执行引擎固定为 Pig。</div>
             <div className="settings-choice-list" role="group" aria-label="新会话默认执行配置">
-              <Choice active={form.runtime === "pig"} title="本机 Pig" hint="在当前工作区执行，使用上面配置的模型。" onClick={() => patch({ runtime: "pig" })} />
-              <Choice active={form.runtime === "codex"} title="本机 Codex" hint="通过 Codex CLI 执行，使用独立模型连接。" onClick={() => patch({ runtime: "codex" })} />
+              <Choice active={form.runtime !== "cloud"} title="本机 Pig" hint="在当前工作区执行，使用上面配置的模型。" onClick={() => patch({ runtime: "pig" })} />
               <Choice active={form.runtime === "cloud"} title="远端执行" hint="交给已连接控制面调度，退出工作台后继续运行。" onClick={() => patch({ runtime: "cloud", cloudMode: "remote" })} />
             </div>
             <p className="settings-note">保存后的默认值：{surface.summary}</p>
-            {form.runtime === "codex" && <>
-              <label className="settings-check"><input type="checkbox" checked={form.codexNetworkAccess} onChange={e => patch({ codexNetworkAccess: e.target.checked })} /><span>允许 Codex 工作区访问外网<small>默认关闭；开启后允许下载和请求第三方服务。</small></span></label>
-              <p className="settings-note">Codex 使用自己的工作区沙箱，文件操作不经过 Pig 写入审批。其网络权限不会开启完整系统访问。</p>
-            </>}
-            {form.runtime === "pig" && <p className="settings-note">本机 Pig 默认使用原生沙箱。可在任务执行配置中调整审批和网络权限。</p>}
+            {form.runtime !== "cloud" && <p className="settings-note">本机 Pig 固定使用操作系统沙箱，不能改成直接在主机上执行。可在任务执行配置中调整审批和网络权限。</p>}
             {form.runtime === "cloud" && <button type="button" className="btn-quiet" onClick={() => setSection("remote")}>配置远端连接 →</button>}
           </>}
           {section === "workspace" && <>
@@ -231,8 +202,6 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
           </>}
           {section === "advanced" && <>
             <div className="settings-scope">用于排障和特殊执行环境。普通任务无需修改。</div>
-            <Field label="Codex 二进制路径" hint="留空时从系统 PATH 查找 codex。"><input className="field" value={form.codexBinaryPath} onChange={e => patch({ codexBinaryPath: e.target.value })} placeholder="codex 或 /usr/local/bin/codex" /></Field>
-            {settings?.codexStatus && <ul className="settings-status-list"><Status ok={settings.codexStatus.binaryFound} label="Codex 可执行文件" /><Status ok={settings.codexStatus.homeWritable} label="隔离 Codex 数据目录可写" /><Status ok={settings.codexStatus.apiKeyPresent} label="Codex 专用密钥" /></ul>}
             <details className="settings-details"><summary>配置来源与环境提示</summary><div>
               <p className="settings-note">{window.pigDesktop ? "设置保存在应用数据目录，密钥由系统加密保存。" : "设置保存在本机 data/settings.json，优先于 .env 和 .env.local。密钥应由本机文件权限保护，不要提交到仓库。"}</p>
               <p className="settings-note">远端非密钥提示优先级：本页设置 → env.json → PIG_CLOUD_REPO_* 环境变量。environment.json 提供依赖和安装提示；这些提示文件不应包含 Token 或 API Key。</p>
@@ -240,7 +209,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
               {settings?.cloudStatus?.envJson?.found && <button type="button" className="btn-quiet" onClick={() => { const hints = settings.cloudStatus?.envJson; if (hints) patch({ cloudBaseUrl: form.cloudBaseUrl.trim() || hints.baseUrl || "", cloudRepoUrl: form.cloudRepoUrl?.trim() || hints.repoUrl || "", cloudRepoRef: form.cloudRepoRef?.trim() || hints.repoRef || "" }); }}>填入 env.json 提示</button>}
               {settings?.cloudStatus?.installHints && <pre className="settings-code">{JSON.stringify(settings.cloudStatus.installHints, null, 2)}</pre>}
             </div></details>
-            <details className="settings-details"><summary>执行协议与能力边界</summary><div><p className="settings-note">Pig 使用 Chat Completions 工具调用。Codex 通过 codex exec --json 子进程使用 Responses 接口，并使用 workspace-write 沙箱；不会自动复用 Codex App 登录，也不桥接 Pig skills、update_plan 或细粒度 token 流。</p><p className="settings-note">远端使用控制面调度的独立容器。测试模式 local-stub 在本机复用 Pig 循环。全局并发、队列和 Runner 限制由管理端配置。</p></div></details>
+            <details className="settings-details"><summary>执行协议与能力边界</summary><div><p className="settings-note">Pig 使用 Chat Completions 工具调用，写入和命令走同一套审批与沙箱。远端使用控制面调度的 Runner。测试模式 local-stub 在本机复用 Pig 循环。全局并发、队列和 Runner 限制由管理端配置。</p></div></details>
 
           </>}
           </fieldset>

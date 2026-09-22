@@ -1,4 +1,6 @@
 import { lookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 
 export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
@@ -134,9 +136,67 @@ async function defaultLookup(hostname: string): Promise<string[]> {
   return records.map((r) => r.address);
 }
 
+export type PinnedConnect = (url: URL, ips: string[], signal: AbortSignal) => Promise<Response>;
+
+export function createPinnedLookup(ips: readonly string[]) {
+  const records = ips.map((address) => ({
+    address,
+    family: (address.includes(":") ? 6 : 4) as 4 | 6,
+  }));
+  return (
+    _hostname: string,
+    options: unknown,
+    callback?: (err: NodeJS.ErrnoException | null, address: string | typeof records, family?: number) => void,
+  ) => {
+    const cb = typeof options === "function" ? options as typeof callback : callback;
+    if (!cb) return;
+    const all = typeof options === "object" && options !== null && "all" in options && Boolean((options as { all?: boolean }).all);
+    if (all) cb(null, records);
+    else cb(null, records[0]?.address ?? "", records[0]?.family ?? 4);
+  };
+}
+
+function fetchWithPinnedIps(url: URL, ips: string[], signal: AbortSignal): Promise<Response> {
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        protocol: url.protocol,
+        hostname,
+        port: url.port || undefined,
+        path: `${url.pathname}${url.search}`,
+        method: "GET",
+        servername: hostname,
+        headers: {
+          host: url.host,
+          accept: "text/*,application/json,application/xml;q=0.9,*/*;q=0.1",
+        },
+        lookup: createPinnedLookup(ips),
+        signal,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk: Buffer) => chunks.push(chunk));
+        res.on("error", reject);
+        res.on("end", () => {
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (typeof value === "string") headers.set(key, value);
+            else if (Array.isArray(value)) headers.set(key, value.join(", "));
+          }
+          resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 0, headers }));
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 export type SafeFetchDeps = {
   lookup?: LookupFn;
-  fetch?: typeof fetch;
+  connect?: PinnedConnect;
 };
 
 export async function safeHttpFetch(
@@ -160,7 +220,7 @@ export async function safeHttpFetch(
   if (!hostAllowed(url.hostname, allowlist)) {
     throw new SsrfError(`Host is not on the HTTP fetch allowlist: ${url.hostname}`);
   }
-  await resolvePublicIps(url.hostname.replace(/^\[|\]$/g, ""), deps.lookup ?? defaultLookup);
+  const ips = await resolvePublicIps(url.hostname.replace(/^\[|\]$/g, ""), deps.lookup ?? defaultLookup);
 
   const timeout = clamp(
     options.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS,
@@ -178,15 +238,10 @@ export async function safeHttpFetch(
   const onAbort = () => controller.abort();
   options.signal?.addEventListener("abort", onAbort, { once: true });
 
-  const doFetch = deps.fetch ?? fetch;
+  const connect = deps.connect ?? fetchWithPinnedIps;
   let response: Response;
   try {
-    response = await doFetch(url.toString(), {
-      method: "GET",
-      redirect: "manual",
-      signal: controller.signal,
-      headers: { Accept: "text/*,application/json,application/xml;q=0.9,*/*;q=0.1" },
-    });
+    response = await connect(url, ips, controller.signal);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (controller.signal.aborted) {

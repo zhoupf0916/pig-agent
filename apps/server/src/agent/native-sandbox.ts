@@ -46,6 +46,16 @@ export function assertSafeNativeWorkspace(root: string) {
   const protectedRoots = [parse(root).root, homedir(), tmpdir(), "/tmp", "/private/tmp", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/private", "/proc", "/sys", "/dev", "/var", "/private/var", "/Users", "/home", "/root", "/System", "/Library", "/opt", "/opt/homebrew"];
   if (protectedRoots.some(path => { try { return realpathSync(path) === root; } catch { return path === root; } })) throw new Error("请选择具体的项目目录；不能将系统根目录、主目录或共享临时目录作为沙箱工作区。");
 }
+export function linuxSandboxArgs(root: string, command: string, network: boolean, env: NodeJS.ProcessEnv, trustedReadPaths: string[]) {
+  const args = ["--die-with-parent", "--new-session", "--unshare-all", "--cap-drop", "ALL", "--clearenv"];
+  if (network) args.push("--share-net");
+  for (const path of ["/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/ssl/certs", "/etc/alternatives", "/etc/passwd", "/etc/group", "/etc/ld.so.cache"]) if (existsSync(path)) args.push("--ro-bind", path, path);
+  args.push("--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--bind", root, root, "--chdir", root);
+  for (const path of trustedReadPaths) args.push("--ro-bind", path, path);
+  for (const [key, value] of Object.entries(env)) if (value) args.push("--setenv", key, value);
+  args.push("--seccomp", "3", "/bin/sh", "-c", command);
+  return args;
+}
 export function nativeCommand(workspace: string, command: string, network = false, options: { trustedReadPaths?: string[]; stdin?: boolean; helper?: boolean } = {}) {
   const root = normalizeWorkspaceRoot(workspace);
   assertSafeNativeWorkspace(root);
@@ -62,15 +72,9 @@ export function nativeCommand(workspace: string, command: string, network = fals
       return {child,cleanup};
     }
     if (process.platform !== "linux") throw new Error("当前系统尚未配置原生沙箱；请使用 macOS 或 Linux。不会自动切换到主机执行。");
-    if (network) throw new Error("Linux 沙箱联网须使用审批后的 http_fetch；不允许直接开放主机网络。");
     const filterPath = join(temporary,"seccomp.bpf");
     writeFileSync(filterPath,seccompFilter(process.arch)); descriptor=openSync(filterPath,"r");
-    const args = ["--die-with-parent","--new-session","--unshare-all","--cap-drop","ALL","--clearenv"];
-    for (const path of ["/usr","/bin","/sbin","/lib","/lib64","/etc/ssl/certs","/etc/alternatives","/etc/passwd","/etc/group","/etc/ld.so.cache"]) if (existsSync(path)) args.push("--ro-bind",path,path);
-    args.push("--proc","/proc","--dev","/dev","--tmpfs","/tmp","--bind",root,root,"--chdir",root);
-    for (const path of options.trustedReadPaths || []) args.push("--ro-bind",path,path);
-    for (const [key,value] of Object.entries(env)) if(value) args.push("--setenv",key,value);
-    args.push("--seccomp","3","/bin/sh","-c",command);
+    const args = linuxSandboxArgs(root, command, network, env, options.trustedReadPaths || []);
     const child = spawn("bwrap",args,{cwd:root,env,detached:true,stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe",descriptor]});
     closeSync(descriptor); descriptor=undefined;
     return {child,cleanup};

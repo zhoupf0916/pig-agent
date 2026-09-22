@@ -1,6 +1,6 @@
 # Web 功能参考
 
-Web 模式的 AI Agent 工作台（WorkBuddy 风格）。在浏览器里用自然语言描述目标，Agent **规划 → 调工具 → 校验 → 交付产物**，文件工具访问配置的工作区；命令可选择宿主机或 Docker 容器执行。宿主机模式不提供操作系统级隔离。
+Web 模式的 AI Agent 工作台。在浏览器里用自然语言描述目标，Agent **规划 → 调工具 → 校验 → 交付产物**。文件和命令固定在操作系统沙箱里，不能改成直接用本机权限。
 
 A **pure-local, pure-web** AI agent workstation. Describe a work goal; the agent plans, calls sandboxed tools, verifies, and leaves reviewable artifacts. No Electron/Tauri. No mandatory cloud except the LLM endpoint you configure.
 

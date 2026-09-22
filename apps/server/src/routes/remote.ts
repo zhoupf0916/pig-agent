@@ -132,7 +132,7 @@ export function registerRemoteRoutes(app: Hono): void {
       });
       const state = await loadWorkbench(session.id, settings.workspaceRoot);
       state.policy.review = true;
-      state.policy.shell = "host";
+      state.policy.shell = "native";
       for (let i = 0; i < files.length; i++)
         await stageOperation(state, `${id}:${i}`, "write_file", files[i]!);
       await saveWorkbench(session.id, state);

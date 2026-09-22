@@ -114,7 +114,7 @@ export function createApp(): Hono {
       return c.json({ error: parsed.error.flatten() }, 400);
     }
     try {
-      const settings = await saveSettings(parsed.data);
+      const settings = await saveSettings({ ...parsed.data, ...(parsed.data.runtime === "codex" ? { runtime: "pig" } : {}) });
       return c.json(publicSettings(settings));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -155,7 +155,7 @@ export function createApp(): Hono {
     // Retain the legacy stub only when explicitly chosen in global settings.
     if (defaults.runtime !== "cloud" || defaults.cloudMode === "remote") {
       session.executionTarget = defaults.runtime === "cloud" ? "remote" : "local";
-      session.engine = defaults.runtime === "codex" ? "codex" : "pig";
+      session.engine = "pig";
       await saveSession(session);
     }
     if (projectId) await recordSessionBound(projectId, session.id);
@@ -191,8 +191,9 @@ export function createApp(): Hono {
         if (isRemoteActive(session.remoteState)) return c.json({error:"远端仍在运行，不能切换执行配置"},409);
       }
       const target = body.executionTarget ?? session.executionTarget ?? "local";
-      const engine = body.engine ?? session.engine ?? "pig";
-      if (!["local","remote"].includes(target) || !["pig","codex"].includes(engine) || (target === "remote" && engine !== "pig")) return c.json({error:"当前远端仅支持 Pig 引擎"},400);
+      if (body.engine === "codex") return c.json({ error: "执行引擎仅支持 Pig" }, 400);
+      const engine = "pig";
+      if (!["local","remote"].includes(target)) return c.json({error:"执行位置无效"},400);
       if (target !== session.executionTarget) {delete session.remoteRunId;delete session.remoteState;delete session.remoteRetry;}
       if(body.remoteRequireApproval !== undefined){
         if(typeof body.remoteRequireApproval !== "boolean")return c.json({error:"审批设置无效"},400);

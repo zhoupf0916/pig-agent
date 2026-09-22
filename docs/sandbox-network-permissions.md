@@ -2,7 +2,7 @@
 
 ## 实际执行边界
 
-桌面本机 Pig 支持工作台策略中的 `shell: host | docker`。启用 Docker 沙箱后，Shell 在非特权容器的 `/workspace` 执行，仅挂载选择的工作区，根文件系统只读。关闭沙箱后 Shell 使用本机进程权限；路径工具仍限制工作区，但这不等于操作系统隔离。已有 `network` 开关只控制 Docker Shell 的 `none/bridge` 网络，不能切断 Host Shell 的网络。
+桌面本机 Pig 固定使用操作系统沙箱（macOS Seatbelt，Linux bubblewrap 与 seccomp）。保存为宿主机或 Docker 的旧策略在重新打开时改回原生沙箱；沙箱打不开就拒绝执行，不改到本机进程。网络开关默认关闭。打开后只放行沙箱出站，工作区之外的文件隔离保持不变。
 
 Web 任务始终由控制面调度到独立 Runner 容器，不能通过关闭沙箱访问控制面或 Worker 宿主机。容器保持独立 Internal 网络、非 root 用户、只读根文件系统、资源限制和临时工作区。网关是独立可信代理，连接 egress 网络；不会给执行容器接公网网络或挂载 Docker socket。
 

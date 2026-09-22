@@ -218,6 +218,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       } catch(error) {await client.query("ROLLBACK");return c.json({error:(error as Error).message},400);}
       delete input.requestInput;
       if(parent.owner_id !== p.id) { delete input.expertId; delete input.skillIds; }
+      if (input.projectId && (await client.query("SELECT space_id FROM shared_projects WHERE id=$1",[input.projectId])).rows[0]?.space_id) input.requireApproval = true;
       try { input.capabilityContext=parent.owner_id===p.id && parent.input.capabilityContext ? parent.input.capabilityContext : await resolveCapabilityContext(p.id,input,client); }
       catch(e) { await client.query("ROLLBACK");return c.json({error:(e as Error).message},400); }
       input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);

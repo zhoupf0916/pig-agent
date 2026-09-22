@@ -349,12 +349,10 @@ export function WorkbenchPanel({
         <span className="font-medium">执行与验收</span>
         <span className="min-w-0 flex-1 truncate text-ink-500">
           {state.runtime !== "pig"
-            ? state.runtime === "codex"
-              ? "本机 Codex · 使用引擎自身执行权限"
-              : "本机隔离桩 · 本地执行"
+            ? "本机隔离桩 · 本地执行"
             : pending.length
               ? `${pending.length} 项变更待批准`
-              : `${state.policy.shell !== "host" ? "原生沙箱" : "宿主机"} · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}
+              : `原生沙箱 · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}
         </span>
         <ChevronDown size={14} className={open ? "rotate-180" : ""} />
       </button>
@@ -476,12 +474,6 @@ export function WorkbenchPanel({
             >
               可拖入文件 · 每个最多 5MB · 同名文件不覆盖 · 二进制文件需解析工具
             </div>
-            {state.runtime === "codex" && (
-              <p className="rounded-lg bg-accent-soft p-3">
-                Codex 在自身工作区沙箱内自动执行，不支持 Pig
-                的逐次操作审批。若需要先批准再写入，请切换到本机 Pig。
-              </p>
-            )}
             {policy && state.runtime === "pig" && (
               <div className="space-y-3 rounded-xl border border-ink-300 p-3">
                 <label className="flex items-center gap-2">
@@ -497,36 +489,17 @@ export function WorkbenchPanel({
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={policy.shell !== "host"}
+                    checked={policy.network}
                     onChange={(e) =>
-                      setPolicy({
-                        ...policy,
-                        shell: e.target.checked ? "native" : "host",
-                      })
+                      setPolicy({ ...policy, network: e.target.checked, shell: "native" })
                     }
                   />
-                  使用原生沙箱
+                  允许沙箱访问网络
                 </label>
-                {policy.shell === "host" && (
-                  <p className="text-ink-500">
-                    关闭时命令使用本机权限执行。文件工具限制在工作区内，命令本身不是强沙箱。
-                  </p>
-                )}
-                {policy.shell !== "host" && (
-                  <>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={policy.network}
-                        onChange={(e) =>
-                          setPolicy({ ...policy, network: e.target.checked })
-                        }
-                      />
-                      允许沙箱访问网络
-                    </label>
-                    <p className="text-ink-500">
-                      使用操作系统原生隔离，只允许写入当前工作区。网络默认关闭，缺少沙箱支持时拒绝执行，不回退到本机权限。
-                    </p>
+                <p className="text-ink-500">
+                  文件和命令固定在操作系统沙箱里，不能改成直接用本机权限。命令名单只是额外拒绝，不是隔离边界。网络默认关闭；打开后 macOS 与 Linux 都只放行沙箱出站，文件系统隔离保持不变。
+                </p>
+                <div className="flex items-center gap-2">
                     <button
                       className="btn-ghost"
                       type="button"
@@ -549,8 +522,7 @@ export function WorkbenchPanel({
                       检查沙箱
                     </button>
                     <span role="status">{sandboxStatus}</span>
-                  </>
-                )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   {(
                     [
@@ -633,12 +605,7 @@ export function WorkbenchPanel({
                     </summary>
                     <div className="mt-3 space-y-3">
                       <p className="break-all">
-                        目标：{op.root} ·{" "}
-                        {op.environment === "docker"
-                          ? `Docker ${op.image}（网络${op.network ? "开" : "关"}）`
-                          : op.environment === "native"
-                            ? "原生沙箱"
-                            : "宿主机"}
+                        目标：{op.root} · 原生沙箱 · 网络{op.network ? "开" : "关"}
                       </p>
                       {op.tool === "run_shell" ? (
                         <>

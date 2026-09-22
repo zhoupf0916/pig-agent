@@ -9,8 +9,6 @@ import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts
 import { newId, nowIso, truncate } from "../util.ts";
 import { decideRemoteRetry, formatCloudRemoteError } from "./cloud/errors.ts";
 import { runCloudAgent } from "./cloud/runtime.ts";
-import { runCodexAgent } from "./codex/runtime.ts";
-import { formatCodexTurnError } from "./codex/errors.ts";
 import { decideLocalRetry, formatLocalTurnError } from "./local-errors.ts";
 import { runAgent } from "./runtime.ts";
 import { runSequentialTeamTurn } from "./team-run.ts";
@@ -48,7 +46,6 @@ export async function waitForTurnRelease(
 }
 
 export function pickRunner(runtime: AgentRuntime) {
-  if (runtime === "codex") return runCodexAgent;
   if (runtime === "cloud") return runCloudAgent;
   return runAgent;
 }
@@ -92,12 +89,13 @@ export async function runSessionTurn(
   hooks: SessionTurnHooks = {},
 ): Promise<Session> {
   const settings = await loadSessionSettings(session);
-  const runtime = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
+  const requested = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
+  const runtime = requested === "codex" ? "pig" : requested;
   if (runtime === "cloud") {
     if (session.executionTarget === "remote" || settings.cloudMode === "remote") session.executionTarget = "remote";
     else delete session.executionTarget; // Legacy local-stub stays on its existing adapter.
   } else session.executionTarget = "local";
-  session.engine = runtime === "codex" ? "codex" : "pig";
+  session.engine = "pig";
   if (session.executionTarget === "remote") settings.cloudMode = "remote";
   await saveSession(session);
   if (runtime === "pig") session.deliveryMode = true;
@@ -149,11 +147,6 @@ export async function runSessionTurn(
       session.remoteRetry = decideRemoteRetry(err, session.remoteRunId);
       if (session.remoteRetry === "create-run") delete session.remoteRunId;
       session.localRetry = undefined;
-    } else if (runtime === "codex") {
-      session.status = "idle";
-      session.lastError = formatCodexTurnError(err);
-      session.localRetry = decideLocalRetry(session);
-      session.remoteRetry = undefined;
     } else {
       session.status = "idle";
       session.lastError = formatLocalTurnError(err);
