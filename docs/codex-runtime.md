@@ -1,5 +1,7 @@
 # Codex 运行时
 
+产品已不再提供 Codex 执行选项，任务固定走 Pig。下文保留作历史说明。选型见 [运行时选型](runtime-selection.md)。
+
 这里的 Codex 是**本机 Codex CLI 执行引擎**，负责工具调用、命令与文件操作。模型由独立的 Responses 服务提供；默认模型是 DeepSeek `deepseek-flash`。选择 Codex 不代表使用 OpenAI 模型，也不会使用当前 ChatGPT / Codex 应用的账号或额度。
 
 ## 配置

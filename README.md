@@ -58,4 +58,4 @@ pnpm desktop:dist    # macOS 安装包，输出 release/
 - 桌面安装包未签名、未公证，目前只有 macOS。执行固定走 Pig 的沙箱和审批，不能改成直接在主机上跑命令。
 - 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测，没有账号计费和公网生产部署方案。
 
-架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。改代码的顺序和测试要求见 [AGENTS.md](AGENTS.md)。
+架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。运行时选型见 [运行时选型](docs/runtime-selection.md)。改代码的顺序和测试要求见 [AGENTS.md](AGENTS.md)。
