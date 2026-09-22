@@ -115,10 +115,10 @@ describe("workspace tools", () => {
     expect(readFileSync(join(root, "doc.md"), "utf8")).toBe("Title\nbody\nEND\n");
   });
 
-  it("runs one shell command in the workspace and rejects a chained script", async () => {
+  it("runs a chained shell command inside the workspace sandbox", async () => {
     const root = mkdtempSync(join(tmpdir(), "pig-tools-"));
     writeFileSync(join(root, "a.txt"), "ok");
-    const result = await executeTool("run_shell", { command: "pwd" }, ctx(root));
+    const result = await executeTool("run_shell", { command: "pwd && ls" }, ctx(root));
     const payload = JSON.parse(result.output) as {
       stdout: string;
       exit_code: number;
@@ -127,10 +127,7 @@ describe("workspace tools", () => {
     expect(payload.exit_code).toBe(0);
     expect(payload.preferred_command).toBe(true);
     expect(payload.stdout).toContain(root);
-    const listed = JSON.parse((await executeTool("run_shell", { command: "ls" }, ctx(root))).output) as { stdout: string };
-    expect(listed.stdout).toContain("a.txt");
-    await expect(executeTool("run_shell", { command: "pwd && ls" }, ctx(root))).rejects.toThrow(/one command/i);
-    await expect(executeTool("run_shell", { command: "echo \"a && b\"" }, ctx(root))).resolves.toBeTruthy();
+    expect(payload.stdout).toContain("a.txt");
     await expect(executeTool("run_shell", { command: "exit 7" }, ctx(root))).rejects.toThrow('"exit_code": 7');
   });
 

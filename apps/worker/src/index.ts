@@ -4,7 +4,8 @@ import { EventBatcher } from "./event-batcher.ts";
 import { CompletionOutbox } from "./completion-outbox.ts";
 import { join } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdir, rm, readdir } from "node:fs/promises";
+import { SlotPool } from "./slot-pool.ts";
 import { createInterface } from "node:readline";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -58,7 +59,7 @@ async function execute(job: {
     pids: number;
     timeoutSeconds: number;
   };
-}) {
+}, workspace: string) {
   const resource = job.resources || {
     memoryMiB: 512,
     cpu: 1,
@@ -66,14 +67,12 @@ async function execute(job: {
     timeoutSeconds: 240,
   };
   let eventError: unknown;
-  let workspace = "";
   let child: ReturnType<typeof spawn> | undefined;
   let result: any = null,
     writes = Promise.resolve(),
     stopping = false,
     heartbeatBusy = false,
     completion: Record<string, unknown> | undefined,
-    completionSaved = false,
     leaseLost = false;
   let budgetError: string | undefined;
   let budgetBusy = false;
@@ -145,8 +144,7 @@ async function execute(job: {
       });
   }, 2000);
   try {
-    workspace = await mkdtemp("/tmp/pig-job-");
-    await mkdir(join(workspace, "workspace"));
+    await mkdir(workspace, { recursive: true });
     const lease = await sendEvent(`/internal/runs/${job.id}/heartbeat`, {
       token: job.token,
     });
@@ -167,7 +165,7 @@ async function execute(job: {
         PIG_DESKTOP: "1",
         PIG_APP_ROOT: "/app",
         DATA_DIR: join(workspace, "data"),
-        WORKSPACE_ROOT: join(workspace, "workspace"),
+        WORKSPACE_ROOT: workspace,
         PIG_AGENT_FORCE_NATIVE_SANDBOX: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -225,7 +223,6 @@ async function execute(job: {
       try {
         const item = { runId: job.id, body: completion };
         await outbox.save(item);
-        completionSaved = true;
         if (!(await outbox.deliver(item)))
           console.error("Completion retained in outbox", job.id);
       } catch {
@@ -235,8 +232,6 @@ async function execute(job: {
     clearInterval(pulse);
     clearInterval(budgetPulse);
     activeStops.delete(stop);
-    if (workspace && completionSaved)
-      await rm(workspace, { recursive: true, force: true });
   }
 }
 // Fail closed before registration/claim: never fall back to unsandboxed execution.
@@ -289,7 +284,9 @@ for (let attempt = 0; ; attempt++) {
     await delay(Math.min(2000, 500 * (attempt + 1)));
   }
 }
-console.log("Worker ready", workerId, "slots", slots);
+const pool = new SlotPool(join("/tmp", "pig-slot-pool", workerId), slots);
+await pool.open();
+console.log("Worker pool ready", workerId, "slots", slots);
 let recoveryBusy = false;
 const recoveryPulse = setInterval(() => {
   if (recoveryBusy) return;
@@ -341,9 +338,18 @@ await Promise.all(
   Array.from({ length: slots }, async () => {
     while (!draining) {
       try {
-        const job = await api("/internal/claim", { workerId, instanceId });
-        if (job) await execute(job);
-        else await delay(1000);
+        const slot = pool.acquire();
+        if (!slot) {
+          await delay(200);
+          continue;
+        }
+        try {
+          const job = await api("/internal/claim", { workerId, instanceId });
+          if (job) await execute(job, slot.workspace);
+          else await delay(1000);
+        } finally {
+          await pool.release(slot);
+        }
       } catch (error) {
         if (String(error).includes("409")) {
           draining = true;

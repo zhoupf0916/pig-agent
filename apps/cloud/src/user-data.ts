@@ -7,12 +7,25 @@ const editableSchema = z.object({
   networkPolicy: z.enum(["ask", "blocked"]),
   requireApproval: z.boolean(),
   memoryEnabled: z.boolean(),
+  timezone: z.string().trim().min(1).max(80).default("Asia/Shanghai"),
+  defaultRunTarget: z.enum(["cloud", "local"]).default("cloud"),
 });
+const displayNameSchema = z.string().trim().min(1).max(40);
 export const defaultUserSettings = {
   networkPolicy: "ask" as const,
-  requireApproval: true,
+  requireApproval: false,
   memoryEnabled: true,
+  timezone: "Asia/Shanghai",
+  defaultRunTarget: "cloud" as const,
 };
+function knownTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
 type Queryable = Pick<typeof db, "query">;
 export async function loadUserSettings(
   ownerId: string,
@@ -59,16 +72,20 @@ export async function buildUserContext(
   );
 }
 export function registerUserDataRoutes(app: Hono<CloudEnv>) {
-  app.get("/v1/settings", async (c) =>
-    c.json({
-      ...(await loadUserSettings(c.get("principal").id)),
+  app.get("/v1/settings", async (c) => {
+    const settings = await loadUserSettings(c.get("principal").id);
+    const name = (await db.query("SELECT name FROM principals WHERE id=$1", [c.get("principal").id])).rows[0]?.name ?? "";
+    return c.json({
+      ...settings,
+      name,
       executionTarget: "remote",
       sandbox: "container",
-    }),
-  );
+    });
+  });
   app.put("/v1/settings", async (c) => {
     const parsed = editableSchema
       .partial()
+      .extend({ displayName: displayNameSchema.optional() })
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success)
@@ -79,10 +96,22 @@ export function registerUserDataRoutes(app: Hono<CloudEnv>) {
       await client.query("SELECT id FROM principals WHERE id=$1 FOR UPDATE", [
         c.get("principal").id,
       ]);
+      if (parsed.data.timezone && !knownTimezone(parsed.data.timezone)) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "时区无法识别" }, 400);
+      }
+      const { displayName, ...patch } = parsed.data;
       const value = editableSchema.parse({
         ...(await loadUserSettings(c.get("principal").id, client)),
-        ...parsed.data,
+        ...patch,
       });
+      if (!knownTimezone(value.timezone)) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "时区无法识别" }, 400);
+      }
+      if (displayName) {
+        await client.query("UPDATE principals SET name=$1 WHERE id=$2", [displayName, c.get("principal").id]);
+      }
       await client.query(
         "INSERT INTO user_settings(owner_id,value) VALUES($1,$2) ON CONFLICT(owner_id) DO UPDATE SET value=$2,updated_at=now()",
         [c.get("principal").id, value],
@@ -90,6 +119,7 @@ export function registerUserDataRoutes(app: Hono<CloudEnv>) {
       await client.query("COMMIT");
       return c.json({
         ...value,
+        name: displayName || (await client.query("SELECT name FROM principals WHERE id=$1", [c.get("principal").id])).rows[0]?.name || "",
         configured: true,
         executionTarget: "remote",
         sandbox: "container",

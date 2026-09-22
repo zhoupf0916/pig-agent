@@ -21,6 +21,7 @@ await build({
   },
 });
 await build({
+  absWorkingDir: process.cwd(),
   entryPoints: ["apps/server/src/agent/file-helper.ts"],
   outfile: `${runtime}/tools-helper.mjs`, platform: "node", target: "node22", format: "esm", bundle: true,
   banner: {js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"},

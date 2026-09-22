@@ -60,6 +60,10 @@ export async function migrate() {
       schedule_id text NOT NULL REFERENCES schedules(id), scheduled_at timestamptz NOT NULL,
       outcome text NOT NULL, run_id text REFERENCES runs(id), PRIMARY KEY(schedule_id,scheduled_at)
     );
+    ALTER TABLE schedule_firings ADD COLUMN IF NOT EXISTS device_id text;
+    ALTER TABLE schedule_firings ADD COLUMN IF NOT EXISTS lease_until timestamptz;
+    ALTER TABLE schedule_firings ADD COLUMN IF NOT EXISTS request_key text;
+    CREATE UNIQUE INDEX IF NOT EXISTS schedule_firing_request ON schedule_firings(schedule_id, request_key) WHERE request_key IS NOT NULL;
     CREATE TABLE IF NOT EXISTS events (seq bigserial PRIMARY KEY, run_id text NOT NULL REFERENCES runs(id), event jsonb NOT NULL);
     CREATE TABLE IF NOT EXISTS approvals(id text PRIMARY KEY,run_id text NOT NULL REFERENCES runs(id),call_id text NOT NULL,tool text NOT NULL,args jsonb NOT NULL,state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','approved','rejected','consumed')),created_at timestamptz NOT NULL DEFAULT now(),decided_at timestamptz,decided_by text REFERENCES principals(id),UNIQUE(run_id,call_id));
     ALTER TABLE approvals ADD COLUMN IF NOT EXISTS execution_remaining_ms bigint;

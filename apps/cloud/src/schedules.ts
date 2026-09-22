@@ -1,3 +1,4 @@
+import { cronToPlan, describePlan, localLeaseDecision, planToCron, type SchedulePlan, SchedulePlanError } from "@pig-agent/contracts";
 import { executionPolicy } from "./execution-policy.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import type { Hono } from "hono";
@@ -8,24 +9,32 @@ import { db } from "./db.ts";
 import type { CloudEnv } from "./types.ts";
 import { InvalidScheduleError, missedFire, nextFire } from "./schedule-time.ts";
 
+const planSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("manual") }).strict(),
+  z.object({ kind: z.literal("hourly") }).strict(),
+  z.object({ kind: z.literal("daily"), time: z.string() }).strict(),
+  z.object({ kind: z.literal("weekdays"), time: z.string(), days: z.array(z.number().int().min(0).max(6)).max(7) }).strict(),
+  z.object({ kind: z.literal("custom"), cron: z.string().max(80) }).strict(),
+]);
 const schema = z.object({
   requireApproval: z.boolean().optional(),
   networkPolicy: z.enum(["ask","blocked"]).optional(),
   name: z.string().trim().min(1).max(120),
   prompt: z.string().trim().min(1).max(20000),
   enabled: z.boolean().default(true),
-  schedule: z.string().trim().max(80).nullable().default(null),
+  schedule: z.string().trim().max(80).nullable().optional(),
+  plan: planSchema.optional(),
   timezone: z.string().min(1).max(80).default("Asia/Shanghai"),
   misfirePolicy: z.enum(["skip", "once"]).default("skip"),
-  executionTarget: z.literal("remote").optional(),
+  executionTarget: z.enum(["cloud", "local", "remote"]).optional().transform((value) => value === "remote" ? "cloud" as const : value),
   engine: z.literal("pig").optional(),
-  runtime: z.literal("cloud").optional(),
+  runtime: z.enum(["cloud", "pig"]).optional(),
 });
 type Row = {
   id: string;
   owner_id: string;
   name: string;
-  input: { prompt: string; messages: unknown[]; requireApproval?: boolean; networkPolicy?: "ask"|"blocked" };
+  input: { prompt: string; messages: unknown[]; requireApproval?: boolean; networkPolicy?: "ask"|"blocked"; plan?: SchedulePlan; executionTarget?: "cloud" | "local" };
   enabled: boolean;
   cron: string | null;
   timezone: string;
@@ -37,6 +46,11 @@ type Row = {
   created_at: Date;
   updated_at: Date;
 };
+function compiledSchedule(input: { plan?: SchedulePlan; schedule?: string | null }): { cron: string | null; plan: SchedulePlan } {
+  if (input.plan) return { cron: planToCron(input.plan), plan: input.plan };
+  const cron = input.schedule ?? null;
+  return { cron, plan: cronToPlan(cron) };
+}
 const view = (r: Row) => ({
   id: r.id,
   name: r.name,
@@ -45,11 +59,13 @@ const view = (r: Row) => ({
   networkPolicy: r.input.networkPolicy ?? "ask",
   enabled: r.enabled,
   schedule: r.cron,
+  plan: r.input.plan ?? cronToPlan(r.cron),
+  scheduleLabel: describePlan(r.input.plan ?? cronToPlan(r.cron)),
   timezone: r.timezone,
   misfirePolicy: r.misfire,
-  executionTarget: "remote",
+  executionTarget: r.input.executionTarget === "local" ? "local" : "cloud",
   engine: "pig",
-  runtime: "cloud",
+  runtime: r.input.executionTarget === "local" ? "pig" : "cloud",
   nextFireAt: r.next_fire_at?.toISOString(),
   lastRemoteRunId: r.last_run_id,
   lastRunAt: r.last_run_at?.toISOString(),
@@ -150,9 +166,12 @@ export async function tickSchedules(now = new Date()): Promise<void> {
         [row.id, next],
       );
       if (!claimed.rowCount) return;
+      const local = row.input.executionTarget === "local";
       const reason = missedFire(instant, now, row.misfire)
         ? "错过计划时间，按策略跳过"
-        : await admission(c, row);
+        : local
+          ? null
+          : await admission(c, row);
       if (reason) {
         await c.query("UPDATE schedules SET last_error=$2 WHERE id=$1", [
           row.id,
@@ -162,6 +181,12 @@ export async function tickSchedules(now = new Date()): Promise<void> {
           "UPDATE schedule_firings SET outcome=$3 WHERE schedule_id=$1 AND scheduled_at=$2",
           [row.id, instant, reason],
         );
+      } else if (local) {
+        await c.query(
+          "UPDATE schedule_firings SET outcome='waiting_device' WHERE schedule_id=$1 AND scheduled_at=$2",
+          [row.id, instant],
+        );
+        await c.query("UPDATE schedules SET last_error=NULL WHERE id=$1", [row.id]);
       } else {
         const id = await enqueue(
           c,
@@ -201,13 +226,13 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
       );
     const p = parsed.data;
     let next: Date | null;
+    let compiled: { cron: string | null; plan: SchedulePlan };
     try {
-      next = nextFire(p.schedule, p.timezone, new Date());
-    } catch {
-      return c.json(
-        { error: "cron 或时区无效（日期与星期不能同时限定）" },
-        400,
-      );
+      compiled = compiledSchedule(p);
+      next = nextFire(compiled.cron, p.timezone, new Date());
+    } catch (error) {
+      const message = error instanceof SchedulePlanError || error instanceof InvalidScheduleError ? error.message : "执行计划或时区无效";
+      return c.json({ error: message }, 400);
     }
     const key = c.req.header("Idempotency-Key");
     if (!key || key.length > 100)
@@ -237,9 +262,11 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
             {
               prompt: p.prompt,
               messages: [],
+              plan: compiled.plan,
+              executionTarget: p.executionTarget ?? "cloud",
               ...executionPolicy(p,defaults),
             },
-            p.schedule,
+            compiled.cron,
             p.timezone,
             p.enabled,
             p.misfirePolicy,
@@ -255,7 +282,8 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
       result.input.prompt !== p.prompt ||
       (p.requireApproval !== undefined && result.input.requireApproval !== p.requireApproval) ||
       (p.networkPolicy !== undefined && result.input.networkPolicy !== p.networkPolicy) ||
-      result.cron !== p.schedule ||
+      result.cron !== compiled.cron ||
+      (result.input.executionTarget ?? "cloud") !== (p.executionTarget ?? "cloud") ||
       result.timezone !== p.timezone ||
       result.misfire !== p.misfirePolicy ||
       result.enabled !== p.enabled
@@ -288,24 +316,25 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
         ).rows[0];
         if (!old) return null;
         const p = { ...view(old), ...parsed.data };
+        const compiled = compiledSchedule({ plan: parsed.data.plan ?? p.plan, schedule: parsed.data.schedule ?? p.schedule });
         const changed =
-          p.schedule !== old.cron ||
+          compiled.cron !== old.cron ||
           p.timezone !== old.timezone ||
           p.enabled !== old.enabled;
         const next = changed
           ? p.enabled
-            ? nextFire(p.schedule, p.timezone, new Date())
+            ? nextFire(compiled.cron, p.timezone, new Date())
             : null
           : old.next_fire_at;
-        nextFire(p.schedule, p.timezone, new Date());
+        nextFire(compiled.cron, p.timezone, new Date());
         return (
           await client.query(
             "UPDATE schedules SET name=$2,input=$3,cron=$4,timezone=$5,enabled=$6,misfire=$7,next_fire_at=$8,updated_at=now() WHERE id=$1 RETURNING *",
             [
               old.id,
               p.name,
-              { ...old.input, prompt: p.prompt, requireApproval:p.requireApproval, networkPolicy:p.networkPolicy },
-              p.schedule,
+              { ...old.input, prompt: p.prompt, plan: compiled.plan, executionTarget: parsed.data.executionTarget ?? (old.input.executionTarget === "local" ? "local" : "cloud"), requireApproval:p.requireApproval, networkPolicy:p.networkPolicy },
+              compiled.cron,
               p.timezone,
               p.enabled,
               p.misfirePolicy,
@@ -365,6 +394,22 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
         )
       ).rows[0];
       if (!row) return { error: "计划不存在", status: 404 as const };
+      if (row.input.executionTarget === "local") {
+        const requestKey = `manual:${key}`;
+        const inserted = await client.query(
+          "INSERT INTO schedule_firings(schedule_id,scheduled_at,outcome,request_key) VALUES($1,now(),'waiting_device',$2) ON CONFLICT (schedule_id, request_key) WHERE request_key IS NOT NULL DO NOTHING RETURNING scheduled_at",
+          [row.id, requestKey],
+        );
+        if (!inserted.rowCount) {
+          const existing = await client.query(
+            "SELECT scheduled_at FROM schedule_firings WHERE schedule_id=$1 AND request_key=$2",
+            [row.id, requestKey],
+          );
+          if (!existing.rowCount) return { error: "无法排队到设备", status: 409 as const };
+        }
+        await client.query("UPDATE schedules SET last_error=NULL,updated_at=now() WHERE id=$1", [row.id]);
+        return { local: true as const };
+      }
       const requestKey = `manual:${row.id}:${key}`;
       const old = (
         await client.query(
@@ -379,6 +424,62 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
     });
     return "error" in result
       ? c.json({ error: result.error }, result.status)
-      : c.json({ remoteRunId: result.id }, 202);
+      : "local" in result
+        ? c.json({ executionTarget: "local", accepted: true }, 202)
+        : c.json({ remoteRunId: result.id }, 202);
+  });
+  app.get("/v1/schedule-deliveries", async (c) => {
+    const rows = await db.query(
+      "SELECT s.id,s.name,s.input->>'prompt' AS prompt,f.scheduled_at,f.outcome,f.device_id,f.lease_until FROM schedule_firings f JOIN schedules s ON s.id=f.schedule_id WHERE s.owner_id=$1 AND s.deleted_at IS NULL AND coalesce(s.input->>'executionTarget','cloud')='local' AND (f.outcome='waiting_device' OR (f.outcome='leased' AND f.lease_until<=now())) ORDER BY f.scheduled_at LIMIT 20",
+      [c.get("principal").id],
+    );
+    return c.json({
+      deliveries: rows.rows.map((row) => ({
+        scheduleId: row.id,
+        name: row.name,
+        prompt: row.prompt,
+        scheduledAt: row.scheduled_at,
+      })),
+    });
+  });
+  app.post("/v1/schedules/:id/claim-device", async (c) => {
+    const body = z.object({ deviceId: z.string().trim().min(1).max(80), scheduledAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "时间无效") }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "设备领取参数无效" }, 400);
+    const row = await transaction(c.get("principal").id, async (client) => {
+      const firing = (await client.query(
+        "SELECT f.outcome,f.device_id,f.lease_until,s.input->>'prompt' AS prompt,s.name FROM schedule_firings f JOIN schedules s ON s.id=f.schedule_id WHERE f.schedule_id=$1 AND s.owner_id=$2 AND s.deleted_at IS NULL AND f.scheduled_at=$3 FOR UPDATE OF f",
+        [c.req.param("id"), c.get("principal").id, body.data.scheduledAt],
+      )).rows[0];
+      if (!firing) return null;
+      const decision = localLeaseDecision({
+        outcome: firing.outcome,
+        deviceId: firing.device_id,
+        leaseUntil: firing.lease_until ? new Date(firing.lease_until).getTime() : null,
+        now: Date.now(),
+        device: body.data.deviceId,
+      });
+      if (decision === "busy") return { busy: true as const };
+      if (decision === "take") {
+        await client.query(
+          "UPDATE schedule_firings SET outcome='leased',device_id=$3,lease_until=now()+interval '2 minutes' WHERE schedule_id=$1 AND scheduled_at=$2",
+          [c.req.param("id"), body.data.scheduledAt, body.data.deviceId],
+        );
+      }
+      return { prompt: firing.prompt as string, name: firing.name as string };
+    });
+    if (!row) return c.json({ error: "没有可领取的执行" }, 404);
+    if ("busy" in row) return c.json({ error: "已有其他设备在执行" }, 409);
+    return c.json({ scheduleId: c.req.param("id"), prompt: row.prompt, name: row.name, scheduledAt: body.data.scheduledAt });
+  });
+  app.post("/v1/schedules/:id/device-result", async (c) => {
+    const body = z.object({ deviceId: z.string().trim().min(1).max(80), scheduledAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "时间无效"), ok: z.boolean(), error: z.string().max(500).optional() }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "执行结果无效" }, 400);
+    const updated = await db.query(
+      "UPDATE schedule_firings f SET outcome=$4 FROM schedules s WHERE f.schedule_id=s.id AND f.schedule_id=$1 AND s.owner_id=$2 AND f.scheduled_at=$3 AND f.outcome='leased' AND f.device_id=$5 RETURNING f.schedule_id",
+      [c.req.param("id"), c.get("principal").id, body.data.scheduledAt, body.data.ok ? "done" : (body.data.error || "设备执行失败"), body.data.deviceId],
+    );
+    if (!updated.rowCount) return c.json({ error: "执行结果无法记入" }, 409);
+    if (!body.data.ok) await db.query("UPDATE schedules SET last_error=$2 WHERE id=$1 AND owner_id=$3", [c.req.param("id"), body.data.error || "设备执行失败", c.get("principal").id]);
+    return c.json({ ok: true });
   });
 }

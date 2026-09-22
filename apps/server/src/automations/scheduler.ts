@@ -1,3 +1,4 @@
+import { pullLocalSchedules } from "./control-schedules.ts";
 import { tickDueAutomations } from "./run.ts";
 
 const DEFAULT_INTERVAL_MS = 30_000;
@@ -20,6 +21,10 @@ export function startAutomationScheduler(
     void tickDueAutomations(now()).catch((err) => {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[automations] scheduler tick failed: ${message}`);
+    });
+    void pullLocalSchedules().catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[automations] control-plane schedule pull failed: ${message}`);
     });
   }, intervalMs);
   if (typeof handle.unref === "function") handle.unref();

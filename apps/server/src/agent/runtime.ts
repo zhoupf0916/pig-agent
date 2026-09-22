@@ -175,7 +175,7 @@ export async function runAgent(options: {
     createdAt: nowIso(),
   };
 
-  if (workbench) system.content += `\nExecution mode: native sandbox. File tools and shell commands stay inside the operating-system sandbox for ${workbench.root}. The command denylist is an extra refusal, not the isolation boundary. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed inside the sandbox with a durable journal"}. Each run_shell call may contain one command; split ';', '&&', '||', '&', and newlines into separate calls so each can be reviewed.`;
+  if (workbench) system.content += `\nExecution mode: native sandbox, Codex-style on-request approval. File tools and shell commands stay inside the operating-system sandbox for ${workbench.root}. The command denylist is an extra refusal, not the isolation boundary. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "run immediately inside the sandbox. Do not ask before ordinary workspace edits or commands."}`;
 
   if (workbench) system.content += "\nHTTP requests always require a one-time review, independent of write review. http_fetch connects only to addresses checked before the request and does not follow redirects. Shell networking follows the task network switch and stays inside the sandbox.";
 

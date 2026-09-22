@@ -809,44 +809,7 @@ async function httpFetchTool(ctx: ToolContext, args: Json): Promise<ToolResult> 
   }
 }
 
-export function shellSegments(command: string): string[] {
-  const parts: string[] = [];
-  let current = "";
-  let quote: "'" | '"' | null = null;
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i]!;
-    if (quote) {
-      current += ch;
-      if (ch === quote && command[i - 1] !== "\\") quote = null;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      current += ch;
-      continue;
-    }
-    if (ch === "\n" || ch === ";") {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-    if (ch === "&" || (ch === "|" && command[i + 1] === "|")) {
-      parts.push(current);
-      current = "";
-      if (ch === "&" && command[i + 1] === "&") i += 1;
-      if (ch === "|" && command[i + 1] === "|") i += 1;
-      continue;
-    }
-    current += ch;
-  }
-  parts.push(current);
-  return parts.map((part) => part.trim()).filter(Boolean);
-}
-
 export function shellRejectedReason(command: string): string | null {
-  if (shellSegments(command).length > 1) {
-    return "Command rejected: approve one command at a time. Split ';', '&&', '||', '&', and newlines into separate run_shell calls. The operating-system sandbox is the isolation boundary; this check only keeps each approval to one command.";
-  }
   const lower = command.toLowerCase();
   if (/(^|[\s;|&])cd\s+\.\.(?:\s|$|[;/])/i.test(command)) {
     return "Command rejected: looks like a workspace escape";

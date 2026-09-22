@@ -12,7 +12,7 @@ export type Policy = { review: boolean; shell: "host" | "docker" | "native"; net
 export type FileVersion = { path: string; data: string | null; mode?: number };
 export type Operation = { id: string; callId: string; tool: string; args: Record<string, unknown>; root: string; environment: Policy["shell"]; image: string; network: boolean; status: "pending" | "applying" | "applied" | "rejected" | "undone" | "error"; before: FileVersion[]; after: FileVersion[]; createdAt: string; output?: string; error?: string; artifacts?: Artifact[] };
 export type Workbench = { checkpoint?: { calls: ToolCall[]; blockedCallId?: string; userMessageId?: string; stopped?: boolean }; root: string; policy: Policy; operations: Operation[]; usage: { calls: number; input: number; output: number; estimated: boolean; durationMs: number; cost: number }; interrupted?: boolean };
-export const DEFAULT_POLICY: Policy = { review: true, shell: "native", network: false, image: "node:22-alpine", maxCalls: 40, maxTokens: 100000, maxCost: 0, inputPrice: 0, outputPrice: 0 };
+export const DEFAULT_POLICY: Policy = { review: false, shell: "native", network: false, image: "node:22-alpine", maxCalls: 40, maxTokens: 100000, maxCost: 0, inputPrice: 0, outputPrice: 0 };
 const locks = new Set<string>();
 export async function locked<T>(id: string, work: () => Promise<T>): Promise<T> {
   if (locks.has(id)) throw new Error("该任务正在处理另一项操作，请稍后重试。");

@@ -580,3 +580,5 @@ export type PublicSettings = Settings & {
 export type ProjectDetail = Project & { sessions?: SessionSummary[] };
 
 export { BUNDLED_EXPERTS, BUNDLED_TEAMS, BUNDLED_SCOUT_ID, BUNDLED_PLAN_ID, BUNDLED_IMPLEMENT_ID, BUNDLED_REVIEW_ID, BUNDLED_CODING_TEAM_ID } from "./bundled-experts.js";
+export { planToCron, cronToPlan, describePlan, localLeaseDecision, SchedulePlanError } from "./schedule-plan.js";
+export type { SchedulePlan } from "./schedule-plan.js";

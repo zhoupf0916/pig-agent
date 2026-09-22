@@ -35,6 +35,9 @@ afterAll(async () => { llm.closeAllConnections(); await new Promise<void>((resol
 describe("delivery review and recovery", () => {
   it("pauses before writing, approves once, preserves history on continue and records provider usage", async () => {
     const session = await createSession();
+    const policy = await loadWorkbench(session.id, root);
+    policy.policy.review = true;
+    await saveWorkbench(session.id, policy);
     const response = await post(`/api/sessions/${session.id}/messages`, { content: "write a file" });
     expect(response.status).toBe(200); await response.text();
     await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
@@ -56,8 +59,18 @@ describe("delivery review and recovery", () => {
     const undo = await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/undo`);
     expect(undo.status).toBe(200); await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
   });
+  it("writes inside the sandbox without asking", async () => {
+    const session = await createSession();
+    nextBatch = [{ id: "auto_write", name: "write_file", args: { path: "auto.txt", content: "verified" } }];
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "write a file" })).text();
+    expect(await readFile(join(root, "auto.txt"), "utf8")).toBe("verified");
+    expect((await loadWorkbench(session.id, root)).operations[0]?.status).toBe("applied");
+  });
   it("blocks at one operation, persists the remaining batch and resumes it exactly once", async () => {
     const session = await createSession();
+    const policy = await loadWorkbench(session.id, root);
+    policy.policy.review = true;
+    await saveWorkbench(session.id, policy);
     nextBatch = [
       { id: "serial-first", name: "write_file", args: { path: "serial.txt", content: "first" } },
       { id: "serial-second", name: "edit_file", args: { path: "serial.txt", old_string: "first", new_string: "second" } },
@@ -96,6 +109,8 @@ describe("delivery review and recovery", () => {
     const op = await stageOperation(state, calls[0]!.id, "write_file", { path: "restart.txt", content: "original" });
     state.checkpoint = { calls, userMessageId: "restart-goal" };
     await applyOperation(session.id, state, op);
+    state.policy.review = true;
+    await saveWorkbench(session.id, state);
     // Simulates a process dying after the applied journal commit but before tool-result persistence.
     const count = requests;
     const recovery = await post(`/api/sessions/${session.id}/retry`); expect(recovery.status).toBe(200); await recovery.text();
@@ -109,6 +124,9 @@ describe("delivery review and recovery", () => {
   });
   it.each(["reject", "abort"])("%s invalidates the blocked batch and never executes later operations", async (action) => {
     const session = await createSession();
+    const policy = await loadWorkbench(session.id, root);
+    policy.policy.review = true;
+    await saveWorkbench(session.id, policy);
     nextBatch = [{ id: `stop-${action}`, name: "write_file", args: { path: `stop-${action}.txt`, content: "bad" } }, { id: `later-${action}`, name: "write_file", args: { path: `later-${action}.txt`, content: "bad" } }];
     await (await post(`/api/sessions/${session.id}/messages`, { content: "stop approval" })).text();
     const state = await loadWorkbench(session.id, root);

@@ -48,10 +48,10 @@ beforeEach(() => {
   state.queries = [];
 });
 describe("cloud user data", () => {
-  it("returns approval-on defaults and persists only editable settings per authenticated owner", async () => {
+  it("defaults new clients to sandbox auto-run and persists only editable settings per authenticated owner", async () => {
     expect(await loadUserSettings("alice")).toMatchObject({
       configured: false,
-      requireApproval: true,
+      requireApproval: false,
       memoryEnabled: true,
       networkPolicy: "ask",
     });
@@ -83,6 +83,31 @@ describe("cloud user data", () => {
         })
       ).status,
     ).toBe(400);
+  });
+  it("saves timezone and default run target, and renames only the signed-in account", async () => {
+    const a = app();
+    const save = await a.request("/v1/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        timezone: "Asia/Tokyo",
+        defaultRunTarget: "local",
+        displayName: "小猪",
+      }),
+    });
+    expect(save.status).toBe(200);
+    expect(await save.json()).toMatchObject({
+      timezone: "Asia/Tokyo",
+      defaultRunTarget: "local",
+      name: "小猪",
+    });
+    const rename = state.queries.find((q) => q.sql.startsWith("UPDATE principals"));
+    expect(rename?.args).toEqual(["小猪", "alice"]);
+    expect((await a.request("/v1/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ timezone: "Not/AZone" }),
+    })).status).toBe(400);
   });
   it("never includes private memory in collaborative projects or another owner personal project", async () => {
     expect(await buildUserContext("alice")).toContain("Private note for alice");
