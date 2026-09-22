@@ -146,7 +146,7 @@ export function CloudAutomationsPanel({
     <section className="cloud-automations" aria-label="自动化">
       <header>
         <div>
-          <h2>自动化</h2>
+          <h2 className="jd-duplicate-title">自动化</h2>
           <p>让 Agent 按计划在云端执行，离开工作台也能继续。</p>
         </div>
         <button className="primary-button" onClick={() => edit()}>

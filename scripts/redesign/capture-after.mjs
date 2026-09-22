@@ -154,7 +154,7 @@ try {
   const response = page.waitForResponse(
     (r) => r.url().endsWith("/api/sessions") && r.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "新任务", exact: true }).click();
+  await page.getByRole("button", { name: "新对话", exact: true }).click();
   runSession = await (await response).json();
   await page.waitForURL("**/sessions/" + runSession.id);
   await page.getByLabel("执行位置", { exact: true }).selectOption("remote");

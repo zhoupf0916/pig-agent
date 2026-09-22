@@ -292,7 +292,168 @@
 }
 .cw-main.is-empty .cw-composer {
   margin-top: 0;
-  margin-bottom: 40px;
+  margin-bottom: 0;
+}
+.cw-topbar.is-home {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 48px;
+  border-bottom: 0;
+  background: transparent;
+  z-index: 2;
+}
+.cw-topbar.is-home > div,
+.cw-topbar.is-home .cw-state,
+.cw-topbar.is-home .cw-context-trigger,
+.cw-topbar.is-home button[aria-label="成果与过程"] {
+  display: none;
+}
+.jd-home {
+  max-width: 760px;
+  margin: 0 auto 8px;
+  text-align: center;
+}
+.jd-home h1 {
+  font-size: 40px;
+  line-height: 1.15;
+  letter-spacing: -1px;
+  font-weight: 650;
+}
+.jd-home > p {
+  margin: 10px 0 0;
+  color: #7b8798;
+  font-size: 15px;
+}
+.jd-home h2 {
+  margin-top: 22px;
+  font-size: 18px;
+}
+.jd-project-note {
+  color: #7b8798;
+  font-size: 13px;
+}
+.jd-home .cw-project-summary {
+  grid-template-columns: 1fr;
+  margin-top: 18px;
+  text-align: left;
+}
+.jd-compose-stack {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-width: 0;
+}
+.cw-main.is-empty .jd-compose-stack {
+  padding-bottom: 48px;
+}
+.jd-picks,
+.jd-starters {
+  width: calc(100% - 48px);
+  max-width: 800px;
+  margin: 12px auto 0;
+}
+.jd-picks {
+  display: flex;
+  gap: 12px;
+}
+.jd-picks label {
+  flex: 1;
+  margin: 0;
+  color: #7b8798;
+  font-size: 12px;
+  text-align: left;
+}
+.jd-picks select {
+  margin-top: 6px;
+  background: #fff;
+}
+.jd-starters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+.jd-starters button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  color: #243044;
+}
+.jd-starters button:hover,
+.jd-starters button:focus {
+  background: #f7f9fc;
+}
+.jd-starters strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.jd-starters span {
+  color: #7b8798;
+  font-size: 12px;
+}
+.jd-starters svg {
+  color: #5d6b82;
+}
+.cw-composer {
+  position: relative;
+}
+.cw-composer .attachment-hint {
+  display: none;
+}
+.cw-composer .attach-trigger {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  font-size: 0;
+  gap: 0;
+}
+.cw-composer-controls {
+  padding-left: 48px;
+}
+.jd-visibility {
+  display: grid;
+  gap: 10px;
+}
+.jd-visibility button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #e6ebf2;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+.jd-visibility span {
+  color: #7b8798;
+  font-size: 13px;
+}
+.cw-main.is-empty .attachment-hint {
+  display: none;
+}
+@media (max-width: 760px) {
+  .jd-home h1 {
+    font-size: 32px;
+  }
+  .jd-picks,
+  .jd-starters {
+    width: calc(100% - 32px);
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
 }
 .cw-welcome .cw-mark {
   display: none;
@@ -897,4 +1058,7 @@
     right: 0;
     max-height: min(340px, 40vh);
   }
+}
+.cw-composer .cw-composer-controls {
+  padding-left: 48px;
 }

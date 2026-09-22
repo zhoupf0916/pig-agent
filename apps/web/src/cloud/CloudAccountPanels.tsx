@@ -26,7 +26,7 @@ export function CloudSettingsPanel() {
   }, [reload]);
   return (
     <section className="cloud-page">
-      <h2>设置</h2>
+      <h2 className="jd-duplicate-title">设置</h2>
       <p className="muted">
         账号设置保存后作用于新任务，进行中的任务保持原有配置。
       </p>
@@ -142,7 +142,7 @@ export function CloudMemoryPanel() {
   }, []);
   return (
     <section className="cloud-page">
-      <h2>记忆</h2>
+      <h2 className="jd-duplicate-title">记忆</h2>
       <p className="muted">
         保存长期偏好和背景，帮助个人任务理解你。不会带入团队共享任务。
       </p>
@@ -208,16 +208,40 @@ export function CloudSearchPanel({
 }: {
   onConversation: (id: string) => void;
 }) {
-  const [q, setQ] = useState(""),
+  const [q, setQ] = useState(
+      () => new URLSearchParams(location.hash.split("?")[1] || "").get("q") || "",
+    ),
     [results, setResults] = useState<
       Array<{ conversationId: string; title: string; snippet: string }>
     >([]),
     [searched, setSearched] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  useEffect(() => {
+    const initial = new URLSearchParams(location.hash.split("?")[1] || "").get("q") || "";
+    if (!initial) return;
+    let alive = true;
+    setBusy(true);
+    void api(`/v1/search?q=${encodeURIComponent(initial)}`)
+      .then((data) => {
+        if (!alive) return;
+        setQ(initial);
+        setResults(data.results);
+        setSearched(true);
+      })
+      .catch((e) => {
+        if (alive) setError(String(e));
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   return (
     <section className="cloud-page">
-      <h2>搜索</h2>
+      <h2 className="jd-duplicate-title">搜索</h2>
       <p className="muted">搜索你有权访问的任务和消息。</p>
       <form
         className="cloud-search"
@@ -299,7 +323,7 @@ export function CloudRunsPanel({ onRun }: { onRun: (id: string) => void }) {
   };
   return (
     <section className="cloud-page">
-      <h2>远端记录</h2>
+      <h2 className="jd-duplicate-title">远端记录</h2>
       <p className="muted">查看远端执行记录，进入任务检查审批、日志和成果。</p>
       {error && <p role="alert">{error}</p>}
       {loading ? (

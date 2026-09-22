@@ -1303,7 +1303,7 @@ export function App() {
           onClick={() => navigate(() => void createSession())}
         >
           <Plus size={17} />
-          {route.name === "collaboration" ? "新建本机任务" : "新任务"}
+          {route.name === "collaboration" ? "新建本机任务" : "新对话"}
         </button>
         <nav className="global-links">
           {[

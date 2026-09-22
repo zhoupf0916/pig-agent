@@ -21,14 +21,16 @@ type Resource = {
 };
 export function CloudResourcesPanel({
   onNewTask,
+  initialKind = "expert",
 }: {
   onNewTask: (options: { expertId?: string; skillIds?: string[] }) => void;
+  initialKind?: "expert" | "skill";
 }) {
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all"),
     [preview, setPreview] = useState<Resource | null>(null),
     [creating, setCreating] = useState(false),
-    [kind, setKind] = useState<"expert" | "skill">("expert"),
+    [kind, setKind] = useState<"expert" | "skill">(initialKind),
     [items, setItems] = useState<Resource[]>([]),
     [skills, setSkills] = useState<Resource[]>([]),
     [edit, setEdit] = useState<Partial<Resource> | null>(null),
@@ -68,6 +70,9 @@ export function CloudResourcesPanel({
     }
   }
   useEffect(() => {
+    setKind(initialKind);
+  }, [initialKind]);
+  useEffect(() => {
     setEdit(null);
     setFeedback("");
     void refresh();
@@ -79,7 +84,7 @@ export function CloudResourcesPanel({
     <section className="cloud-page resource-library">
       <header className="cloud-page-heading">
         <div>
-          <h2>专家与技能</h2>
+          <h2 className="jd-duplicate-title">专家与技能</h2>
           <p className="muted">
             专家定义角色与方法，技能保存可复用的操作指引。
           </p>

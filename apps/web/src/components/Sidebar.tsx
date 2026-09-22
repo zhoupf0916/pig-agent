@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { sessionStatusLabel } from "../lib/session-list-sync";
 import type { SessionSummary } from "../types";
 
@@ -62,48 +62,91 @@ export function Sidebar({
         {sessions.length > 0 && !visible.length && (
           <p className="px-3 py-6 text-xs text-ink-500">没有匹配的任务。</p>
         )}
-        {visible.map((s) => {
-          const active = s.id === activeId;
+        {["今天", "昨天", "更早"].map((label) => {
+          const rows = visible.filter(
+            (session) => dayBucket(session.updatedAt) === label,
+          );
+          if (!rows.length) return null;
           return (
-            <div key={s.id} className={`session-row ${active ? "active" : ""}`}>
-              {active && (
-                <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-accent" />
-              )}
-              <button
-                type="button"
-                aria-current={active ? "true" : undefined}
-                title={s.title}
-                disabled={busy}
-                onClick={() => onSelect(s.id)}
-                className="min-w-0 flex-1 text-left"
-              >
-                <div className="session-row-title">{s.title}</div>
-                <div className="session-row-meta">
-                  <StatusDot status={s.status} />
-                  {s.status === "running" || s.status === "error"
-                    ? sessionStatusLabel(s.status)
-                    : new Date(s.updatedAt).toLocaleDateString("zh-CN", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                </div>
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                title="删除会话"
-                aria-label={`删除会话：${s.title}`}
-                onClick={() => onDelete(s.id)}
-                className="session-delete"
-              >
-                <Trash2 size={13} />
-              </button>
+            <div key={label}>
+              <div className="session-list-heading">
+                <strong>{label}</strong>
+              </div>
+              {rows.map((s) => {
+                const active = s.id === activeId;
+                return (
+                  <div
+                    key={s.id}
+                    className={`session-row ${active ? "active" : ""}`}
+                  >
+                    {active && (
+                      <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-full bg-accent" />
+                    )}
+                    <button
+                      type="button"
+                      aria-current={active ? "true" : undefined}
+                      title={s.title}
+                      disabled={busy}
+                      onClick={() => onSelect(s.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <div className="session-row-title">
+                        {s.title.split("\n")[0]}
+                      </div>
+                      <div className="session-row-meta">
+                        <StatusDot status={s.status} />
+                        {s.status === "running" || s.status === "error"
+                          ? sessionStatusLabel(s.status)
+                          : relativeDay(s.updatedAt)}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      title="删除会话"
+                      aria-label={`删除会话：${s.title}`}
+                      onClick={() => onDelete(s.id)}
+                      className="session-delete"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           );
         })}
       </div>
     </section>
   );
+}
+
+function dayBucket(iso: string) {
+  const diff = dayDistance(iso);
+  if (diff <= 0) return "今天";
+  if (diff === 1) return "昨天";
+  return "更早";
+}
+
+function relativeDay(iso: string) {
+  const diff = dayDistance(iso);
+  if (!Number.isFinite(diff)) return "";
+  if (diff <= 0) return "今天";
+  if (diff === 1) return "昨天";
+  if (diff < 7) return `${diff} 天前`;
+  return new Date(iso).toLocaleDateString("zh-CN", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function dayDistance(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return Number.POSITIVE_INFINITY;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((start.getTime() - day.getTime()) / 86_400_000);
 }
 
 function StatusDot({ status }: { status: SessionSummary["status"] }) {

@@ -5,7 +5,7 @@ const base='http://127.0.0.1:8892',out='docs/evidence/message-attachments-2026-0
 const {accounts}=JSON.parse(await readFile('data/project-ui-evidence/accounts.json','utf8'));
 const browser=await chromium.launch({channel:'chrome',headless:true}),ctx=await browser.newContext({viewport:{width:1440,height:900}}),page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
- await page.goto(base);await page.getByLabel('用户名',{exact:true}).fill(accounts[0].username);await page.getByLabel('密码',{exact:true}).fill(accounts[0].password);await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('.global-links')).toBeVisible();await page.getByRole('button',{name:'新任务',exact:true}).first().click();
+ await page.goto(base);await page.getByLabel('用户名',{exact:true}).fill(accounts[0].username);await page.getByLabel('密码',{exact:true}).fill(accounts[0].password);await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('.global-links')).toBeVisible();await page.getByRole('button',{name:'新对话',exact:true}).first().click();
  const prompt='请读取附件 input-note.txt，并创建 cloud-proof.txt 验证消息附件。';
  await page.getByLabel('任务消息').fill(prompt);
  await page.locator('.message-attachments input[type=file]').setInputFiles({name:'input-note.txt',mimeType:'text/plain',buffer:Buffer.from('Attachment acceptance proof: 7319')});

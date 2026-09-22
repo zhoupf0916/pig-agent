@@ -65,13 +65,13 @@ try {
     await patchGate;
     await route.fulfill({ response: result });
   });
-  await page.getByRole("button", { name: "新任务", exact: true }).click();
+  await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(
     page.getByText("正在创建新任务，请稍候…", { exact: true }),
   ).toBeVisible();
   await expect(picker).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "新任务", exact: true }),
+    page.getByRole("button", { name: "新对话", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "发送", exact: true }),

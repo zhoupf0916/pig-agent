@@ -355,9 +355,9 @@ export function ChatPanel({
         {empty && (
           <div className="new-task-center">
             <div className="new-task-heading">
-              <span className="eyebrow">新任务</span>
-              <h2>想完成什么工作？</h2>
-              <p>描述目标，Pig 会执行并交付可核验的成果。</p>
+              <span className="eyebrow">新对话</span>
+              <h2>Pig Agent</h2>
+              <p>交代一个任务，在这台电脑或云端沙箱里做完，你来批准和核对。</p>
             </div>
             <div className="new-task-workspace">
               <FolderOpen size={16} />

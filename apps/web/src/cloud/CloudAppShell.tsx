@@ -1,18 +1,16 @@
-import { Fragment, useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   BookOpen,
   Clock3,
-  Layers,
   LogOut,
   Menu,
-  MessageSquare,
   Plus,
-  Search,
-  Server,
   Settings,
+  Sparkles,
   Users,
   X,
 } from "lucide-react";
+import { CloudHomeRail } from "./CloudHomeRail";
 import { CloudWorkspace } from "./CloudWorkspace";
 import { CloudRunPanel } from "./CloudRunPanel";
 import { CloudAutomationsPanel } from "./CloudAutomationsPanel";
@@ -43,10 +41,8 @@ export function CloudAppShell() {
     setNavigation(false),
   );
   const identity = useRef<Account | null>(null);
-  const lastConversation = useRef("");
   function changeAccount(a: Account | null) {
     if (identity.current?.id !== a?.id) advanceCloudIdentity();
-    if (identity.current?.id !== a?.id) lastConversation.current = "";
     identity.current = a;
     setAccount(a);
   }
@@ -73,17 +69,15 @@ export function CloudAppShell() {
       removeEventListener("cloud-auth-expired", expired);
     };
   }, []);
-  const branch = hash.startsWith("#/projects/collaboration")
-    ? "collaborative"
-    : "personal";
-  const route = hash.startsWith("#/projects")
+  const path = hash.split("?")[0] || "";
+  const route = path.startsWith("#/projects")
     ? "projects"
-    : hash.match(
+    : path.match(
         /^#\/(experts|automations|memory|search|runs|settings)(?:\/|$)/,
       )?.[1] || "workstation";
   const titles: Record<string, string> = {
     workstation: "工作台",
-    projects: branch === "collaborative" ? "项目协同" : "普通项目",
+    projects: "项目",
     experts: "专家与技能",
     automations: "自动化",
     memory: "记忆",
@@ -91,12 +85,12 @@ export function CloudAppShell() {
     runs: "远端记录",
     settings: "设置",
   };
+  const showTask =
+    route === "workstation" || route === "projects";
   function go(path: string) {
-    const previous = location.hash.match(/\/(conv_[a-z0-9]+)$/)?.[1];
-    if (previous) lastConversation.current = previous;
-    if (path.startsWith("/projects")) setOptions({});
-    location.hash = path;
-    setHash("#" + path);
+    const next = path.startsWith("#") ? path : "#" + path;
+    location.hash = next;
+    setHash(next);
     setNavigation(false);
     setError("");
   }
@@ -104,7 +98,6 @@ export function CloudAppShell() {
     setOptions(value);
     setTaskKey((v) => v + 1);
     go("/conversations");
-    lastConversation.current = "";
   }
   function conversation(id: string) {
     go("/conversations/" + id);
@@ -143,9 +136,12 @@ export function CloudAppShell() {
         className={`global-sidebar ${navigation ? "is-open" : ""}`}
         aria-label="全局导航"
       >
-        <div className="sidebar-brand">
+        <div className="sidebar-brand jd-brand">
           <span className="brand-mark">P</span>
-          <strong>Pig Agent</strong>
+          <span className="jd-brand-copy">
+            <strong>Pig Agent</strong>
+            <em>云端沙箱</em>
+          </span>
           <button
             className="icon-button mobile-only"
             aria-label="关闭导航"
@@ -156,67 +152,88 @@ export function CloudAppShell() {
         </div>
         <button className="sidebar-new" onClick={() => newTask()}>
           <Plus size={17} />
-          新任务
+          新对话
         </button>
         <nav className="global-links">
           {[
             {
-              name: "workstation",
-              label: "工作台",
-              icon: MessageSquare,
-              path: lastConversation.current
-                ? "/conversations/" + lastConversation.current
-                : "/conversations",
+              name: "skills",
+              label: "技能",
+              icon: Sparkles,
+              path: "/experts/skills",
+              selected: path === "#/experts/skills",
             },
             {
-              name: "projects",
-              label: "项目",
-              icon: Layers,
-              path: "/projects/personal",
+              name: "experts",
+              label: "专家",
+              icon: Users,
+              path: "/experts",
+              selected: route === "experts" && path !== "#/experts/skills",
             },
-            { name: "experts", label: "专家", icon: Users, path: "/experts" },
             {
               name: "automations",
               label: "自动化",
               icon: Clock3,
               path: "/automations",
+              selected: route === "automations",
             },
-            { name: "memory", label: "记忆", icon: BookOpen, path: "/memory" },
-            { name: "search", label: "搜索", icon: Search, path: "/search" },
-            { name: "runs", label: "远端记录", icon: Server, path: "/runs" },
+            {
+              name: "memory",
+              label: "记忆",
+              icon: BookOpen,
+              path: "/memory",
+              selected: route === "memory",
+            },
           ].map((item) => (
-            <Fragment key={item.name}>
-              <button
-                className={route === item.name ? "selected" : ""}
-                aria-current={route === item.name ? "page" : undefined}
-                onClick={() => go(item.path)}
-              >
-                <item.icon size={17} />
-                {item.label}
-              </button>
-              {item.name === "projects" && route === "projects" && (
-                <nav className="project-branches" aria-label="项目分支">
-                  <button
-                    className={branch === "personal" ? "selected" : ""}
-                    onClick={() => go("/projects/personal")}
-                  >
-                    普通项目
-                  </button>
-                  <button
-                    className={branch === "collaborative" ? "selected" : ""}
-                    onClick={() => go("/projects/collaboration")}
-                  >
-                    <Users size={15} />
-                    项目协同
-                  </button>
-                </nav>
-              )}
-            </Fragment>
+            <button
+              key={item.name}
+              className={item.selected ? "selected" : ""}
+              aria-current={item.selected ? "page" : undefined}
+              onClick={() => go(item.path)}
+            >
+              <item.icon size={17} />
+              {item.label}
+            </button>
           ))}
         </nav>
+        <CloudHomeRail
+          hash={hash}
+          onOpenConversation={(id) => go("/conversations/" + id)}
+          onOpenProject={(id) => {
+            window.dispatchEvent(
+              new CustomEvent("pig-cloud-intent", {
+                detail: { projectId: id },
+              }),
+            );
+            go("/conversations");
+          }}
+          onCreateProject={() => {
+            window.dispatchEvent(
+              new CustomEvent("pig-cloud-intent", {
+                detail: { create: "choose" },
+              }),
+            );
+            go("/conversations");
+          }}
+          onSearch={(q) => go("/search?q=" + encodeURIComponent(q))}
+          onOpenRuns={() => go("/runs")}
+          onOpenWorkspace={(id) => {
+            window.dispatchEvent(
+              new CustomEvent("pig-cloud-intent", {
+                detail: { projectId: id, panel: "workspace" },
+              }),
+            );
+            go("/conversations");
+          }}
+        />
         <div className="cloud-account">
-          <span>{account.name}</span>
-          <small>远端执行 · 沙箱隔离</small>
+          <span className="jd-account-name">
+            <i>{account.name.slice(0, 1)}</i>
+            <span>
+              {account.name}
+              <small>个人空间</small>
+            </span>
+          </span>
           <button
             onClick={() => go("/settings")}
             className={route === "settings" ? "selected" : ""}
@@ -241,7 +258,7 @@ export function CloudAppShell() {
         </div>
       </aside>
       <main className="app-main">
-        {route !== "workstation" && route !== "projects" && (
+        {!showTask && (
           <header className="task-header">
             <button
               className="icon-button mobile-only"
@@ -262,45 +279,43 @@ export function CloudAppShell() {
             {error}
           </p>
         )}
-        <div className="cloud-shell-content">
-          {route === "workstation" || route === "projects" ? (
-            <CloudWorkspace
-              key={`${route}-${branch}-${taskKey}`}
-              account={account}
-              onAccount={(a) => {
-                if (!a && identity.current?.id === account.id)
-                  changeAccount(null);
-              }}
-              embedded
-              onOpenNavigation={() => setNavigation(true)}
-              initialBranch={branch}
-              routePrefix={
-                route === "projects"
-                  ? `#/projects/${branch === "collaborative" ? "collaboration" : "personal"}`
-                  : "#/conversations"
-              }
-              taskOptions={route === "workstation" ? options : {}}
-            />
-          ) : route === "experts" ? (
-            <CloudResourcesPanel onNewTask={newTask} />
-          ) : route === "automations" ? (
-            <CloudAutomationsPanel onRun={(id) => void run(id)} />
-          ) : route === "settings" ? (
-            <CloudSettingsPanel />
-          ) : route === "memory" ? (
-            <CloudMemoryPanel />
-          ) : route === "search" ? (
-            <CloudSearchPanel onConversation={conversation} />
-          ) : (
-            <>
-              {runId ? (
-                <CloudRunPanel runId={runId} onClose={() => go("/runs")} />
-              ) : (
-                <CloudRunsPanel onRun={(id) => void run(id)} />
-              )}
-            </>
-          )}
+        <div className="cloud-shell-content" hidden={!showTask}>
+          <CloudWorkspace
+            key={taskKey}
+            account={account}
+            onAccount={(a) => {
+              if (!a && identity.current?.id === account.id) changeAccount(null);
+            }}
+            embedded
+            hashSync={showTask}
+            onOpenNavigation={() => setNavigation(true)}
+            initialBranch="personal"
+            routePrefix="#/conversations"
+            taskOptions={options}
+          />
         </div>
+        {!showTask && (
+          <div className="cloud-shell-content">
+            {route === "experts" ? (
+              <CloudResourcesPanel
+                initialKind={path === "#/experts/skills" ? "skill" : "expert"}
+                onNewTask={newTask}
+              />
+            ) : route === "automations" ? (
+              <CloudAutomationsPanel onRun={(id) => void run(id)} />
+            ) : route === "settings" ? (
+              <CloudSettingsPanel />
+            ) : route === "memory" ? (
+              <CloudMemoryPanel />
+            ) : route === "search" ? (
+              <CloudSearchPanel onConversation={conversation} />
+            ) : runId ? (
+              <CloudRunPanel runId={runId} onClose={() => go("/runs")} />
+            ) : (
+              <CloudRunsPanel onRun={(id) => void run(id)} />
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

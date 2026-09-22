@@ -24,6 +24,8 @@ import {
   FolderKanban,
   MessageSquare,
   LogOut,
+  Search,
+  PenLine,
 } from "lucide-react";
 import { useDialog } from "../lib/use-dialog";
 import { MarkdownView } from "../components/MarkdownView";
@@ -90,6 +92,23 @@ const labels: Record<string, string> = {
 };
 const terminal = (state?: string) =>
   !!state && ["succeeded", "failed", "cancelled"].includes(state);
+function hashConversationId(hash = window.location.hash) {
+  return (
+    hash.match(
+      /^#\/(?:shared|conversations|projects\/collaboration|projects\/personal)\/(conv_[a-z0-9]+)(?:\?|$)/,
+    )?.[1] || ""
+  );
+}
+function workspaceHash(hash = window.location.hash) {
+  const path = hash.split("?")[0] || "";
+  return (
+    path === "" ||
+    path === "#" ||
+    path.startsWith("#/conversations") ||
+    path.startsWith("#/projects") ||
+    path.startsWith("#/shared")
+  );
+}
 export function CloudWorkspace({
   apiBase = "",
   embedded = false,
@@ -101,6 +120,7 @@ export function CloudWorkspace({
   routePrefix,
   taskOptions,
   onOpenNavigation,
+  hashSync = true,
 }: {
   apiBase?: string;
   embedded?: boolean;
@@ -111,6 +131,7 @@ export function CloudWorkspace({
   initialBranch?: "personal" | "collaborative";
   routePrefix?: string;
   onOpenNavigation?: () => void;
+  hashSync?: boolean;
   taskOptions?: { expertId?: string; skillIds?: string[] };
 }) {
   const composerControls = useRef<HTMLDivElement>(null);
@@ -153,15 +174,10 @@ export function CloudWorkspace({
     [spaces, setSpaces] = useState<CloudSpace[]>([]),
     [conversations, setConversations] = useState<Conversation[]>([]),
     [projectId, setProjectId] = useState(""),
-    [selected, setSelected] = useState(
-      () =>
-        window.location.hash.match(
-          /^#\/(?:shared|conversations|projects\/collaboration|projects\/personal)\/(conv_[a-z0-9]+)$/,
-        )?.[1] || "",
-    ),
+    [selected, setSelected] = useState(() => hashConversationId()),
     [detail, setDetail] = useState<Detail | null>(null);
   const [projectBranch, setProjectBranch] = useState<
-      "personal" | "collaborative"
+      "personal" | "collaborative" | "choose"
     >(initialBranch ?? (embedded ? "collaborative" : "personal")),
     [workspace, setWorkspace] = useState<ProjectWorkspace | null>(null),
     [workspaceLoading, setWorkspaceLoading] = useState(false),
@@ -226,6 +242,7 @@ export function CloudWorkspace({
     setResource(false),
   );
   const scrollArea = useRef<HTMLDivElement>(null),
+    promptInput = useRef<HTMLTextAreaElement>(null),
     followBottom = useRef(true);
   const lock = useRef(false),
     sendKey = useRef({ signature: "", key: "" }),
@@ -324,6 +341,7 @@ export function CloudWorkspace({
     setConversations(a.conversations);
     setProjects(b.projects);
     setSpaces(c.spaces);
+    window.dispatchEvent(new Event("pig-cloud-catalog"));
   }
   async function act(fn: () => Promise<void>) {
     if (lock.current) return;
@@ -530,24 +548,54 @@ export function CloudWorkspace({
     };
   }, [last?.id, apiBase]);
   useEffect(() => {
+    const apply = () => {
+      if (!workspaceHash()) return;
+      setSelected(hashConversationId());
+    };
+    const onIntent = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          create?: "personal" | "collaborative" | "choose";
+          projectId?: string;
+          panel?: string;
+        }>
+      ).detail;
+      if (!detail) return;
+      if (
+        detail.create === "personal" ||
+        detail.create === "collaborative" ||
+        detail.create === "choose"
+      ) {
+        setProjectBranch(detail.create);
+        setSelected("");
+        if (detail.create === "choose") setProjectId("");
+        setMembersOpen(true);
+      }
+      if (typeof detail.projectId === "string") {
+        setSelected("");
+        setProjectId(detail.projectId);
+      }
+      if (detail.panel === "workspace") {
+        setTab("workspace");
+        setResource(true);
+      }
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    window.addEventListener("pig-cloud-intent", onIntent);
+    return () => {
+      window.removeEventListener("hashchange", apply);
+      window.removeEventListener("pig-cloud-intent", onIntent);
+    };
+  }, []);
+  useEffect(() => {
+    if (!hashSync || !workspaceHash()) return;
     const prefix =
       routePrefix ?? (apiBase ? "#/projects/collaboration" : "#/conversations");
-    window.history.replaceState(
-      null,
-      "",
-      prefix + (selected ? "/" + selected : ""),
-    );
-  }, [selected, apiBase, routePrefix]);
-  useEffect(() => {
-    const change = () =>
-      setSelected(
-        window.location.hash.match(
-          /^#\/(?:shared|conversations|projects\/collaboration|projects\/personal)\/(conv_[a-z0-9]+)$/,
-        )?.[1] || "",
-      );
-    window.addEventListener("hashchange", change);
-    return () => window.removeEventListener("hashchange", change);
-  }, []);
+    const next = prefix + (selected ? "/" + selected : "");
+    const current = location.hash.split("?")[0] || "";
+    if (current !== next) history.replaceState(null, "", next);
+  }, [hashSync, selected, apiBase, routePrefix]);
   useEffect(() => {
     const node = scrollArea.current;
     if (node && followBottom.current) node.scrollTop = node.scrollHeight;
@@ -945,7 +993,7 @@ export function CloudWorkspace({
         </footer>
       </aside>
       <main className={`cw-main ${!selected ? "is-empty" : ""}`}>
-        <header className="cw-topbar">
+        <header className={`cw-topbar ${!selected ? "is-home" : ""}`}>
           {onOpenNavigation && (
             <button
               className="mobile-only icon-button"
@@ -970,15 +1018,13 @@ export function CloudWorkspace({
               <Menu size={20} />
             )}
           </button>
-          <div>
-            <span>
-              {project?.name ||
-                (projectId
-                  ? "项目（加载中）"
-                  : projectBranch === "collaborative"
-                    ? "项目协同"
-                    : "临时任务")}
-            </span>
+            <div>
+            {(project?.name || projectId) && (
+              <span>
+                {project?.name ||
+                  (projectBranch === "collaborative" ? "项目协同" : "项目")}
+              </span>
+            )}
             <h1>{current?.conversation.title || "新任务"}</h1>
           </div>
           {last && (
@@ -993,7 +1039,6 @@ export function CloudWorkspace({
                 onClick={() => setResource(!resource)}
               >
                 <FileText size={18} />
-                <span className="cw-desktop-text">成果与过程</span>
               </button>
             </>
           )}
@@ -1023,98 +1068,42 @@ export function CloudWorkspace({
           }}
         >
           {loading && <p role="status">正在读取会话…</p>}
-          {!selected &&
-            (project ? (
-              <section className="cw-project-dashboard" aria-label="项目总览">
-                <header>
-                  <div className="resource-avatar">
-                    <FolderKanban size={26} />
-                  </div>
-                  <div>
-                    <h2>{project.name}</h2>
-                    <p>
-                      {project.kind === "collaborative"
-                        ? `${project.space_name} · 项目协同`
-                        : project.description || "将目标、文件和对话整理在一起"}
-                    </p>
-                  </div>
-                </header>
-                <div className="cw-project-summary">
-                  <button
-                    onClick={() => {
-                      setTab("workspace");
-                      setResource(true);
-                    }}
-                  >
-                    <FolderKanban size={22} />
-                    <strong>{project.workspace_name || "项目工作区"}</strong>
-                    <span>查看导入的文件和每次任务保存的工作区版本</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (project.kind === "collaborative")
-                        setMembersOpen(true);
-                      else
-                        document
-                          .querySelector<HTMLTextAreaElement>(
-                            ".cw-composer textarea",
-                          )
-                          ?.focus();
-                    }}
-                  >
-                    <MessageSquare size={22} />
-                    <strong>
-                      {project.kind === "collaborative"
-                        ? "协作成员与权限"
-                        : "开始项目对话"}
-                    </strong>
-                    <span>
-                      {project.kind === "collaborative"
-                        ? "管理共享范围，与成员一起推进任务"
-                        : "在下方描述目标，任务将在这个项目中执行"}
-                    </span>
-                  </button>
-                </div>
-                <div className="cw-project-recent">
-                  <h3>最近对话</h3>
-                  {conversations
-                    .filter((c) => c.project_id === project.id)
-                    .slice(0, 5)
-                    .map((c) => (
-                      <button key={c.id} onClick={() => choose(c)}>
-                        <MessageSquare size={16} />
-                        <span>{c.title}</span>
-                        <small>{labels[c.state || ""] || "打开对话"}</small>
+          {!selected && (
+            <div className="jd-home">
+              <h1>Pig Agent</h1>
+              <p>交代一个任务，在云端沙箱里做完，你来批准和核对。</p>
+              {project && (
+                <>
+                  <h2>{project.name}</h2>
+                  <p className="jd-project-note">
+                    {project.kind === "collaborative"
+                      ? `${project.space_name || "协作项目"} · 成员可见`
+                      : project.description || "仅自己可见"}
+                  </p>
+                  <div className="cw-project-summary">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab("workspace");
+                        setResource(true);
+                      }}
+                    >
+                      <FolderKanban size={22} />
+                      <strong>{project.workspace_name || "项目工作区"}</strong>
+                      <span>查看导入的文件和每次任务保存的工作区版本</span>
+                    </button>
+                    {project.kind === "collaborative" && (
+                      <button type="button" onClick={() => setMembersOpen(true)}>
+                        <Users size={22} />
+                        <strong>协作成员与权限</strong>
+                        <span>管理共享范围，与成员一起推进任务</span>
                       </button>
-                    ))}
-                  {!conversations.some((c) => c.project_id === project.id) && (
-                    <p>还没有对话。发送第一条消息，从这里开始。</p>
-                  )}
-                </div>
-              </section>
-            ) : (
-              <div className="cw-welcome">
-                <span className="cw-mark">P</span>
-                <h2>
-                  {projectBranch === "collaborative"
-                    ? "和团队一起完成任务"
-                    : "有什么想法，一起实现。"}
-                </h2>
-                <p>
-                  {projectBranch === "collaborative"
-                    ? "共享同一个项目上下文，实时查看对话、审批和成果。"
-                    : "描述你的目标，或添加文件开始。执行过程和成果都在这里。"}
-                </p>
-                {projectBranch === "collaborative" && (
-                  <button
-                    className="cw-primary"
-                    onClick={() => setMembersOpen(true)}
-                  >
-                    创建或加入协作项目
-                  </button>
-                )}
-              </div>
-            ))}
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {current?.messages
             .filter(
               (m) =>
@@ -1249,6 +1238,7 @@ export function CloudWorkspace({
           )}
         </div>
         {(canWrite || selected) && (
+          <div className="jd-compose-stack">
           <form
             className="cw-composer"
             onDragOver={(e) => {
@@ -1274,10 +1264,13 @@ export function CloudWorkspace({
               disabled={!canWrite || active}
             />
             <textarea
+              ref={promptInput}
               aria-label="任务消息"
               placeholder={
                 canWrite
-                  ? "描述你想完成的任务…"
+                  ? selected
+                    ? "继续这个任务…"
+                    : "从一个问题开始"
                   : !projectId && projectBranch === "collaborative"
                     ? "先选择或创建协同项目"
                     : selected && !current
@@ -1308,10 +1301,7 @@ export function CloudWorkspace({
                 >
                   <summary>
                     <Users size={14} />
-                    专家与技能
-                    {expertId
-                      ? ` · ${experts.find((e) => e.id === expertId)?.name || "已选择专家"}`
-                      : ""}
+                    技能
                     {skillIds.length ? ` · ${skillIds.length} 个技能` : ""}
                     <ChevronDown size={13} />
                   </summary>
@@ -1331,7 +1321,7 @@ export function CloudWorkspace({
                         ))}
                       </select>
                     </label>
-                    {skills.length > 0 && (
+                    {skills.length > 0 ? (
                       <fieldset>
                         <legend>技能</legend>
                         {skills.map((s) => (
@@ -1351,7 +1341,17 @@ export function CloudWorkspace({
                           </label>
                         ))}
                       </fieldset>
+                    ) : (
+                      <p>还没有可选技能。</p>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        location.hash = "#/experts/skills";
+                      }}
+                    >
+                      管理技能
+                    </button>
                   </div>
                 </details>
               )}
@@ -1363,7 +1363,7 @@ export function CloudWorkspace({
                 >
                   <summary>
                     <ShieldCheck size={14} />
-                    {requireApproval ? "操作需审批" : "自动执行"}
+                    默认权限
                     <ChevronDown size={13} />
                   </summary>
                   <div className="cw-capsule-popover">
@@ -1437,6 +1437,119 @@ export function CloudWorkspace({
               </footer>
             </div>
           </form>
+          {!selected && canWrite && (
+            <>
+              <div className="jd-picks">
+                <label>
+                  选择项目
+                  <select
+                    aria-label="选择项目"
+                    value={projectId}
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      setSelected("");
+                    }}
+                  >
+                    <option value="">不归入项目</option>
+                    {projects.filter((item) => item.kind === "personal").length >
+                      0 && (
+                      <optgroup label="我的项目">
+                        {projects
+                          .filter((item) => item.kind === "personal")
+                          .map((item) => (
+                            <option value={item.id} key={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    {projects.filter((item) => item.kind === "collaborative")
+                      .length > 0 && (
+                      <optgroup label="协作项目">
+                        {projects
+                          .filter((item) => item.kind === "collaborative")
+                          .map((item) => (
+                            <option value={item.id} key={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+                {!apiBase && (
+                  <label>
+                    选择专家
+                    <select
+                      aria-label="选择专家"
+                      value={expertId}
+                      onChange={(e) => setExpertId(e.target.value)}
+                    >
+                      <option value="">通用助手</option>
+                      {experts.map((item) => (
+                        <option value={item.id} key={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+              <div className="jd-starters">
+                {[
+                  {
+                    title: "联网查资料",
+                    detail: "查公开页面，整理成结论",
+                    prompt: "帮我查公开资料，并整理成简短结论。主题：",
+                    icon: Search,
+                    network: true,
+                  },
+                  {
+                    title: "处理项目文件",
+                    detail: "阅读工作区文件并修改",
+                    prompt: "先查看当前项目里的文件，再按这个目标修改：",
+                    icon: FolderKanban,
+                  },
+                  {
+                    title: "写一份文档",
+                    detail: "说明、纪要或长文",
+                    prompt: "帮我写一份文档。要求：",
+                    icon: PenLine,
+                  },
+                  {
+                    title: "先计划再改动",
+                    detail: "改文件或执行命令前等我批准",
+                    prompt:
+                      "先给出计划。需要改文件或执行命令时停下来等我批准。目标：",
+                    icon: ShieldCheck,
+                    approval: true,
+                  },
+                ].map((item) => (
+                  <button
+                    type="button"
+                    key={item.title}
+                    onClick={() => {
+                      if (item.network) {
+                        setNetworkPolicy("ask");
+                        setNetworkChanged(true);
+                      }
+                      if (item.approval) {
+                        setRequireApproval(true);
+                        setApprovalChanged(true);
+                      }
+                      setPrompt(item.prompt);
+                      promptInput.current?.focus();
+                    }}
+                  >
+                    <item.icon size={16} />
+                    <strong>{item.title}</strong>
+                    <span>{item.detail}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          </div>
         )}
       </main>
       {resource && (last || projectId) && (
@@ -1639,6 +1752,41 @@ export function CloudWorkspace({
             </div>
           </aside>
         </>
+      )}
+      {membersOpen && projectBranch === "choose" && (
+        <div className="cw-modal-backdrop">
+          <section
+            className="cw-space-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="新建项目"
+          >
+            <header>
+              <h2>新建项目</h2>
+              <button
+                type="button"
+                aria-label="关闭新建项目"
+                onClick={() => setMembersOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </header>
+            <p>选择谁可以看见这个项目里的对话和文件。</p>
+            <div className="jd-visibility">
+              <button type="button" onClick={() => setProjectBranch("personal")}>
+                <strong>仅自己</strong>
+                <span>对话和文件只在你的账号里。</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectBranch("collaborative")}
+              >
+                <strong>与成员共享</strong>
+                <span>组织成员可以查看，编辑者可以继续任务。</span>
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {membersOpen && projectBranch === "personal" && (
         <PersonalProjectDialog

@@ -25,7 +25,7 @@ async function shot(state) {
 }
 try {
   await p.goto(base + "/#/sessions/" + before.fixtureIds[0]);
-  await p.getByText("想完成什么工作？").waitFor();
+  await p.getByText("交代一个任务，在这台电脑或云端沙箱里做完，你来批准和核对。").waitFor();
   await shot("empty");
   await p.getByRole("button", { name: "设置", exact: true }).click();
   await p.getByRole("dialog", { name: "设置" }).waitFor();
@@ -34,7 +34,7 @@ try {
   const response = p.waitForResponse(
     (r) => r.url().endsWith("/api/sessions") && r.request().method() === "POST",
   );
-  await p.getByRole("button", { name: "新任务", exact: true }).click();
+  await p.getByRole("button", { name: "新对话", exact: true }).click();
   const session = await (await response).json();
   await p.waitForURL("**/sessions/" + session.id);
   await expect(p.getByRole("heading", { name: "新会话", exact: true }))
