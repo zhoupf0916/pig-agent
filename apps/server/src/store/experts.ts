@@ -1,3 +1,4 @@
+import { pluginExperts } from "./plugins.ts";
 import { existsSync } from "node:fs";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -119,6 +120,7 @@ export async function listExperts(): Promise<Expert[]> {
     const expert = await readExpertFile(file.replace(/\.json$/, ""));
     if (expert) out.push(expert);
   }
+  out.push(...await pluginExperts());
   out.sort((a, b) => {
     if (a.bundled !== b.bundled) return a.bundled ? -1 : 1;
     if (a.bundled && b.bundled) {
@@ -138,6 +140,7 @@ export async function listExperts(): Promise<Expert[]> {
 
 export async function getExpert(id: string): Promise<Expert | null> {
   await ensureBundledExperts();
+  if (id.startsWith("plugin_")) return (await pluginExperts()).find(e => e.id === id) ?? null;
   try {
     return await readExpertFile(assertSafeId(id));
   } catch {
@@ -212,6 +215,7 @@ export async function updateExpert(
     skillIds?: string[];
   },
 ): Promise<Expert | null> {
+  if (id.startsWith("plugin_")) throw Error("插件专家由插件管理；请复制为自定义专家后编辑");
   const expert = await getExpert(id);
   if (!expert) return null;
   if (typeof patch.name === "string" && patch.name.trim()) expert.name = patch.name.trim();

@@ -13,6 +13,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
+      "/v1": { target: "http://127.0.0.1:8890", changeOrigin: false },
+      "/auth": { target: "http://127.0.0.1:8890", changeOrigin: false },
       "/api": {
         target: "http://127.0.0.1:8787",
         changeOrigin: true,

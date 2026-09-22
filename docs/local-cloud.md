@@ -2,7 +2,7 @@
 
 ## 当前范围
 
-所有后端依赖都在本机 Docker 中：PostgreSQL、cloud API、模型网关、可信 Worker。开发用执行诊断页与管理后台由 cloud 容器提供静态资源，执行任务使用单独创建的短生命周期容器。
+所有后端依赖都在本机 Docker 中：PostgreSQL、cloud API、模型网关、可信 Worker。开发用执行诊断页与管理后台由 cloud 容器提供静态资源，任务在 Runner 内启动可信 Agent 进程，工具进入 Bubblewrap + seccomp 原生沙箱，不创建任务容器。
 
 这是邀请制内测工作台：已提供账号邀请、组织共享项目、模型渠道管理、跨轮工作区快照和可选云端写入审批。服务依赖在本地 Docker 启动，Web 与 Electron 共用远端执行控制面；尚不包含公网部署、远端 Codex 或桌面签名更新。
 
@@ -22,21 +22,21 @@ pnpm cloud:up
 - 管理后台：http://127.0.0.1:8890/admin/
 - 本地访问令牌：`data/cloud-local/access.txt`，仅当前用户可读。
 
-重复启动保留原凭据与数据库。只有 8890 绑定本机回环地址，数据库、网关和 Docker socket 不对浏览器公开。其他本地 Web / Electron 服务无需停止。
+重复启动保留原凭据与数据库。只有 8890 绑定本机回环地址，数据库、网关不对浏览器公开，Runner 不再挂载 Docker socket。其他本地 Web / Electron 服务无需停止。
 
 ```bash
 pnpm cloud:status     # 查看服务
 pnpm cloud:logs       # 最近 100 行日志
-pnpm cloud:smoke      # API + 真实容器 + Worker 崩溃恢复验收
+pnpm cloud:smoke      # API + 真实原生 Runner + Worker 崩溃验收
 pnpm exec tsx scripts/smoke-cloud-adapter.ts # 现有 Web/桌面 remote 协议联调
-pnpm cloud:down       # 停止平台并清理执行容器，保留数据库卷
+pnpm cloud:down       # 停止平台与任务进程，保留数据库卷
 ```
 
 源码有变动后重新执行 `pnpm cloud:up`。不要手动删除数据库卷，除非确实要清除云任务数据。
 
 ## 模型
 
-默认 `MODEL_MODE=mock`，没有使用或上传个人 DeepSeek Key。模拟模型固定调用 write_file 和 read_file，真实在容器写入 `cloud-proof.txt` 并读回；它用于验证整条执行链路，不能完成任意自然语言任务。
+默认 `MODEL_MODE=mock`，没有使用或上传个人 DeepSeek Key。模拟模型固定调用 write_file 和 read_file，真实在任务工作区写入 `cloud-proof.txt` 并读回；它用于验证整条执行链路，不能完成任意自然语言任务。
 
 若要使用真实模型，手动在本机 `data/cloud-local/stack.env` 配置：
 
@@ -55,11 +55,10 @@ MODEL_API_KEY=填写自己的平台模型密钥
 
 - 单 Worker 提供 3 个并发槽位，每账号最多 5 个活动/排队任务。
 - 运行状态：queued → preparing → running → succeeded / failed；取消经过 cancelling → cancelled。
-- 每任务容器 1 CPU、512 MiB 内存、128 PID；工作区和临时目录各 64 MiB，约 4 分钟总时限；网关每任务最多 24 次模型请求。
-- 非 root、只读根文件系统、移除 capabilities、禁止新增权限；每任务创建独立内部 Docker 网络并连接模型网关，不共用执行网络，不提供任意互联网依赖安装。
-- 只有可信 Worker 挂载 Docker socket，Agent 容器不挂载宿主目录、数据库或 socket。普通 Docker 的限制仍适用，当前仅作为本机内测平台。
-- PostgreSQL 保存任务、事件、产物和审计；当前产物仅支持文本，每文件最多 200 KB、每任务最多 100 个且总大小约 2 MiB，后续迁移对象存储。
-- 任务结束后执行容器及其临时文件回收，已收集的产物可下载。取消/失败任务当前不保证收集部分产物。
+- Runner 服务整体限制 4 GiB / 1024 PID。每任务内存、PID、CPU 采用 500ms `/proc` 采样终止保护，不等价于每任务 cgroup 硬配额；CPU 规格不是硬 CPU 份额。
+- 非 root Runner、移除 capabilities、禁止新增权限；工具使用独立 user/mount/PID/network namespace 与 seccomp，默认无直接网络，仅挂当前任务目录及只读系统工具路径。
+- 不挂 Docker socket、不创建每任务容器或 Docker 网络；部署需要有界放宽外层 namespace syscalls 和 `/proc` 掩码。缺失能力时 Runner 拒绝注册，不降级本机执行。见[完整配置与证据](native-runner-2026-09-22.md)。
+- 任务结束后进程及其临时文件回收，已收集的产物可下载。取消/失败任务当前不保证收集部分产物。
 - worker 使用短期租约和运行令牌；丢失租约后旧实例不能提交。失联任务标为失败，不自动重跑有副作用的命令。
 - 工作区上传支持现有 remote 适配器的受限归档，诊断页支持最多 20 个文本文件。依赖安装、Git 克隆和二进制产物不在本批范围。
 
@@ -147,7 +146,7 @@ pnpm cloud:restore:verify /absolute/path/to/backup.dump
 
 异机灾备同时保存 dump 和受保护的 `data/cloud-local/stack.env`；缺失 ENCRYPTION_KEY 时无法解密已有模型渠道。生产替换前先暂停新任务、排空 Worker、备份当前库，在独立 PostgreSQL 恢复 dump，设置原密钥并验证后切换 DATABASE_URL。命令不会自动清空现有数据库。
 
-这仍是邀请制内测工作台：尚未提供远端 Codex、审批等待期间的容器释放与故障恢复、S3 存储、自动保留期或桌面签名更新。
+这仍是邀请制内测工作台：尚未提供远端 Codex、审批等待期间的槽位释放与节点故障后任务自动恢复、S3 存储、自动保留期或桌面签名更新。
 
 
 ## 组织与共享项目
@@ -162,4 +161,4 @@ pnpm cloud:restore:verify /absolute/path/to/backup.dump
 
 审批由 PostgreSQL 持久保存，关闭客户端不会丢失；所有者或项目编辑者可以决定，只读成员不能批准。授权只领取一次；拒绝会停止本轮任务，取消或过期运行不能批准旧操作。页面显示「授权已领取」只表示容器领取授权，执行成功与否以工具日志为准。
 
-等待审批仍占用运行容器并计入资源规格的运行时限。尚未支持释放容器后长期等待，或 Worker 崩溃后自动恢复审批执行。默认 mock 模型用于验证执行和审批链路，不代表真实模型任务质量。
+等待审批仍占用 Runner 槽位，但执行预算暂停，审批最多等待 30 分钟。取消和租约过期仍生效。Worker 崩溃后任务失败，不自动重放审批或未知副作用；完成 outbox 只重试结果交付，不是任务重新执行。默认 mock 模型用于验证执行和审批链路，不代表真实模型任务质量。

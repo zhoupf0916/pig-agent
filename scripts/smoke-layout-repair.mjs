@@ -1,0 +1,65 @@
+import { chromium, expect } from '@playwright/test';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
+const base = process.env.PIG_LAYOUT_URL || 'http://127.0.0.1:8892';
+const out = 'data/layout-repair-evidence';
+const { accounts } = JSON.parse(await readFile('data/project-ui-evidence/accounts.json', 'utf8'));
+await mkdir(out, { recursive: true });
+const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const errors = [], checks = [];
+page.on('pageerror', error => errors.push(error.message));
+const shot = async name => {
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: `${out}/after-${name}.png` });
+};
+try {
+  await page.goto(base);
+  await page.getByLabel('用户名', { exact: true }).fill(accounts[0].username);
+  await page.getByLabel('密码', { exact: true }).fill(accounts[0].password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.global-links')).toBeVisible();
+  for (const route of ['conversations', 'projects/personal', 'projects/collaboration']) {
+    await page.goto(`${base}/#/${route}`);
+    await expect(page.locator('.cw-topbar')).toBeVisible();
+    await expect(page.locator('.cw-sidebar')).toBeHidden();
+    await expect(page.getByRole('button', { name: '打开导航', exact: true })).toBeHidden();
+    await expect(page.locator('.app-main > .task-header')).toHaveCount(0);
+    await shot(`${route.replaceAll('/', '-')}-desktop`);
+  }
+  await expect(page.locator('.cw-composer')).toHaveCount(0);
+  checks.push('Single task header, contextual project drawer, empty collaboration has no invalid composer');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await shot('collaboration-mobile');
+  await page.getByRole('button', { name: '选择项目', exact: true }).click();
+  await expect(page.getByRole('button', { name: '关闭项目面板' })).toBeVisible();
+  await shot('project-drawer-mobile');
+  await page.getByRole('button', { name: '关闭项目面板' }).click();
+  await expect(page.locator('.cw-sidebar')).toBeHidden();
+  await page.getByRole('button', { name: '选择项目', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cw-sidebar')).toBeHidden();
+  checks.push('390x844 project drawer close button and Escape both close drawer');
+  await page.getByRole('button', { name: '打开导航', exact: true }).click();
+  await expect(page.locator('.global-sidebar')).toBeVisible();
+  await page.locator('.global-links').getByRole('button', { name: '专家', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '专家与技能', exact: true, level: 1 })).toBeVisible();
+  await shot('experts-mobile');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${base}/#/conversations`);
+  await page.locator('.cw-task-method summary').click();
+  await shot('options-desktop');
+  await page.getByRole('button', { name: '选择项目', exact: true }).click();
+  await page.locator('.cw-sidebar nav button').first().click();
+  await expect(page.getByRole('button', { name: '成果与过程', exact: true })).toBeVisible();
+  const before = await page.locator('.cw-main').boundingBox();
+  await page.getByRole('button', { name: '成果与过程', exact: true }).click();
+  await expect(page.locator('.cw-resources')).toBeVisible();
+  const after = await page.locator('.cw-main').boundingBox();
+  expect(after.width).toBe(before.width);
+  await shot('artifacts-desktop');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cw-resources')).toHaveCount(0);
+  checks.push('1280x800 execution options remain inside composer; artifact drawer overlays without compressing chat; Escape closes');
+  expect(errors).toEqual([]);
+  await writeFile(`${out}/report.json`, JSON.stringify({ status: 'PASS', base, checks, errors, sizes: ['1440x900', '390x844', '1280x800'] }, null, 2));
+} finally { await browser.close(); }

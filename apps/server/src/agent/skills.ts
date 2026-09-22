@@ -1,7 +1,20 @@
-import { readdir, readFile } from "node:fs/promises";
+import { pluginSkills } from "../store/plugins.ts";
+import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SKILLS_DIR } from "../config.ts";
+import { DATA_DIR, SKILLS_DIR } from "../config.ts";
 import type { Skill, SkillMeta } from "../types.ts";
+
+const USER_SKILLS_DIR = join(DATA_DIR, "skills");
+
+export async function saveUserSkill(input: { name: string; description: string; body: string }): Promise<Skill> {
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(input.name)) throw new Error("技能标识只能包含小写字母、数字和连字符");
+  if ((await listSkills()).some(skill => skill.name === input.name || skill.filename === `${input.name}.md`)) throw new Error("同名技能已存在，请修改标识");
+  await mkdir(USER_SKILLS_DIR, { recursive: true });
+  const filename = `${input.name}.md`;
+  const description = input.description.replace(/[\r\n]/g, " ");
+  await writeFile(join(USER_SKILLS_DIR, filename), `---\nname: ${input.name}\ndescription: ${description}\n---\n\n${input.body}\n`, { flag: "wx", mode: 0o600 });
+  return { ...input, description, filename };
+}
 
 type Frontmatter = Record<string, string>;
 
@@ -34,12 +47,8 @@ export function parseFrontmatter(raw: string): {
 }
 
 export async function listSkills(): Promise<SkillMeta[]> {
-  let names: string[] = [];
-  try {
-    names = (await readdir(SKILLS_DIR)).filter((n) => n.endsWith(".md"));
-  } catch {
-    return [];
-  }
+  const directories = await Promise.all([SKILLS_DIR, USER_SKILLS_DIR].map(dir => readdir(dir).catch(() => [] as string[])));
+  const names = [...new Set(directories.flat().filter(n => n.endsWith(".md")))];
   const skills: SkillMeta[] = [];
   for (const filename of names.sort()) {
     const skill = await readSkillFile(filename);
@@ -50,6 +59,12 @@ export async function listSkills(): Promise<SkillMeta[]> {
         filename: skill.filename,
         keywords: skill.keywords,
       });
+    }
+  }
+  for (const skill of await pluginSkills()) {
+    if (!skills.some(existing => existing.name === skill.name || existing.filename === skill.filename)) {
+      const { body: _body, ...meta } = skill;
+      skills.push(meta);
     }
   }
   return skills;
@@ -63,6 +78,8 @@ export async function loadSkill(name: string): Promise<Skill> {
   if (!match) {
     throw new Error(`Skill not found: ${name}`);
   }
+  const plugin = (await pluginSkills()).find(skill => skill.filename === match.filename);
+  if (plugin) return plugin;
   const skill = await readSkillFile(match.filename);
   if (!skill) throw new Error(`Skill not found: ${name}`);
   return skill;
@@ -141,7 +158,7 @@ async function readSkillFile(filename: string): Promise<Skill | null> {
   const full = join(SKILLS_DIR, filename);
   let raw: string;
   try {
-    raw = await readFile(full, "utf8");
+    raw = await readFile(join(USER_SKILLS_DIR, filename), "utf8").catch(() => readFile(full, "utf8"));
   } catch {
     return null;
   }

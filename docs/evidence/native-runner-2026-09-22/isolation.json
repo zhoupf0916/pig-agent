@@ -1,0 +1,55 @@
+{
+  "environment": "Docker Desktop Linux ARM64; node24-bookworm-slim; non-root Runner UID1000; no capabilities; no Docker socket",
+  "defaultDockerSeccompProbe": "failed closed: user namespace denied",
+  "customSeccompOnlyProbe": "failed closed: fresh proc mount denied",
+  "customSeccompAndSystempathsProbe": "passed",
+  "nativeSandbox": {
+    "node": "v24.21.0",
+    "git": "2.39.5",
+    "python": "3.11.2",
+    "crossWorkspaceRead": "blocked",
+    "appDirectory": "not mounted",
+    "workerTokenEnvironment": "absent",
+    "attemptTokenEnvironment": "absent",
+    "workspaceWrite": "passed",
+    "directTcpNetwork": "blocked"
+  },
+  "note": "Actual commands were run in the deployed runner-a service. No model credentials were used.",
+  "crossReview": {
+    "broadWorkspaceRoots": "filesystem root, home, shared tmp and system roots rejected",
+    "seccomp": "arm64/x64 tests cover namespace clone flags, clone3, io_uring and new mount APIs",
+    "linuxAfterSeccompTightening": "node24/git/python and network isolation reverified",
+    "detachedDescendantCancellation": {
+      "mechanism": "fork + setsid writer inside PID namespace; SIGKILL bwrap process group",
+      "ticksBefore": 10,
+      "ticksAfter": 10,
+      "passed": true
+    },
+    "notClaimed": "macOS process-group cancellation is not a PID namespace lifetime guarantee; this is shared-kernel process isolation, not a microVM",
+    "fileToolBoundary": {
+      "status": "fixed before integration",
+      "implementation": "8 file tools, capture/verify, undo and upload restore use native helper in native mode",
+      "macOSNode": "write/read/artifact receipt/outside-symlink rejection passed",
+      "macOSElectron": "actual Electron executable Node-mode helper write/read/artifact/outside rejection passed",
+      "linuxRunner": "temporary bundle write/read/artifact receipt/outside-symlink rejection passed",
+      "regressionTests": 27,
+      "additionalCoveredEndpoints": [
+        "workspace tree/preview",
+        "artifact binary export",
+        "production remote handoff/install hints/snapshot packing"
+      ]
+    }
+  },
+  "toctouReproduction": {
+    "platform": "macOS",
+    "attacker": "native sandbox Node process repeatedly replaces workspace directory with symlink to sibling synthetic canary directory",
+    "legacyHostPathReads": 1000,
+    "legacyLeaks": 2,
+    "patchedHelperRequests": 36,
+    "safeResponses": 15,
+    "blockedResponses": 21,
+    "patchedLeaks": 0,
+    "canaryUnchanged": true,
+    "checked": "preview, binary read and decompressed handoff archive"
+  }
+}

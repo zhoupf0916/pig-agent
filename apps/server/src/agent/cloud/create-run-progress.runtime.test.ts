@@ -208,8 +208,11 @@ describe("Milestone W create-run progress", () => {
   it("reports unknown submission after aborted create instead of claiming stopped", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-w-ab-"));
     writeFileSync(join(workspaceRoot, "ok.md"), "ok");
+    let submitted!: () => void;
+    const submission = new Promise<void>(resolve => { submitted=resolve; });
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       if (req.method === "POST" && (req.url ?? "") === "/v1/runs") {
+        submitted();
         // Stay open until the host AbortSignal cancels the request.
         return;
       }
@@ -224,7 +227,7 @@ describe("Milestone W create-run progress", () => {
       signal: controller.signal,
       emit: () => undefined,
     });
-    await new Promise((r) => setTimeout(r, 40));
+    await submission;
     controller.abort();
     const next = await pending;
     await close();

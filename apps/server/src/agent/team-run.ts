@@ -171,12 +171,11 @@ export async function runSequentialTeamTurn(
       break;
     }
 
-    pushAndEmit(current, hooks.emit, teamMarker(`${i + 1}/${total} · ${member.name} 开始`));
-    pushAndEmit(
-      current,
-      hooks.emit,
-      handoffNudge(team.name, member.name, member.kind, i, total),
-    );
+    const resumingCheckpoint = action === "continue" && i === startIndex && hooks.runtime === "pig" && Boolean((await loadWorkbench(current.id, hooks.settings.workspaceRoot)).checkpoint);
+    if (!resumingCheckpoint) {
+      pushAndEmit(current, hooks.emit, teamMarker(`${i + 1}/${total} · ${member.name} 开始`));
+      pushAndEmit(current, hooks.emit, handoffNudge(team.name, member.name, member.kind, i, total));
+    }
 
     const next = await hooks.runner({
       session: current,

@@ -24,7 +24,7 @@ import {
   assertNoSecretsInPayload,
   buildCreateRunRequest,
   buildFollowUpRequest,
-  buildRemoteWorkspaceHandoff,
+  buildSafeRemoteWorkspaceHandoff,
 } from "./request.ts";
 
 export async function runRemoteCloudAgent(options: {
@@ -102,7 +102,8 @@ export async function runRemoteCloudAgent(options: {
 
     if (!runId) {
       progress.begin("snapshot");
-      const workspace = buildRemoteWorkspaceHandoff(settings);
+      const workspace = await buildSafeRemoteWorkspaceHandoff(settings, signal);
+      if (signal.aborted) throw Error("Aborted");
       const body = buildCreateRunRequest(session, settings, workspace, {
         expertInstruction: options.expertInstruction,
         projectInstruction: options.projectInstruction,

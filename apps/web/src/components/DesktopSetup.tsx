@@ -129,8 +129,7 @@ export function DesktopSetup({
           </div>
         </div>
         <p className="mt-4 text-xs leading-5 text-ink-500">
-          连接测试会发起一次简短的模型请求，按提供商规则计费。默认写入需要审阅；命令可在任务中选择本机或
-          Docker。
+          连接测试会发起一次简短的模型请求，按提供商规则计费。默认写入需要审阅；命令默认在原生沙箱中执行。
         </p>
         {status && (
           <div

@@ -1,0 +1,12 @@
+{
+  "at": "2026-09-22T05:00:48.056Z",
+  "environment": "real local Docker cluster8892 and Postgres; mock execution model; no real provider draft generation claim",
+  "runId": "run_7217aa0861af4bd4a32b7561f29a4452",
+  "expertId": "exp_8be257a58d58457cba96e0412805b592",
+  "skillId": "skill_c28bb7d505a042bf95c05f671e3fa009",
+  "checks": [
+    "existing bundled experts/skills readable and immutable; user create/edit/read persists; otheraccount read/edit/use denied",
+    "selected user expert and skill resolve to authoritative execution context and real Docker run completes",
+    "mock platform without configured provider honestly returns503 for AI draft; manual creation remains usable"
+  ]
+}

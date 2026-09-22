@@ -1,0 +1,178 @@
+.cloud-run-panel {
+  max-width: 1060px;
+  margin: auto;
+  padding: 28px;
+  color: #22344d;
+}
+.cloud-run-panel > header,
+.cloud-run-heading,
+.cloud-run-artifact,
+.cloud-run-preview > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.cloud-run-panel > header {
+  justify-content: flex-start;
+  color: #6b7d92;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+.cloud-run-panel button,
+.cloud-run-artifact a {
+  border: 1px solid #dce5f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: white;
+  font-size: 13px;
+  color: #285ba6;
+}
+.cloud-run-panel button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.cloud-run-heading {
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+.cloud-run-heading h1 {
+  font-size: 23px;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.cloud-run-heading p,
+.cloud-run-muted {
+  font-size: 12px;
+  color: #6b7d92;
+}
+.cloud-run-state {
+  background: #eaf2ff;
+  color: #275baf;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+.cloud-run-heading > button {
+  flex-shrink: 0;
+}
+.cloud-run-panel > nav {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #dce5f0;
+  padding-bottom: 12px;
+}
+.cloud-run-panel > nav button[aria-pressed="true"] {
+  background: #eaf2ff;
+  border-color: #abc8f2;
+}
+.cloud-run-body {
+  padding: 24px 0;
+  min-height: 240px;
+}
+.cloud-run-empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: #6b7d92;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.cloud-run-error,
+.cloud-run-notice {
+  padding: 14px;
+  border-radius: 8px;
+  background: #fff3f1;
+  color: #963c36;
+  overflow-wrap: anywhere;
+}
+.cloud-run-notice {
+  background: #eff5ff;
+  color: #285ba6;
+}
+.cloud-run-approval {
+  padding: 20px;
+  margin: 16px 0;
+  background: #f3f7ff;
+  border: 1px solid #bed1f1;
+  border-radius: 12px;
+}
+.cloud-run-approval h2 {
+  font-weight: 650;
+}
+.cloud-run-approval p {
+  font-size: 13px;
+  margin: 8px 0;
+}
+.cloud-run-approval pre,
+.cloud-run-preview pre {
+  max-height: 340px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.8;
+  padding: 12px;
+  background: #fff;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.cloud-run-approval > div {
+  display: flex;
+  gap: 10px;
+}
+.cloud-run-artifact {
+  border-bottom: 1px solid #e5ebf3;
+  padding: 16px 0;
+}
+.cloud-run-artifact > div {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cloud-run-artifact small {
+  display: block;
+  color: #6b7d92;
+  margin-top: 4px;
+}
+.cloud-run-preview {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+}
+.cloud-run-preview header strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.cloud-run-preview header button {
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .cloud-run-panel {
+    padding: 16px;
+  }
+  .cloud-run-heading {
+    display: block;
+  }
+  .cloud-run-heading h1 {
+    font-size: 19px;
+  }
+  .cloud-run-heading > button {
+    margin-top: 14px;
+  }
+  .cloud-run-panel > nav {
+    gap: 4px;
+  }
+  .cloud-run-panel > nav button {
+    padding: 8px 10px;
+  }
+  .cloud-run-approval {
+    padding: 14px;
+  }
+  .cloud-run-artifact {
+    gap: 8px;
+  }
+}

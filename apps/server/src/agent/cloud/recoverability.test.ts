@@ -178,6 +178,8 @@ describe("Milestone L remote recoverability", () => {
     writeFileSync(join(workspaceRoot, "ok.md"), "ok");
     let followUps = 0;
     let eventSubs = 0;
+    let subscribed!: () => void;
+    const subscription = new Promise<void>(resolve=>{subscribed=resolve});
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = req.url ?? "";
       if (req.method === "POST" && url === "/v1/runs") {
@@ -187,6 +189,7 @@ describe("Milestone L remote recoverability", () => {
       }
       if (req.method === "GET" && url === "/v1/runs/run_hang_l/events") {
         eventSubs += 1;
+        subscribed();
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         res.write(`data: ${JSON.stringify({ type: "run.started" })}\n\n`);
         if (eventSubs === 1) return;
@@ -225,7 +228,7 @@ describe("Milestone L remote recoverability", () => {
       signal: controller.signal,
       emit: () => undefined,
     });
-    await new Promise((r) => setTimeout(r, 40));
+    await subscription;
     controller.abort();
     const aborted = await pending;
     expect(aborted.status).toBe("idle");

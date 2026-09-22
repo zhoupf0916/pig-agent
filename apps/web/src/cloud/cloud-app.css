@@ -1,0 +1,212 @@
+.cloud-app .cloud-shell-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+}
+.cloud-app .cw-shell {
+  height: 100%;
+}
+
+.cloud-app .cw-sidebar > footer {
+  display: none;
+}
+.cloud-app .cloud-account {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+.cloud-account small,
+.cloud-page .muted {
+  color: var(--text-muted);
+}
+.cloud-account button {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  text-align: left;
+}
+.cloud-page {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.cloud-page h2 {
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+.cloud-page h3 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.cloud-page p {
+  margin: 0 0 16px;
+}
+.cloud-page button {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 8px 13px;
+  cursor: pointer;
+}
+.cloud-page button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.cloud-page .primary-button {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.cloud-page input:not([type="checkbox"]),
+.cloud-page select,
+.cloud-page textarea {
+  width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font: inherit;
+}
+.cloud-page textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+.cloud-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 720px;
+  margin: 24px 0;
+}
+.cloud-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 500;
+}
+.cloud-form small {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.cloud-form .cloud-check {
+  flex-direction: row;
+  align-items: center;
+}
+.cloud-check input {
+  width: 16px;
+  height: 16px;
+}
+.cloud-note {
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-subtle);
+  border-radius: 10px;
+  line-height: 1.7;
+}
+.cloud-card {
+  padding: 20px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  margin-bottom: 12px;
+}
+.cloud-card pre {
+  white-space: pre-wrap;
+  font: inherit;
+  max-height: 260px;
+  overflow: auto;
+}
+.cloud-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+.cloud-result strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cloud-result span {
+  color: var(--text-muted);
+}
+.cloud-search {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0;
+}
+.cloud-search input {
+  flex: 1;
+  min-width: 0;
+}
+.cloud-search button {
+  flex-shrink: 0;
+}
+.cloud-page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.cloud-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.cloud-actions,
+.cloud-tabs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cloud-actions {
+  margin-top: 16px;
+}
+.cloud-tabs button[aria-selected="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.cloud-editor {
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+}
+.cloud-shell-error,
+.cloud-page [role="alert"] {
+  color: #b42318;
+  padding: 12px;
+  background: #fff1ef;
+  border-radius: 8px;
+}
+@media (max-width: 760px) {
+  .cloud-page {
+    padding: 20px 16px;
+  }
+  .cloud-page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .cloud-app .cw-sidebar {
+    width: min(300px, 85vw);
+  }
+  .cloud-search {
+    flex-wrap: wrap;
+  }
+  .cloud-resource-grid {
+    grid-template-columns: 1fr;
+  }
+  .cloud-app .task-header {
+    min-height: 68px;
+  }
+  .cloud-editor {
+    padding: 16px;
+  }
+}

@@ -22,7 +22,7 @@ export function InlineRemoteActivity({
   const [decided, setDecided] = useState<Record<string, string>>({});
   const lock = useRef(false);
   const reviews = activity.approvals.filter(
-    (a) => a.state === "pending" || decided[a.id],
+    (a) => a.state === "pending" || a.state === "approved",
   );
   const terminal =
     activity.run &&
@@ -46,6 +46,10 @@ export function InlineRemoteActivity({
         },
       );
       setDecided((v) => ({ ...v, [approval.id]: decision }));
+      activity.onApprovalDecided?.(
+        approval.id,
+        decision === "approve" ? "approved" : "rejected",
+      );
     } catch (e) {
       setError(
         redactSecretsForDisplay(e instanceof Error ? e.message : String(e)),
@@ -89,7 +93,8 @@ export function InlineRemoteActivity({
           const command = String(args.command ?? args.cmd ?? "");
           const content =
             args.content ?? args.new_string ?? args.replacement ?? args.patch;
-          const accepted = decided[a.id] === "approve";
+          const accepted =
+            a.state === "approved" || decided[a.id] === "approve";
           const rejected = decided[a.id] === "reject";
           if (accepted || rejected)
             return (

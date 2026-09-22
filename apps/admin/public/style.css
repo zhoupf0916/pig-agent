@@ -943,3 +943,36 @@ dialog::backdrop {
     content: "模型调用：";
   }
 }
+
+.registration-card {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line, #dce5f4);
+}
+.registration-card:last-child {
+  border-bottom: 0;
+}
+.registration-card p {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.registration-card small {
+  display: block;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.registration-card button + button {
+  margin-left: 8px;
+}
+#password-login-form,
+#admin-password-form {
+  display: grid;
+  gap: 14px;
+}
+#password-login-form label,
+#admin-password-form label {
+  display: grid;
+  gap: 6px;
+}
+#login details {
+  margin-top: 20px;
+}

@@ -1,0 +1,11 @@
+{
+  "at": "2026-09-22T03:43:08.568Z",
+  "environment": "actual Electron44 isolated profile; pig:// desktop proxy; Docker cluster8892 mock model; no OS permission requests",
+  "conversationId": "conv_a3283cff459a4a89a19637e03e50b72a",
+  "checks": [
+    "actual Electron pig:// isolated profile opens existing control-plane conversation with no local session import; conversation SSE returns200 through desktop proxy",
+    "remote API appends next turn and already-open Electron conversation receives it over persistent SSE",
+    "share link is control-plane HTTP URL usable by logged-in project members, never pig://; local session count remainszero"
+  ],
+  "errors": []
+}

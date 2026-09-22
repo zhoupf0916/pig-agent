@@ -1,9 +1,15 @@
+import { attachmentIdsSchema } from "./attachments.ts";
 import { z } from "zod";
 export const inputSchema = z.object({
+  attachmentIds: attachmentIdsSchema,
+  useUserDefaults: z.boolean().optional(),
+  expertId: z.string().min(1).max(100).optional(),
+  skillIds: z.array(z.string().min(1).max(100)).max(20).optional(),
   prompt: z.string().trim().min(1).max(32000),
   sessionId: z.string().max(100).optional(),
   projectId: z.string().regex(/^project_[a-f0-9]{32}$/).optional(),
   requireApproval: z.boolean().optional(),
+  networkPolicy: z.enum(["ask", "blocked"]).default("ask"),
   files: z
     .array(
       z.object({

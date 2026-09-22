@@ -1,10 +1,12 @@
+import { registerComputerRoutes } from "./desktop/computer.ts";
+import { registerPluginRoutes } from "./routes/plugins.ts";
 import { reconcileRemoteSession, isRemoteActive } from "./control-plane/run-state.ts";
 import { planeJson } from "./control-plane/client.ts";
 import { newId } from "./util.ts";
 import { registerRemoteRoutes } from "./routes/remote.ts";
 import { registerConnectionTest } from "./routes/connection-test.ts";
 import { registerWorkbenchRoutes } from "./routes/workbench.ts";
-import { loadWorkbench } from "./store/workbench.ts";
+import { loadWorkbench, saveWorkbench, locked } from "./store/workbench.ts";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -37,7 +39,7 @@ import { publishPersistedEvent } from "./store/events.ts";
 import { clearAutomationLastSessionId } from "./store/automations.ts";
 import { clearInboxSessionRefs } from "./store/inbox.ts";
 import { clearMemoryRefs } from "./store/memory.ts";
-import { clearProjectSessionRefs, recordSessionBound } from "./store/projects.ts";
+import { clearProjectSessionRefs, recordSessionBound, getProject } from "./store/projects.ts";
 import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
 import type { Session } from "./types.ts";
@@ -85,6 +87,8 @@ export function createApp(): Hono {
     }),
   );
 
+  registerComputerRoutes(app);
+  registerPluginRoutes(app);
   registerWorkbenchRoutes(app);
   registerConnectionTest(app);
 
@@ -134,6 +138,7 @@ export function createApp(): Hono {
   app.post("/api/sessions", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as {
       projectId?: string;
+      workspaceId?: string;
       expertId?: string;
       expertTeamId?: string;
     };
@@ -141,7 +146,11 @@ export function createApp(): Hono {
     const expertId = typeof body.expertId === "string" && body.expertId.trim() ? body.expertId.trim() : undefined;
     const expertTeamId =
       typeof body.expertTeamId === "string" && body.expertTeamId.trim() ? body.expertTeamId.trim() : undefined;
-    const session = await createSession({ projectId, expertId, expertTeamId });
+    if (projectId && !(await getProject(projectId))) return c.json({error:"项目不存在"},404);
+    if (body.workspaceId !== undefined && (typeof body.workspaceId !== "string" || !body.workspaceId.trim() || body.workspaceId.length > 120)) return c.json({error:"工作区参数无效"},400);
+    let session;
+    try { session = await createSession({ projectId, expertId, expertTeamId, workspaceId: body.workspaceId }); }
+    catch(err) { return c.json({error: err instanceof Error ? err.message : "任务创建失败"},400); }
     const defaults = await loadSettings();
     // Retain the legacy stub only when explicitly chosen in global settings.
     if (defaults.runtime !== "cloud" || defaults.cloudMode === "remote") {
@@ -255,6 +264,18 @@ export function createApp(): Hono {
     controller?.abort();
     await waitForTurnRelease(id);
     const session = await getSession(id);
+    if (session?.deliveryMode && !session.remoteState && !runningTurns.has(id)) {
+      await locked(id, async () => {
+        const state = await loadWorkbench(id, session.workspaceRoot || (await loadSettings()).workspaceRoot);
+        if (state.checkpoint) {
+          for (const op of state.operations) if (op.status === "pending") op.status = "rejected";
+          state.checkpoint = { ...state.checkpoint, calls: [], stopped: true };
+          const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
+          for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) session.messages.push({ id: newId("msg"), role: "tool", toolCallId: call.id, toolOk: false, content: "用户已取消本轮，操作未执行。", createdAt: new Date().toISOString() });
+          await saveWorkbench(id, state); await saveSession(session);
+        }
+      });
+    }
     if (session && session.status === "running" && !session.remoteState && !runningTurns.has(id)) {
       await applyTeamRunStop(session);
       const latest = (await getSession(id)) ?? session;
@@ -306,10 +327,12 @@ export function createApp(): Hono {
 
     if (pigDelivery) {
       const settings = await loadSettings();
+      if (session.workspaceRoot) settings.workspaceRoot = session.workspaceRoot;
       const state = await loadWorkbench(id, settings.workspaceRoot);
+      if (state.checkpoint?.stopped) return c.json({ error: "本轮已拒绝或取消，请发送新的指令。" }, 409);
       if (state.operations.some((op) => op.status === "pending" || op.status === "applying" || op.status === "error")) return c.json({ error: "请先处理待批准或待核对的操作。" }, 409);
       const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
-      for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) {
+      for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id) && !state.checkpoint?.calls.some((pending) => pending.id === call.id)) {
         const op = state.operations.find((item) => item.callId === call.id);
         session.messages.push({ id: `recovered_${call.id}`, role: "tool", toolCallId: call.id, toolOk: op?.status === "applied", content: op?.output ?? "执行被中断，结果未知；先检查磁盘，不要直接重放修改或命令。", createdAt: new Date().toISOString() });
       }
@@ -457,6 +480,13 @@ export function createApp(): Hono {
 
   app.get("/api/workspace/tree", async (c) => {
     const settings = await loadSettings();
+    const sessionId = c.req.query("sessionId");
+    if (sessionId) {
+      const session = await getSession(sessionId);
+      if (!session) return c.json({error:"会话不存在"},404);
+      if (session.executionTarget === "remote") return c.json({error:"云端文件请通过会话工作区版本查看"},409);
+      if (session.workspaceRoot) settings.workspaceRoot = session.workspaceRoot;
+    }
     try {
       const tree = await buildTree(settings.workspaceRoot);
       return c.json({ root: settings.workspaceRoot, tree });
@@ -469,6 +499,13 @@ export function createApp(): Hono {
     const rel = c.req.query("path");
     if (!rel) return c.json({ error: "path is required" }, 400);
     const settings = await loadSettings();
+    const sessionId = c.req.query("sessionId");
+    if (sessionId) {
+      const session = await getSession(sessionId);
+      if (!session) return c.json({error:"会话不存在"},404);
+      if (session.executionTarget === "remote") return c.json({error:"云端文件请通过会话工作区版本查看"},409);
+      if (session.workspaceRoot) settings.workspaceRoot = session.workspaceRoot;
+    }
     try {
       const file = await readWorkspaceText(settings.workspaceRoot, rel);
       return c.json(file);

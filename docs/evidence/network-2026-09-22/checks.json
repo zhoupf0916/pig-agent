@@ -1,0 +1,17 @@
+{
+  "at": "2026-09-22T04:37:38.360Z",
+  "environment": "local Docker 2CP/2Runner cluster8892, explicit mock model network scenario, real HTTPS GET to example.com via explicit public DoH mode; private/Fake-IP addresses stay blocked",
+  "checks": [
+    "real isolated container direct shell HTTPS probe fails; exact URL GET approval then retrieves actual public HTTPS response through gateway and consumes authorization",
+    "reject produces denied tool result and no outbound authorization claim",
+    "blocked policy produces no approval or network GET",
+    "cancel while waiting terminates container and old approval cannot be accepted",
+    "real database claim rejects altered URL, SSRF target and reused permission; one matching GET accepted"
+  ],
+  "runIds": [
+    "run_5e2e5e78531c43ef9583b16242402278",
+    "run_f6ec769f4f2e4ce78e334380e848c181",
+    "run_9c1464720e1e4c46add714d16cfe729b",
+    "run_35e0972dd652493681518bc9177b3116"
+  ]
+}

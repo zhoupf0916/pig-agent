@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "runId": "run_851b90ba6e314fdf853b990f395861a4",
+  "conversationId": "conv_34a4685940404661ae239d16484dfeeb",
+  "viewports": [
+    "1440x900",
+    "1280x800",
+    "390x844"
+  ],
+  "source": "Before static copied read-only from real8890; both UI versions connect to isolated8892 fixture via preview8895. No user data displayed.",
+  "errors": []
+}

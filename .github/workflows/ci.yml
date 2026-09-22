@@ -20,5 +20,6 @@ jobs:
           package-manager-cache: false
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - run: pnpm test
       - run: pnpm desktop:build

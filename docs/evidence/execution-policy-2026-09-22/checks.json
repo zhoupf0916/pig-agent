@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-22T06:00:56.101Z",
+  "base": "http://127.0.0.1:8892",
+  "environment": "Local Docker, 2 control planes, 2 Runners, mock model, actual isolated execution containers",
+  "checks": [
+    "Omitted policy defaults to review; Docker filesystem proves no write while pending; approve produces actual artifact",
+    "Reject fails execution without produced artifact",
+    "Explicit automatic mode executes write in Docker with zero approvals; separate blocked network policy remains pinned",
+    "Cross-author continuation uses acting member review/network settings instead of previous author automatic consent",
+    "Schedule stores explicit false across GET/account changes; manual firing obeys pinned policy; plan edit to review gates real next write"
+  ],
+  "runs": [
+    "run_aac5bc2c54374471ad0dc771dcf4cc60",
+    "run_e126b3afb25c4f119d4d7bf9613fdcae",
+    "run_2ba7bc9583e2435ea21908ebf3b694a4",
+    "run_829d8e1efb764b05a7d6767ae643baea",
+    "run_89c7c54a573b4388a7b1043e3dbddb5f",
+    "run_caa78068bf754a23bb1623ffcff35d1e"
+  ]
+}

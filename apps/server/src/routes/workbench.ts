@@ -7,14 +7,14 @@ import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import { join } from "node:path";
 import { normalizeWorkspaceRoot } from "../agent/sandbox.ts";
-import { dockerStatus } from "../agent/docker.ts";
-import { runningTurns } from "../agent/turn.ts";
+import { nativeSandboxStatus } from "../agent/native-sandbox.ts";
+import { runningTurns, runSessionTurn } from "../agent/turn.ts";
 import { getSession, saveSession } from "../store/sessions.ts";
-import { loadSettings } from "../store/settings.ts";
+import { loadSessionSettings } from "../store/settings.ts";
 import { applyOperation, isWorkbenchBusy, loadWorkbench, locked, operationChecks, saveWorkbench, stageOperation, undoOperation } from "../store/workbench.ts";
 import { newId, nowIso } from "../util.ts";
 
-const policySchema = z.object({ review: z.boolean(), shell: z.enum(["host", "docker"]), network: z.boolean(), image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/), maxCalls: z.number().int().min(1).max(500), maxTokens: z.number().int().min(1000).max(5000000), maxCost: z.number().min(0).max(10000).default(0), inputPrice: z.number().min(0).max(10000), outputPrice: z.number().min(0).max(10000) });
+const policySchema = z.object({ review: z.boolean(), shell: z.enum(["host", "native", "docker"]).transform((value) => value === "docker" ? "native" as const : value), network: z.boolean(), image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/), maxCalls: z.number().int().min(1).max(500), maxTokens: z.number().int().min(1000).max(5000000), maxCost: z.number().min(0).max(10000).default(0), inputPrice: z.number().min(0).max(10000), outputPrice: z.number().min(0).max(10000) });
 type Template = { id: string; name: string; prompt: string; builtin?: boolean };
 const BUILTINS: Template[] = [
   { id: "review", name: "代码审查", prompt: "审查工作区代码，重点检查错误处理、安全边界与测试缺口。先输出带文件路径的审查报告，不要修改文件。", builtin: true },
@@ -42,12 +42,14 @@ export function registerWorkbenchRoutes(app: Hono) {
     }
     return next();
   });
-  app.get("/api/workbench/docker", async (c) => c.json(await dockerStatus()));
+  app.get("/api/workbench/sandbox", async (c) => c.json(await nativeSandboxStatus()));
+  // Compatibility for older desktop clients; no Docker daemon is used.
+  app.get("/api/workbench/docker", async (c) => c.json(await nativeSandboxStatus()));
   app.get("/api/sessions/:id/workbench", async (c) => {
     const id = c.req.param("id");
     const session = await getSession(id);
     if (!session) return c.json({ error: "会话不存在" }, 404);
-    const settings = await loadSettings();
+    const settings = await loadSessionSettings(session);
     const state = await loadWorkbench(id, settings.workspaceRoot);
     const operations = state.operations.map((op) => ({ ...op,
       args: Object.fromEntries(Object.entries(op.args).map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 12000) : value])),
@@ -62,7 +64,8 @@ export function registerWorkbenchRoutes(app: Hono) {
       if (runningTurns.has(id)) return c.json({ error: "请等待任务结束再调整执行设置。" }, 409);
       const session = await getSession(id);
       if (!session) return c.json({ error: "会话不存在" }, 404);
-      const settings = await loadSettings();
+      const settings = await loadSessionSettings(session);
+      if (session.executionTarget ? session.executionTarget !== "local" || (session.engine || "pig") !== "pig" : settings.runtime !== "pig") return c.json({error:"这些审批与沙箱设置仅适用于本机 Pig；Codex 使用自己的沙箱，远端使用控制面策略。"},400);
       const state = await loadWorkbench(id, settings.workspaceRoot);
       const parsed = policySchema.safeParse(await c.req.json());
       if (!parsed.success) return c.json({ error: "执行设置无效，请检查预算与镜像名称。" }, 400);
@@ -77,11 +80,12 @@ export function registerWorkbenchRoutes(app: Hono) {
   });
   app.post("/api/sessions/:id/workbench/:op/:action", async (c) => {
     const id = c.req.param("id");
+    let approvalController: AbortController | undefined;
     try { return await locked(id, async () => {
       if (runningTurns.has(id)) return c.json({ error: "任务运行中，不能批准或撤销文件修改。" }, 409);
       const session = await getSession(id);
       if (!session) return c.json({ error: "会话不存在" }, 404);
-      const settings = await loadSettings();
+      const settings = await loadSessionSettings(session);
       if (session.executionTarget ? session.executionTarget !== "local" || (session.engine || "pig") !== "pig" : settings.runtime !== "pig") throw new Error("请切换回本机 Pig 后再处理变更单。");
       const state = await loadWorkbench(id, settings.workspaceRoot);
       const op = state.operations.find((item) => item.id === c.req.param("op"));
@@ -89,8 +93,10 @@ export function registerWorkbenchRoutes(app: Hono) {
       const action = c.req.param("action");
       if (action !== "reject" && action !== "acknowledge" && normalizeWorkspaceRoot(settings.workspaceRoot) !== op.root) throw new Error("当前工作区与变更单不一致，请切回原工作区再操作。");
       if (action === "approve") {
+        if (state.checkpoint?.stopped) throw new Error("本轮已停止，旧审批已失效。");
+        if (state.operations.find((item) => item.status === "pending")?.id !== op.id) throw new Error("请先处理当前审批。");
         if (op.status !== "pending") throw new Error("该操作已处理，不能重复执行。");
-        const controller = new AbortController();
+        const controller = approvalController = new AbortController();
         runningTurns.set(id, controller);
         try { await applyOperation(id, state, op, controller.signal); }
         catch (err) {
@@ -99,13 +105,24 @@ export function registerWorkbenchRoutes(app: Hono) {
           await publishPersistedEvent(id, { type: "done", session });
           await saveSession(session);
           throw err;
-        } finally { runningTurns.delete(id); }
+        } finally { if (!state.checkpoint) runningTurns.delete(id); }
       }
       else if (action === "undo") await undoOperation(id, state, op);
       else if (action === "reject" && op.status === "pending") { op.status = "rejected"; await saveWorkbench(id, state); }
       else if (action === "acknowledge" && (op.status === "applying" || op.status === "error")) { op.status = "rejected"; op.output = "用户已核对中断操作；不自动重放。"; await saveWorkbench(id, state); }
       else throw new Error("操作状态不允许此动作。");
       session.lastError = undefined;
+      if (op.status === "applied" && !session.messages.some((message) => message.toolCallId === op.callId)) {
+        session.messages.push({ id: newId("msg"), role: "tool", toolCallId: op.callId, content: `applied: ${op.output ?? "已执行"}`, toolOk: true, createdAt: nowIso() });
+      }
+      if (op.status === "rejected" && state.checkpoint) {
+        const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
+        for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) {
+          session.messages.push({ id: newId("msg"), role: "tool", toolCallId: call.id, content: "用户拒绝了本轮操作，未执行。后续操作已取消。", toolOk: false, createdAt: nowIso() });
+        }
+        state.checkpoint = { ...state.checkpoint, calls: [], stopped: true };
+        await saveWorkbench(id, state);
+      }
       for (const message of session.messages) if (message.role === "tool" && message.toolCallId === op.callId) {
         message.content = `${op.status}: ${op.output ?? "用户拒绝或撤销了修改，请勿再次执行同一变更。"}`;
         message.toolOk = op.status === "applied";
@@ -119,11 +136,20 @@ export function registerWorkbenchRoutes(app: Hono) {
         session.steps.push({ id: newId("step"), title: "重新核验撤销后的任务结果", status: "pending", detail: `变更 ${op.id} 已撤销，原完成状态需要重新确认。` });
       }
       if (op.status === "applied") for (const step of session.steps) if (step.detail?.includes(op.id)) { step.status = "done"; step.detail = "已批准执行并记录结果。"; }
-      session.messages.push({ id: newId("msg"), role: "assistant", content: `变更 ${op.id}：${op.status === "applied" ? "已执行并记录结果" : op.status === "undone" ? "已撤销并核对快照" : "已拒绝／已核对，不会自动重放"}。目标：${op.root}。`, createdAt: nowIso() });
+      if (!state.checkpoint || op.status !== "applied") session.messages.push({ id: newId("msg"), role: "assistant", content: `变更 ${op.id}：${op.status === "applied" ? "已执行并记录结果" : op.status === "undone" ? "已撤销并核对快照" : "已拒绝／已核对，不会自动重放"}。目标：${op.root}。`, createdAt: nowIso() });
       await publishPersistedEvent(id, { type: "done", session });
       await saveSession(session);
+      if (op.status === "applied" && state.checkpoint) {
+        // Return only after the continuation has reached its next durable pause or completion.
+        // The per-session mutation lock serializes other approvals for the entire transition.
+        const resumed = await runSessionTurn(session, { teamAction: "continue", controller: approvalController });
+        return c.json({ operation: op, session: resumed });
+      }
       return c.json({ operation: op, session });
-    }); } catch (err) { return c.json({ error: (err as Error).message }, 409); }
+    }); } catch (err) {
+      if (approvalController && runningTurns.get(id) === approvalController) runningTurns.delete(id);
+      return c.json({ error: (err as Error).message }, 409);
+    }
   });
   app.use("/api/sessions/:id/upload", bodyLimit({ maxSize: 6 * 1024 * 1024 }));
   app.post("/api/sessions/:id/upload", async (c) => {
@@ -132,7 +158,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       if (runningTurns.has(id)) throw new Error("请等待任务结束后上传资料。");
       const session = await getSession(id);
       if (!session) return c.json({ error: "会话不存在" }, 404);
-      const settings = await loadSettings();
+      const settings = await loadSessionSettings(session);
       if (session.executionTarget ? session.executionTarget !== "local" || (session.engine || "pig") !== "pig" : settings.runtime !== "pig") throw new Error("资料上传目前用于本机 Pig 工作区。");
       const state = await loadWorkbench(id, settings.workspaceRoot);
       if (state.root !== normalizeWorkspaceRoot(settings.workspaceRoot)) throw new Error("工作区已变化，请新建任务。");
@@ -149,8 +175,8 @@ export function registerWorkbenchRoutes(app: Hono) {
       op.status = "applying";
       await saveWorkbench(id, state);
       const { restoreVersions, capture } = await import("../store/workbench.ts");
-      await restoreVersions(state.root, op.after);
-      op.after = await capture(state.root, [path]);
+      await restoreVersions(state.root, op.after, state.policy.shell);
+      op.after = await capture(state.root, [path], state.policy.shell);
       op.status = "applied";
       op.output = `上传资料：${join(state.root, path)}`;
       await saveWorkbench(id, state);

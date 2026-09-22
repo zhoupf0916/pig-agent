@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "modelMode": "provider",
+  "runId": "run_b58fe8a73d4d4de8a4a15ca4fe8f8f8a",
+  "durationMs": 3564,
+  "approvals": 1,
+  "artifact": "native-provider-proof.txt",
+  "checks": [
+    "existing configured provider",
+    "strictly inspected single write approval",
+    "native runner execution",
+    "authorized artifact exact content"
+  ],
+  "at": "2026-09-22T07:08:58.701Z"
+}

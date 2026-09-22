@@ -1,0 +1,11 @@
+{
+  "at": "2026-09-22T03:25:33.890Z",
+  "environment": "Chrome headless; isolated server8801; explicit deterministic model fixture (real provider unverified)",
+  "checks": [
+    "invalid provider output shows actionable error and retains input, retry succeeds",
+    "expert generated through fixture provider, edited in browser, explicitly saved, reload retained and bound to task",
+    "skill generated, edited, explicitly persisted, reload lists skill and agent loadSkill returns edited body"
+  ],
+  "requests": 3,
+  "errors": []
+}

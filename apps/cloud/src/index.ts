@@ -1,3 +1,10 @@
+import { registerAttachmentRoutes, resolveAttachments, bindAttachments } from "./attachments.ts";
+import { loadProjectFiles } from "./project-files.ts";
+import { executionPolicy } from "./execution-policy.ts";
+import { registerCapabilityRoutes, resolveCapabilityContext } from "./capabilities.ts";
+import { registerUserDataRoutes, loadUserSettings, buildUserContext } from "./user-data.ts";
+import { registerWebAuthRoutes, authenticateWebOrBearer, getRequestCredential } from "./web-auth.ts";
+import { sharedProjectContext } from "./conversation-state.ts";
 import { registerClusterRoutes, sweepRuns } from "./cluster.ts";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -61,17 +68,8 @@ app.get("/health", async (c) => {
       : process.env.MODEL_MODE || "mock",
   });
 });
-app.use("/v1/*", async (c, next) => {
-  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
-  const found = await db.query(
-    "SELECT id,role,name FROM principals WHERE enabled AND (token_hash=$1 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now()))",
-    [hash(token)],
-  );
-  if (!found.rowCount)
-    return c.json({ error: "请填写有效的本地访问令牌" }, 401);
-  c.set("principal", found.rows[0]);
-  await next();
-});
+registerWebAuthRoutes(app);
+app.use("/v1/*", authenticateWebOrBearer);
 app.use("/internal/*", async (c, next) => {
   if (
     !process.env.WORKER_TOKEN ||
@@ -83,7 +81,7 @@ app.use("/internal/*", async (c, next) => {
 async function runFor(id: string, p: Principal, writing = false) {
   return (
     await db.query(
-      "SELECT id,project_id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,coalesce((input->>'requireApproval')::boolean,false) AS require_approval,CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END AS can_write,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,$4) END)",
+      "SELECT id,project_id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,coalesce((input->>'requireApproval')::boolean,true) AS require_approval,coalesce(input->>'networkPolicy','ask') AS network_policy,'container' AS sandbox,CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END AS can_write,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,$4) END)",
       [id, p.id, p.role === "admin", writing],
     )
   ).rows[0];
@@ -94,6 +92,9 @@ registerResourceRoutes(app);
 registerScheduleRoutes(app);
 registerConversationRoutes(app);
 registerCollaborationRoutes(app);
+registerCapabilityRoutes(app);
+registerUserDataRoutes(app);
+registerAttachmentRoutes(app);
 registerApprovalRoutes(app, runFor);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
@@ -107,7 +108,8 @@ app.get("/v1/runs", async (c) =>
   }),
 );
 app.post("/v1/runs", async (c) => {
-  const parsed = inputSchema.safeParse(await c.req.json());
+  const rawInput = await c.req.json().catch(()=>null);
+  const parsed = inputSchema.safeParse(rawInput);
   if (!parsed.success)
     return c.json({ error: "任务参数无效或超出大小限制" }, 400);
   if (parsed.data.workspace?.snapshot?.truncated)
@@ -141,7 +143,8 @@ app.post("/v1/runs", async (c) => {
       );
       if (old.rowCount) {
         await client.query("COMMIT");
-        if (!isDeepStrictEqual(old.rows[0].input, parsed.data))
+        const { projectContext: _context, capabilityContext: _capabilities, privateMemoryContext: _memory, requestInput, ...originalInput } = old.rows[0].input;
+        if (!isDeepStrictEqual(requestInput || { networkPolicy: "ask", ...originalInput }, parsed.data))
           return c.json({ error: "请求标识已用于其他任务" }, 409);
         return c.json({ id: old.rows[0].id, status: old.rows[0].state });
       }
@@ -154,7 +157,14 @@ app.post("/v1/runs", async (c) => {
       await client.query("ROLLBACK");
       return c.json({ error: "最多保留 5 个待执行或运行中的任务" }, 429);
     }
+    const defaults = await loadUserSettings(p.id,client);
+    const effectiveInput = {...parsed.data,...executionPolicy(rawInput,defaults)};
+    let capabilityContext:string;
+    try { capabilityContext=await resolveCapabilityContext(p.id,effectiveInput,client); }
+    catch(e) {await client.query("ROLLBACK");return c.json({error:(e as Error).message},400);}
+    const privateMemoryContext=await buildUserContext(p.id,effectiveInput.projectId,client);
     const id = "run_" + randomUUID().replaceAll("-", "");
+    let attachments;try { attachments=await resolveAttachments(p.id,parsed.data.attachmentIds,client); } catch(error) {await client.query("ROLLBACK");return c.json({error:(error as Error).message},400);}
     const conversationId = "conv_" + randomUUID().replaceAll("-", "");
     await client.query(
       "INSERT INTO conversations(id,owner_id,title,project_id) VALUES($1,$2,$3,$4)",
@@ -167,14 +177,15 @@ app.post("/v1/runs", async (c) => {
     );
     await client.query(
       "INSERT INTO runs(id,owner_id,input,request_key,conversation_id) VALUES($1,$2,$3,$4,$5)",
-      [id, p.id, parsed.data, key, conversationId],
+      [id, p.id, { ...effectiveInput, attachments, projectFiles: effectiveInput.workspace?.snapshot ? [] : await loadProjectFiles(effectiveInput.projectId,p.id,client), requestInput: parsed.data, capabilityContext, privateMemoryContext, projectContext: await sharedProjectContext(parsed.data.projectId, p.id, client) }, key, conversationId],
     );
     await client.query(
       "INSERT INTO audit(actor,action,run_id) VALUES($1,$2,$3)",
       [p.id, "create", id],
     );
+    await bindAttachments(id,parsed.data.attachmentIds,client);
     await client.query("COMMIT");
-    return c.json({ id, status: "queued" }, 201);
+    return c.json({ id, status: "queued", conversationId }, 201);
   } catch (e) {
     await client.query("ROLLBACK");
     throw e;
@@ -223,24 +234,22 @@ app.get("/v1/runs/:id/events", async (c) => {
   if (!Number.isSafeInteger(after) || after < 0)
     return c.json({ error: "Invalid cursor" }, 400);
   return streamSSE(c, async (stream) => {
+    let lastActivity = Date.now();
+    let lastHeartbeat = 0;
     while (!stream.aborted) {
-      if (!(await runFor(id, c.get("principal")))) break;
-      const credential = hash(
-        c.req.header("Authorization")?.replace(/^Bearer /, "") || "",
-      );
-      if (
-        !(
-          await db.query(
-            "SELECT id FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
-            [c.get("principal").id, credential],
-          )
-        ).rowCount
-      )
-        break;
+      const credential = getRequestCredential(c);
+      const fresh = (await db.query(
+        credential.source === "cookie"
+          ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
+          : "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
+        [c.get("principal").id, hash(credential.token)],
+      )).rows[0];
+      if (!fresh || !(await runFor(id, fresh))) break;
       const rows = await db.query(
         "SELECT seq,event FROM events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 200",
         [id, after],
       );
+      if (rows.rowCount) lastActivity = Date.now();
       for (const r of rows.rows) {
         await stream.writeSSE({
           id: String(r.seq),
@@ -267,8 +276,14 @@ app.get("/v1/runs/:id/events", async (c) => {
         });
         break;
       }
-      await stream.writeSSE({ event: "heartbeat", data: "{}" });
-      await stream.sleep(700);
+      if (Date.now() - lastHeartbeat >= 10000) {
+        await stream.writeSSE({ event: "heartbeat", data: "{}" });
+        lastHeartbeat = Date.now();
+      }
+      // Drain catch-up pages immediately; keep active text responsive without
+      // polling idle queues at token cadence. Durable sequence IDs remain authoritative.
+      if ((rows.rowCount || 0) < 200)
+        await stream.sleep(Date.now() - lastActivity < 2500 ? 100 : 700);
     }
   });
 });
@@ -376,10 +391,10 @@ app.post("/internal/runs/:id/heartbeat", async (c) => {
     [c.req.param("id"), hash(String(token))],
   );
   const r = await db.query(
-    "UPDATE runs SET lease_until=least(now()+interval '20 seconds',coalesce(deadline_at,now()+interval '20 seconds')),updated_at=now() WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running','cancelling') RETURNING state",
+    "UPDATE runs SET lease_until=least(now()+interval '20 seconds',coalesce(deadline_at,now()+interval '20 seconds')),updated_at=now() WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running','cancelling') RETURNING state,deadline_at",
     [c.req.param("id"), hash(String(token))],
   );
-  return c.json({ state: r.rows[0]?.state || "expired" });
+  return c.json({ state: r.rows[0]?.state || "expired", deadlineAt: r.rows[0]?.deadline_at ?? null });
 });
 app.post("/internal/runs/:id/start", async (c) => {
   const parsed = credentialSchema
@@ -535,7 +550,7 @@ app.post("/internal/authorize", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid authorization" }, 400);
   const { token, reserve } = parsed.data;
   const r = await db.query(
-    "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now())",
+    "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
     [hash(String(token))],
   );
   if (!r.rowCount) return c.json({ error: "Run credential expired" }, 401);
@@ -565,7 +580,7 @@ app.post("/internal/authorize", async (c) => {
         return c.json({ error: "账号已禁用或当日模型预算不足" }, 429);
       }
       const used = await client.query(
-        "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') RETURNING id",
+        "UPDATE runs SET model_calls=model_calls+1 WHERE id=$1 AND model_calls<24 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true)) RETURNING id",
         [r.rows[0].id, hash(String(token))],
       );
       if (!used.rowCount) {
@@ -607,7 +622,10 @@ app.get(
 app.get("/assets/*", serveStatic({ root: "/app/web" }));
 app.get("/debug/runs", serveStatic({ path: "/app/web/index.html" }));
 app.get("/cloud", (c) => c.redirect("/debug/runs"));
-app.get("/", (c) => c.redirect("/admin/"));
+app.get("/api/deployment", c => c.json({ surface: "cloud" }));
+// The public browser surface has no local filesystem or local execution APIs.
+app.all("/api/*", c => c.json({ error: "云端 Web 不提供本机执行接口" }, 404));
+app.get("/", serveStatic({ path: "/app/web/index.html" }));
 await migrate();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {

@@ -1,4 +1,19 @@
 @import "../../../packages/design/tokens.css";
+
+.message-body[data-streaming="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 3px;
+  background: var(--accent);
+  vertical-align: baseline;
+  animation: stream-caret 1s steps(2, start) infinite;
+}
+@keyframes stream-caret { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .message-body[data-streaming="true"]::after { animation: none; }
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

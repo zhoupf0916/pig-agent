@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node --import tsx src/index.ts",
+    "dev": "node ../../scripts/build-native-helper.mjs && tsx watch src/index.ts",
+    "start": "node ../../scripts/build-native-helper.mjs && node --import tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "mock:llm": "tsx src/dev/mock-llm.ts",
     "mock:cloud": "tsx src/dev/mock-cloud.ts"

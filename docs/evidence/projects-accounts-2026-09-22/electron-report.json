@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "real Electron process with native pigDesktop bridge",
+    "project collaboration renders inside retained App navigation",
+    "username/password login through native desktop vault proxy succeeds",
+    "switch back to ordinary projects without changing workbench shell"
+  ],
+  "origin": "pig://app/#/projects",
+  "userData": "/Users/zhoupengfei/Project/pig-agent/data/project-electron-review-1790052059707"
+}

@@ -87,6 +87,11 @@ function startScriptedLlm(
 }
 
 describe("local-stub cloud runtime", () => {
+  it.each([true,false])("preserves explicit remote approval consent %s in the control-plane request",(requireApproval)=>{
+    const body=buildCreateRunRequest(emptySession({remoteRequireApproval:requireApproval}),cloudSettings("/tmp/workspace"));
+    expect(body.requireApproval).toBe(requireApproval);
+  });
+
   it("runs the pig loop in an isolated copy and syncs artifacts back", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-host-"));
     const runsRoot = mkdtempSync(join(tmpdir(), "pig-cloud-runs-"));
@@ -382,6 +387,7 @@ describe("remote cloud runtime", () => {
   it("POSTs abort when the host signal fires mid-stream", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-rem-ab-"));
     let aborted = false;
+    let streaming = false;
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
       const url = req.url ?? "";
       if (req.method === "POST" && url === "/v1/runs") {
@@ -391,6 +397,7 @@ describe("remote cloud runtime", () => {
       }
       if (req.method === "GET" && url === "/v1/runs/run_hang/events") {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
+        streaming = true;
         // Stay open until the client aborts.
         return;
       }
@@ -427,7 +434,8 @@ describe("remote cloud runtime", () => {
       signal: controller.signal,
       emit: () => undefined,
     });
-    await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 200 && !streaming; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(streaming).toBe(true);
     controller.abort();
     const next = await pending;
     await new Promise<void>((r) => server.close(() => r()));

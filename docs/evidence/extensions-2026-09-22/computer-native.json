@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-09-22T03:23:27.587Z",
+  "status": {
+    "available": true,
+    "enabled": false,
+    "accessibility": false,
+    "screen": "granted",
+    "busy": false
+  },
+  "enabled": {
+    "available": true,
+    "enabled": true,
+    "accessibility": false,
+    "screen": "granted",
+    "busy": false
+  },
+  "observation": {
+    "error": "请在 macOS 隐私与安全性 → 辅助功能中授权 Pig Agent（开发模式为 Electron），然后重试。"
+  },
+  "revoked": {
+    "available": true,
+    "enabled": false,
+    "accessibility": false,
+    "screen": "granted",
+    "busy": false
+  },
+  "scope": "Isolated Electron test window. Test harness mock dialog only; production native confirmations unchanged. No input actions attempted because helper Accessibility permission is denied."
+}

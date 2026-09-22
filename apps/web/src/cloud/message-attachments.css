@@ -1,0 +1,109 @@
+.message-attachments {
+  padding: 8px 14px 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.attachment-chip > span {
+  min-width: 0;
+}
+.attachment-chip strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  white-space: nowrap;
+}
+.attachment-chip small {
+  display: block;
+  max-width: 340px;
+  font-size: 11px;
+}
+.attachment-chip.error {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.attachment-chip button {
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  display: flex;
+  color: inherit;
+}
+.attach-trigger {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 5px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.attachment-hint {
+  margin-left: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.message-attachments p {
+  font-size: 12px;
+  color: var(--danger);
+}
+@media (max-width: 600px) {
+  .attachment-hint {
+    display: none;
+  }
+  .attachment-chip {
+    width: 100%;
+  }
+  .attachment-chip > span {
+    flex: 1;
+  }
+  .attachment-chip small {
+    max-width: 240px;
+  }
+}
+.message-input-file {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  color: var(--text-secondary-strong);
+  text-decoration: none;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.message-input-file small {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.input-file-section {
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 15px;
+}

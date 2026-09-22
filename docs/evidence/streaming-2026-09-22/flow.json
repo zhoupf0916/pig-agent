@@ -1,0 +1,25 @@
+{
+  "at": "2026-09-22T03:02:22.106Z",
+  "ok": true,
+  "model": "isolated mock",
+  "sessionId": "ses_14fad4ce88e4c294",
+  "checks": [
+    "real browser creation and inline remote approval without leaving task",
+    "real container paints progressive exact text; dual SSE delivery and cursor replay do not duplicate tokens",
+    "authorized remote artifact download matches exact container content",
+    "reload preserves remote task identity and conversation",
+    "follow-up uses next run automatically and preserves remote workspace",
+    "rejected operation fails explicitly; user-triggered retry returns to approval and succeeds",
+    "follow-up after explicit retry creates a second successful version in the recovered conversation",
+    "cancel from current task reaches confirmed cancelled state",
+    "no browser runtime errors"
+  ],
+  "streamingEvidence": {
+    "visualUpdates": 13,
+    "tokenEvents": 13,
+    "visibleOutputSpanMs": 1051,
+    "exactPrefixes": true,
+    "cursorReplayExact": true
+  },
+  "errors": []
+}

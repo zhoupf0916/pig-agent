@@ -1,4 +1,5 @@
-import { dockerCommand } from "./docker.ts";
+import { nativeFileTool, FILE_TOOLS } from "./file-helper-client.ts";
+import { nativeCommand, toolEnvironment } from "./native-sandbox.ts";
 import { spawn } from "node:child_process";
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -21,14 +22,6 @@ const MAX_LIST_ENTRIES = 400;
 const MAX_SEARCH_MATCHES = 80;
 const MAX_SEARCH_FILES = 400;
 const MAX_SEARCH_FILE_BYTES = 1_000_000;
-
-const SECRET_ENV_KEYS = [
-  "LLM_API_KEY",
-  "OPENAI_API_KEY",
-  "DEEPSEEK_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "AZURE_OPENAI_API_KEY",
-];
 
 const SHELL_DENY = [
   /(^|[\s;|&])sudo\b/i,
@@ -81,7 +74,7 @@ export type ArtifactPatch = Partial<Pick<Artifact, "fromPath" | "before" | "afte
 
 export type ToolContext = {
   workspaceRoot: string;
-  shellMode?: "host" | "docker";
+  shellMode?: "host" | "docker" | "native";
   dockerImage?: string;
   dockerNetwork?: boolean;
   artifacts: Artifact[];
@@ -342,6 +335,7 @@ export async function executeTool(
   ctx: ToolContext,
 ): Promise<ToolResult> {
   if (ctx.signal?.aborted) throw new Error("Aborted");
+  if (process.env.PIG_FILE_HELPER !== "1" && FILE_TOOLS.has(name) && (process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker")) return nativeFileTool(name, rawArgs, ctx);
   const args = asObject(rawArgs);
   switch (name) {
     case "update_plan":
@@ -696,11 +690,7 @@ async function runShell(
   const timeout = clamp(timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS, 1_000, MAX_SHELL_TIMEOUT_MS);
   const preferred = isPreferredShell(trimmed);
 
-  const env = { ...process.env };
-  for (const key of SECRET_ENV_KEYS) delete env[key];
-  env.HOME = ctx.workspaceRoot;
-  env.PWD = ctx.workspaceRoot;
-  env.PIG_AGENT_WORKSPACE = ctx.workspaceRoot;
+  const env = toolEnvironment(ctx.workspaceRoot);
 
   const result = await new Promise<{
     code: number | null;
@@ -709,7 +699,7 @@ async function runShell(
     stderr: string;
     timedOut: boolean;
   }>((resolvePromise) => {
-    const container = ctx.shellMode === "docker" ? dockerCommand(ctx.workspaceRoot, trimmed, ctx.dockerImage ?? "node:22-alpine", ctx.dockerNetwork === true) : undefined;
+    const container = (process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker") ? nativeCommand(ctx.workspaceRoot, trimmed, process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX !== "1" && ctx.dockerNetwork === true) : undefined;
     const child = container?.child ?? spawn(trimmed, {
       cwd: ctx.workspaceRoot,
       shell: true,
@@ -723,12 +713,11 @@ async function runShell(
     let killTimer: ReturnType<typeof setTimeout> | undefined;
     const killProcess = (signal: NodeJS.Signals) => {
       try {
-        if (!container && process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+        if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
         else child.kill(signal);
       } catch { /* process has already exited */ }
     };
     const terminate = () => {
-      container?.cleanup();
       killProcess("SIGTERM");
       killTimer ??= setTimeout(() => killProcess("SIGKILL"), 1500);
       killTimer.unref();
@@ -736,11 +725,11 @@ async function runShell(
     const timer = setTimeout(() => { timedOut = true; terminate(); }, timeout);
     const onAbort = terminate;
     ctx.signal?.addEventListener("abort", onAbort, { once: true });
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
       if (stdout.length > MAX_SHELL_CHARS * 2) terminate();
     });
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr!.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
       if (stderr.length > MAX_SHELL_CHARS * 2) terminate();
     });

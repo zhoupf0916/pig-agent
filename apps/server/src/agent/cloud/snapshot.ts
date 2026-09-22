@@ -81,7 +81,7 @@ export function collectWorkspaceHandoff(options: {
   return handoff;
 }
 
-export function packWorkspaceSnapshot(root: string): CloudWorkspaceSnapshot {
+export function packWorkspaceSnapshot(root: string, excludedPaths: readonly string[] = []): CloudWorkspaceSnapshot {
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new Error("工作区路径不是可读目录");
   }
@@ -99,6 +99,7 @@ export function packWorkspaceSnapshot(root: string): CloudWorkspaceSnapshot {
     }
     for (const ent of entries) {
       const childRel = rel ? `${rel}/${ent.name}` : ent.name;
+      if (excludedPaths.includes(childRel)) continue;
       if (shouldSkipCloudHandoffName(ent.name)) {
         skipped.push(childRel);
         continue;

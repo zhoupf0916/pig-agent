@@ -8,6 +8,8 @@ const {
   shell,
   utilityProcess,
   protocol,
+  systemPreferences,
+  desktopCapturer,
 } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -40,6 +42,7 @@ const userData = app.getPath("userData");
 const runtime = app.isPackaged
   ? path.join(process.resourcesPath, "runtime")
   : path.join(__dirname, "../../../desktop-dist/runtime");
+const computer = require("./computer.cjs").createComputer({ app, dialog, systemPreferences, desktopCapturer, getWindow: () => win });
 const accessVault = require("./vault.cjs").createVault(userData, safeStorage);
 function validateSender(event) {
   if (
@@ -109,6 +112,12 @@ async function start() {
         clearTimeout(timer);
         resolve(message.port);
       }
+      if (message.type === "computer") {
+        computer(message.method, message.value).then(
+          value => child.postMessage({ type: "computer-result", id: message.id, value }),
+          error => child.postMessage({ type: "computer-result", id: message.id, error: error.message }),
+        );
+      }
       if (message.type === "secret") {
         const request = accessVault(message.method, message.value);
         request.then(
@@ -143,7 +152,7 @@ async function start() {
     minWidth: 960,
     minHeight: 680,
     title: "Pig Agent",
-    backgroundColor: "#f6f7f3",
+    backgroundColor: "#ffffff",
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

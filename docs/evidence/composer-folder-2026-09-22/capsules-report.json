@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "checks": [
+    "1440x900 and 390x844 screenshots",
+    "Mutually exclusive panels",
+    "Escape closes",
+    "Outside click closes",
+    "Panels inside viewport",
+    "No horizontal overflow"
+  ],
+  "errors": []
+}

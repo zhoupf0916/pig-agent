@@ -8,6 +8,7 @@ for (const [name, entry] of Object.entries({
   gateway: "apps/cloud/src/gateway.ts",
   worker: "apps/worker/src/index.ts",
   runner: "apps/server/src/cloud-runner.ts",
+  "tools-helper": "apps/server/src/agent/file-helper.ts",
 })) {
   await build({
     entryPoints: [entry],

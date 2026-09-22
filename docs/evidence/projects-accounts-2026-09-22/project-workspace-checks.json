@@ -1,0 +1,36 @@
+{
+  "at": "2026-09-22T04:25:42.231Z",
+  "environment": "2 control planes,2 runners,local Docker mock model",
+  "projectId": "project_9b6512bc2e594c74b30f564eedf46364",
+  "runId": "run_b8a2b9e6a01140648135c06e79f26d08",
+  "checks": [
+    "private project persists across control instances",
+    "non-owner list/workspace/run creation denied",
+    "project task executes and saved workspace version appears across control instances"
+  ],
+  "workspace": {
+    "projectId": "project_9b6512bc2e594c74b30f564eedf46364",
+    "workspaceName": "分析文件",
+    "workspaceMode": "conversation",
+    "conversations": [
+      {
+        "id": "conv_a93aa0f4219e4cdfa3f1665413c32fce",
+        "title": "请完成工作区测试",
+        "versions": [
+          {
+            "run_id": "run_b8a2b9e6a01140648135c06e79f26d08",
+            "created_at": "2026-09-22T04:25:42.16894+00:00",
+            "manifest": {
+              "files": [
+                "cloud-proof.txt"
+              ],
+              "skipped": [],
+              "byteSize": 129,
+              "encoding": "tar.gz"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

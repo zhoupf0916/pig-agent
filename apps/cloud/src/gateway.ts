@@ -1,3 +1,5 @@
+import { networkRequestSchema, fetchApprovedNetwork } from "./network-fetch.ts";
+import { streamSSE } from "hono/streaming";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
@@ -63,6 +65,56 @@ async function authorize(token: string, reserve = false) {
     signal: AbortSignal.timeout(5000),
   });
 }
+app.post("/network/fetch", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = networkRequestSchema.safeParse(body.request);
+  if (!parsed.success || typeof body.callId !== "string")
+    return c.json({ error: "无效网络请求" }, 400);
+  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
+  const claim = await fetch(control + "/internal/network/claim", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+    },
+    body: JSON.stringify({ token, callId: body.callId, request: parsed.data }),
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!claim.ok)
+    return c.json({ error: "单次网络授权不可用；未访问目标地址" }, 403);
+  const cancelled = new AbortController();
+  const signal = AbortSignal.any([
+    c.req.raw.signal,
+    cancelled.signal,
+    AbortSignal.timeout(parsed.data.timeoutMs),
+  ]);
+  let checking = false;
+  const timer = setInterval(() => {
+    if (checking) return;
+    checking = true;
+    void authorize(token)
+      .then((r) => {
+        if (!r.ok) cancelled.abort();
+      })
+      .catch(() => cancelled.abort())
+      .finally(() => {
+        checking = false;
+      });
+  }, 500);
+  try {
+    return c.json(await fetchApprovedNetwork(parsed.data, signal));
+  } catch {
+    return c.json(
+      {
+        error:
+          "网络访问失败、已取消或超时。该单次授权已使用；重试需要重新申请。",
+      },
+      502,
+    );
+  } finally {
+    clearInterval(timer);
+  }
+});
 app.get("/task", async (c) => {
   const r = await authorize(
     c.req.header("Authorization")?.replace(/^Bearer /, "") || "",
@@ -88,7 +140,10 @@ app.post("/v1/chat/completions", async (c) => {
     const tools = (body.messages || []).filter(
       (m: { role: string }) => m.role === "tool",
     );
-    const call =
+    const networkTarget = [...(body.messages || [])].reverse().find((m: {role:string;content?:string})=>m.role === "user" && m.content?.includes("[NETWORK_ACCEPTANCE:"))?.content?.match(/\[NETWORK_ACCEPTANCE:(https:\/\/[^\]]+)\]/)?.[1];
+    const call = networkTarget ? (tools.length === 0 ? {
+      id: "network-shell-probe", type: "function", function: {name:"run_shell",arguments:JSON.stringify({command:`node -e 'const https=require("https");const r=https.get("https://example.com/",()=>{console.log("UNEXPECTED_NETWORK");process.exit(0)});r.on("error",()=>{console.error("NETWORK_RESTRICTED");process.exit(1)});setTimeout(()=>{r.destroy();console.error("NETWORK_RESTRICTED");process.exit(1)},1500)'`,timeout_ms:3000})}
+    } : tools.length === 1 ? {id:"network-read-proof",type:"function",function:{name:"http_fetch",arguments:JSON.stringify({url:networkTarget,timeout_ms:10000,max_bytes:200000})}} : null) :
       tools.length === 0
         ? {
             id: "write-proof",
@@ -115,9 +170,37 @@ app.post("/v1/chat/completions", async (c) => {
       ? { role: "assistant", content: null, tool_calls: [call] }
       : {
           role: "assistant",
-          content:
-            "容器执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。",
+          content: networkTarget ? "单次网络访问验收：工具结果已返回（模拟模型），请以实际工具结果核验。" :
+            "沙箱执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。",
         };
+    if (body.stream && !call) {
+      // Deliberately paced mock output exercises the real streaming path.
+      return streamSSE(c, async (stream) => {
+        const text = message.content || "";
+        for (let i = 0; i < text.length && !stream.aborted; i += 4) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: text.slice(i, i + 4) },
+                  finish_reason: null,
+                },
+              ],
+            }),
+          });
+          await stream.sleep(80);
+        }
+        if (!stream.aborted) {
+          await stream.writeSSE({
+            data: JSON.stringify({
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            }),
+          });
+          await stream.writeSSE({ data: "[DONE]" });
+        }
+      });
+    }
     if (body.stream) {
       const delta = call
         ? { tool_calls: [{ index: 0, ...call }] }

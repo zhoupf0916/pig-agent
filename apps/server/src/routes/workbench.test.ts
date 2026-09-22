@@ -8,16 +8,17 @@ import { createApp } from "../app.ts";
 import { createSession, getSession, saveSession } from "../store/sessions.ts";
 import { saveSettings } from "../store/settings.ts";
 import { applyOperation, loadWorkbench, saveWorkbench, stageOperation, undoOperation, locked } from "../store/workbench.ts";
-import { dockerArgs } from "../agent/docker.ts";
 
 let root: string;
 let requests = 0;
+let nextBatch: Array<{id: string; name: string; args: unknown}> | undefined;
 let history: Array<{ role: string; content: string; tool_call_id?: string }> = [];
 const llm = createServer(async (req, res) => {
   const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString()); history = body.messages;
   requests++;
-  const delta = requests === 1 ? { tool_calls: [{ index: 0, id: "delivery_call", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "delivery.txt", content: "verified" }) } }] } : { content: "已读取执行记录，修改已批准。" };
+  const batch = nextBatch; nextBatch = undefined;
+  const delta = batch ? { tool_calls: batch.map((call,index) => ({index,id:call.id,type:"function",function:{name:call.name,arguments:JSON.stringify(call.args)}})) } : requests === 1 ? { tool_calls: [{ index: 0, id: "delivery_call", type: "function", function: { name: "write_file", arguments: JSON.stringify({ path: "delivery.txt", content: "verified" }) } }] } : { content: "已读取执行记录，修改已批准。" };
   res.writeHead(200, { "Content-Type": "text/event-stream" });
   res.end(`data: ${JSON.stringify({ choices: [{ delta }] })}\n\ndata: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 20 } })}\n\ndata: [DONE]\n\n`);
 });
@@ -47,12 +48,76 @@ describe("delivery review and recovery", () => {
     expect(both.map((r) => r.status).sort()).toEqual([200,409]);
     expect(await readFile(join(root, "delivery.txt"), "utf8")).toBe("verified");
     expect((await post(path)).status).toBe(409);
-    const resumed = await post(`/api/sessions/${session.id}/retry`); await resumed.text();
+    // Approval automatically continues from the durable checkpoint.
+    expect((await getSession(session.id))?.status).toBe("idle");
     expect(history.some((m) => m.role === "tool" && m.tool_call_id === "delivery_call" && m.content.startsWith("applied:"))).toBe(true);
     expect((await getSession(session.id))?.messages.filter((m) => m.role === "user")).toHaveLength(1);
     expect((await loadWorkbench(session.id, root)).usage.calls).toBe(2);
     const undo = await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/undo`);
     expect(undo.status).toBe(200); await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
+  });
+  it("blocks at one operation, persists the remaining batch and resumes it exactly once", async () => {
+    const session = await createSession();
+    nextBatch = [
+      { id: "serial-first", name: "write_file", args: { path: "serial.txt", content: "first" } },
+      { id: "serial-second", name: "edit_file", args: { path: "serial.txt", old_string: "first", new_string: "second" } },
+      { id: "serial-read", name: "read_file", args: { path: "serial.txt" } },
+    ];
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "serial approval" })).text();
+    let state = await loadWorkbench(session.id, root);
+    expect(state.operations).toHaveLength(1);
+    expect(state.checkpoint?.calls.map((c) => c.id)).toEqual(["serial-second", "serial-read"]);
+    expect((await getSession(session.id))?.messages.filter((m) => m.role === "tool")).toHaveLength(0);
+    const calls = requests;
+    expect((await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/approve`)).status).toBe(200);
+    state = await loadWorkbench(session.id, root);
+    expect(requests).toBe(calls); // The persisted batch resumes without another model request.
+    expect(state.operations.map((op) => op.status)).toEqual(["applied", "pending"]);
+    expect(await readFile(join(root, "serial.txt"), "utf8")).toBe("first");
+    const path = `/api/sessions/${session.id}/workbench/${state.operations[1]!.id}/approve`;
+    const attempts = await Promise.all([post(path), post(path)]);
+    expect(attempts.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(await readFile(join(root, "serial.txt"), "utf8")).toBe("second");
+    expect(requests).toBe(calls + 1);
+    const saved = (await getSession(session.id))!;
+    expect(saved.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId)).toEqual(["serial-first", "serial-second", "serial-read"]);
+  });
+  it("recovers an applied checkpoint after a process restart without replaying its command", async () => {
+    const session = await createSession();
+    session.deliveryMode = true;
+    const calls = [
+      { id: "restart-applied", name: "write_file", arguments: JSON.stringify({ path: "restart.txt", content: "original" }) },
+      { id: "restart-next", name: "edit_file", arguments: JSON.stringify({ path: "restart.txt", old_string: "original", new_string: "resumed" }) },
+    ];
+    session.messages.push({ id: "restart-goal", role: "user", content: "continue checkpoint", createdAt: new Date().toISOString() });
+    session.messages.push({ id: "restart-assistant", role: "assistant", content: "", toolCalls: calls, createdAt: new Date().toISOString() });
+    await saveSession(session);
+    const state = await loadWorkbench(session.id, root);
+    const op = await stageOperation(state, calls[0]!.id, "write_file", { path: "restart.txt", content: "original" });
+    state.checkpoint = { calls, userMessageId: "restart-goal" };
+    await applyOperation(session.id, state, op);
+    // Simulates a process dying after the applied journal commit but before tool-result persistence.
+    const count = requests;
+    const recovery = await post(`/api/sessions/${session.id}/retry`); expect(recovery.status).toBe(200); await recovery.text();
+    for (let n=0; n<100 && runningTurns.has(session.id); n++) await new Promise((resolve) => setTimeout(resolve,5));
+    const recovered = await loadWorkbench(session.id, root);
+    expect(recovered.operations.map((item) => item.status)).toEqual(["applied", "pending"]);
+    expect(requests).toBe(count);
+    expect((await getSession(session.id))?.messages.filter((m) => m.toolCallId === "restart-applied")).toHaveLength(1);
+    expect(await readFile(join(root, "restart.txt"), "utf8")).toBe("original");
+    await post(`/api/sessions/${session.id}/workbench/${recovered.operations[1]!.id}/reject`);
+  });
+  it.each(["reject", "abort"])("%s invalidates the blocked batch and never executes later operations", async (action) => {
+    const session = await createSession();
+    nextBatch = [{ id: `stop-${action}`, name: "write_file", args: { path: `stop-${action}.txt`, content: "bad" } }, { id: `later-${action}`, name: "write_file", args: { path: `later-${action}.txt`, content: "bad" } }];
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "stop approval" })).text();
+    const state = await loadWorkbench(session.id, root);
+    const op = state.operations[0]!;
+    expect((await post(action === "abort" ? `/api/sessions/${session.id}/abort` : `/api/sessions/${session.id}/workbench/${op.id}/reject`)).status).toBe(200);
+    expect((await post(`/api/sessions/${session.id}/workbench/${op.id}/approve`)).status).toBe(409);
+    expect((await post(`/api/sessions/${session.id}/retry`)).status).toBe(409);
+    await expect(readFile(join(root, `stop-${action}.txt`))).rejects.toThrow();
+    await expect(readFile(join(root, `later-${action}.txt`))).rejects.toThrow();
   });
   it("blocks approval and undo if disk content changed externally", async () => {
     const session = await createSession(); const state = await loadWorkbench(session.id, root);
@@ -150,10 +215,7 @@ describe("delivery review and recovery", () => {
     const item = await added.json() as { id: string; name: string; prompt: string }; const list = await (await app.request("/api/workbench/templates")).json(); expect(list).toContainEqual(item);
     await app.request(`/api/workbench/templates/${item.id}`,{method:"DELETE"}); expect(await (await app.request("/api/workbench/templates")).json()).not.toContainEqual(item);
   });
-  it("isolates Docker invocation and rejects concurrent mutation locks", async () => {
-    const args = dockerArgs(root,"echo hello","node:22-alpine",false,"test");
-    expect(args).toContain("--read-only"); expect(args).toContain("none"); expect(args).toContain(`type=bind,src=${root},dst=/workspace`);
-    expect(args).not.toContain("/var/run/docker.sock");
+  it("rejects concurrent mutation locks", async () => {
     await locked("lock-test",async()=>{ await expect(locked("lock-test",async()=>{})).rejects.toThrow("另一项操作"); });
   });
 });

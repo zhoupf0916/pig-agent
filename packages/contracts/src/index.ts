@@ -47,6 +47,10 @@ export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 export type LocalRetryKind = "turn" | "unavailable";
 
 export type Session = {
+  workspaceId?: string;
+  workspaceName?: string;
+  /** Project workspace captured when this task is created. */
+  workspaceRoot?: string;
   executionTarget?: "local" | "remote";
   engine?: "pig" | "codex";
   remoteState?: import("./cloud.ts").CloudRunState;
@@ -107,6 +111,9 @@ export type SessionSummary = Pick<
   | "createdAt"
   | "updatedAt"
   | "status"
+  | "workspaceId"
+  | "workspaceRoot"
+  | "workspaceName"
   | "projectId"
   | "expertId"
   | "expertTeamId"
@@ -245,7 +252,13 @@ export type ProjectMessage = {
   sessionId?: string;
 };
 
+export type ProjectWorkspace = { id: string; name: string; path: string; createdAt: string };
+
 export type Project = {
+  workspaces?: ProjectWorkspace[];
+  defaultWorkspaceId?: string;
+  workspaceRoot?: string;
+  effectiveWorkspaceRoot?: string;
   id: string;
   name: string;
   instruction: string;
@@ -261,6 +274,9 @@ export type Project = {
 };
 
 export type ProjectSummary = {
+  workspaces?: ProjectWorkspace[];
+  defaultWorkspaceId?: string;
+  workspaceRoot?: string;
   id: string;
   name: string;
   instruction: string;
@@ -562,3 +578,5 @@ export type PublicSettings = Settings & {
   cloudTokenConfigured?: boolean;
 };
 export type ProjectDetail = Project & { sessions?: SessionSummary[] };
+
+export { BUNDLED_EXPERTS, BUNDLED_TEAMS, BUNDLED_SCOUT_ID, BUNDLED_PLAN_ID, BUNDLED_IMPLEMENT_ID, BUNDLED_REVIEW_ID, BUNDLED_CODING_TEAM_ID } from "./bundled-experts.js";

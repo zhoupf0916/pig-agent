@@ -1,0 +1,32 @@
+{
+  "session": "ses_54b996aaa3cfabb7",
+  "latestRun": "run_ba7268f145004529992f38d3a5b0df89",
+  "versions": [
+    {
+      "runId": "run_491e5b963d9f4cd388eaa0cce0f0de9b",
+      "artifactId": "1d53db5b-5769-4194-a9c8-55e5130468d2",
+      "content": "PIG_CLOUD_CONTAINER_OK\n"
+    },
+    {
+      "runId": "run_ba7268f145004529992f38d3a5b0df89",
+      "artifactId": "a46ee0cb-06d9-4be4-bb49-e97cd9049fa7",
+      "content": "PIG_CLOUD_CONTAINER_OK\n"
+    }
+  ],
+  "scenarios": [
+    "absent local file: authorized remote content shown",
+    "same-name different local content: no host bytes displayed",
+    "explicit import stages a separate local review without writing",
+    "approved import writes exact remote bytes into isolated local workspace",
+    "switch back after import retains original remote identity"
+  ],
+  "requests": [
+    "/api/remote/v1/runs/run_ba7268f145004529992f38d3a5b0df89/artifacts/a46ee0cb-06d9-4be4-bb49-e97cd9049fa7",
+    "/api/remote/v1/runs/run_ba7268f145004529992f38d3a5b0df89/artifacts/a46ee0cb-06d9-4be4-bb49-e97cd9049fa7",
+    "/api/remote/v1/runs/run_491e5b963d9f4cd388eaa0cce0f0de9b/artifacts/1d53db5b-5769-4194-a9c8-55e5130468d2",
+    "/api/remote/v1/runs/run_ba7268f145004529992f38d3a5b0df89/artifacts/a46ee0cb-06d9-4be4-bb49-e97cd9049fa7",
+    "/api/remote/v1/runs/run_ba7268f145004529992f38d3a5b0df89/artifacts/a46ee0cb-06d9-4be4-bb49-e97cd9049fa7"
+  ],
+  "errors": [],
+  "importSession": "ses_baad7b43a6932d39"
+}

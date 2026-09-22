@@ -13,7 +13,7 @@ import { DiffView } from "./DiffView";
 
 type Policy = {
   review: boolean;
-  shell: "host" | "docker";
+  shell: "host" | "native" | "docker";
   network: boolean;
   image: string;
   maxCalls: number;
@@ -95,12 +95,12 @@ export function WorkbenchPanel({
   onRefresh: () => void;
   onDraft: (text: string) => void;
 }) {
+  const [sandboxStatus, setSandboxStatus] = useState("");
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [policy, setPolicy] = useState<Policy | null>(null);
-  const [docker, setDocker] = useState("");
   const [templates, setTemplates] = useState<
     Array<{ id: string; name: string; prompt: string; builtin?: boolean }>
   >([]);
@@ -217,7 +217,7 @@ export function WorkbenchPanel({
           <div className="flex items-center gap-2">
             <ShieldCheck size={15} className="text-accent" />
             <span className="font-medium">执行与验收</span>
-            <span className="text-ink-500">远端容器 · 控制面调度</span>
+            <span className="text-ink-500">远端沙箱 · 控制面调度</span>
           </div>
           {onOpenRemote && (
             <button className="btn-ghost" onClick={onOpenRemote}>
@@ -245,7 +245,7 @@ export function WorkbenchPanel({
         </p>
       )}
       {!open &&
-        pending.map((op) => (
+        pending.slice(0, 1).map((op) => (
           <article
             key={op.id}
             className="approval-card"
@@ -255,7 +255,7 @@ export function WorkbenchPanel({
               <ShieldCheck size={20} />
               <div>
                 <h3>需要你批准</h3>
-                <p>批准后执行此项本机变更。请核对目标工作区和内容。</p>
+                <p>执行已暂停。批准后仅执行这一项，再继续下一步。</p>
               </div>
             </header>
             <div className="operation-target">
@@ -291,7 +291,9 @@ export function WorkbenchPanel({
               影响范围：{op.root} ·{" "}
               {op.environment === "docker"
                 ? `Docker 容器 ${op.image}`
-                : "本机工作区"}
+                : op.environment === "native"
+                  ? "原生沙箱"
+                  : "本机工作区"}
               {op.tool === "run_shell"
                 ? "。命令的外部副作用不能自动撤销。"
                 : "。文件写入前会重新检查磁盘内容是否变化。"}
@@ -352,7 +354,7 @@ export function WorkbenchPanel({
               : "本机隔离桩 · 本地执行"
             : pending.length
               ? `${pending.length} 项变更待批准`
-              : `${state.policy.shell === "docker" ? "Docker" : "宿主机"} · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}
+              : `${state.policy.shell !== "host" ? "原生沙箱" : "宿主机"} · ${state.policy.review ? "先审阅后执行" : "自动执行"}`}
         </span>
         <ChevronDown size={14} className={open ? "rotate-180" : ""} />
       </button>
@@ -425,7 +427,7 @@ export function WorkbenchPanel({
                   onResume();
                 }}
               >
-                继续任务
+                继续对话
               </button>
               <button
                 className="btn-ghost"
@@ -474,7 +476,13 @@ export function WorkbenchPanel({
             >
               可拖入文件 · 每个最多 5MB · 同名文件不覆盖 · 二进制文件需解析工具
             </div>
-            {policy && (
+            {state.runtime === "codex" && (
+              <p className="rounded-lg bg-accent-soft p-3">
+                Codex 在自身工作区沙箱内自动执行，不支持 Pig
+                的逐次操作审批。若需要先批准再写入，请切换到本机 Pig。
+              </p>
+            )}
+            {policy && state.runtime === "pig" && (
               <div className="space-y-3 rounded-xl border border-ink-300 p-3">
                 <label className="flex items-center gap-2">
                   <input
@@ -486,34 +494,26 @@ export function WorkbenchPanel({
                   />
                   写文件及运行命令前审阅
                 </label>
-                <label className="block">
-                  命令执行环境
-                  <select
-                    className="field mt-1"
-                    value={policy.shell}
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={policy.shell !== "host"}
                     onChange={(e) =>
                       setPolicy({
                         ...policy,
-                        shell: e.target.value as Policy["shell"],
+                        shell: e.target.checked ? "native" : "host",
                       })
                     }
-                  >
-                    <option value="host">宿主机（非 OS 沙箱）</option>
-                    <option value="docker">Docker 容器</option>
-                  </select>
+                  />
+                  使用原生沙箱
                 </label>
-                {policy.shell === "docker" && (
+                {policy.shell === "host" && (
+                  <p className="text-ink-500">
+                    关闭时命令使用本机权限执行。文件工具限制在工作区内，命令本身不是强沙箱。
+                  </p>
+                )}
+                {policy.shell !== "host" && (
                   <>
-                    <label className="block">
-                      Docker 镜像
-                      <input
-                        className="field mt-1"
-                        value={policy.image}
-                        onChange={(e) =>
-                          setPolicy({ ...policy, image: e.target.value })
-                        }
-                      />
-                    </label>
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -522,33 +522,33 @@ export function WorkbenchPanel({
                           setPolicy({ ...policy, network: e.target.checked })
                         }
                       />
-                      允许容器访问网络
+                      允许沙箱访问网络
                     </label>
                     <p className="text-ink-500">
-                      仅挂载当前工作区到 /workspace；只读根文件系统，512MB
-                      内存、1 CPU。镜像需预先下载。
+                      使用操作系统原生隔离，只允许写入当前工作区。网络默认关闭，缺少沙箱支持时拒绝执行，不回退到本机权限。
                     </p>
                     <button
                       className="btn-ghost"
+                      type="button"
                       onClick={() =>
                         void request<{
                           available: boolean;
-                          version?: string;
+                          backend?: string;
                           error?: string;
-                        }>("/api/workbench/docker")
+                        }>("/api/workbench/sandbox")
                           .then((r) =>
-                            setDocker(
+                            setSandboxStatus(
                               r.available
-                                ? `Docker ${r.version} 可用`
-                                : (r.error ?? "不可用"),
+                                ? `原生沙箱可用 · ${r.backend || "系统隔离"}`
+                                : r.error || "原生沙箱不可用",
                             ),
                           )
-                          .catch((e) => setDocker(e.message))
+                          .catch((e) => setSandboxStatus(e.message))
                       }
                     >
-                      检查 Docker
+                      检查沙箱
                     </button>
-                    <span className="ml-2">{docker}</span>
+                    <span role="status">{sandboxStatus}</span>
                   </>
                 )}
                 <div className="grid grid-cols-2 gap-3">
@@ -636,7 +636,9 @@ export function WorkbenchPanel({
                         目标：{op.root} ·{" "}
                         {op.environment === "docker"
                           ? `Docker ${op.image}（网络${op.network ? "开" : "关"}）`
-                          : "宿主机"}
+                          : op.environment === "native"
+                            ? "原生沙箱"
+                            : "宿主机"}
                       </p>
                       {op.tool === "run_shell" ? (
                         <>

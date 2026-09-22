@@ -4,6 +4,7 @@ import {
   randomBytes,
   randomUUID,
 } from "node:crypto";
+import { registerPasswordAdminRoutes } from "./password-accounts.ts";
 import { z } from "zod";
 import type { Hono } from "hono";
 import { db, hash } from "./db.ts";
@@ -49,67 +50,73 @@ const channelSchema = z
   })
   .strict();
 const id = () => randomUUID().replaceAll("-", "");
+export async function acceptInvitation(
+  inviteToken: string,
+  sessionHours = 720,
+) {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const invite = (
+      await client.query(
+        "DELETE FROM invitations WHERE token_hash=$1 AND expires_at>now() RETURNING *",
+        [hash(inviteToken)],
+      )
+    ).rows[0];
+    if (!invite) {
+      await client.query("ROLLBACK");
+      return { error: "邀请已失效或已使用", status: 401 as const };
+    }
+    const account = invite.owner_id || "user_" + id(),
+      token = randomBytes(32).toString("hex");
+    if (invite.owner_id) {
+      const existing = (
+        await client.query(
+          "SELECT enabled,role FROM principals WHERE id=$1 FOR UPDATE",
+          [account],
+        )
+      ).rows[0];
+      if (!existing?.enabled || existing.role !== "member") {
+        await client.query("ROLLBACK");
+        return { error: "账号已停用或不支持邀请登录", status: 401 as const };
+      }
+    } else
+      await client.query(
+        "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,'member',$3)",
+        [account, invite.name, hash(randomBytes(32).toString("hex"))],
+      );
+    await client.query(
+      "INSERT INTO auth_sessions(id,owner_id,token_hash,expires_at) VALUES($1,$2,$3,now()+($4::int * interval '1 hour'))",
+      [id(), account, hash(token), sessionHours],
+    );
+    await client.query(
+      "INSERT INTO audit(actor,action) VALUES($1,'accept-invitation')",
+      [account],
+    );
+    await client.query("COMMIT");
+    return {
+      status: 201 as const,
+      token,
+      expiresInDays: sessionHours / 24,
+      account: { id: account, name: invite.name },
+    };
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 export function registerPlatformRoutes(app: Hono<CloudEnv>) {
   app.post("/auth/accept-invite", async (c) => {
     const body = z
       .object({ invite: z.string().min(32).max(100) })
-      .safeParse(await c.req.json());
+      .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "邀请无效" }, 400);
-    const client = await db.connect();
-    try {
-      await client.query("BEGIN");
-      const invite = (
-        await client.query(
-          "DELETE FROM invitations WHERE token_hash=$1 AND expires_at>now() RETURNING *",
-          [hash(body.data.invite)],
-        )
-      ).rows[0];
-      if (!invite) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "邀请已失效或已使用" }, 401);
-      }
-      const account = invite.owner_id || "user_" + id(),
-        token = randomBytes(32).toString("hex");
-      if (invite.owner_id) {
-        const existing = (
-          await client.query(
-            "SELECT enabled,role FROM principals WHERE id=$1 FOR UPDATE",
-            [account],
-          )
-        ).rows[0];
-        if (!existing?.enabled || existing.role !== "member") {
-          await client.query("ROLLBACK");
-          return c.json({ error: "账号已停用或不支持邀请登录" }, 401);
-        }
-      } else
-        await client.query(
-          "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,'member',$3)",
-          [account, invite.name, hash(randomBytes(32).toString("hex"))],
-        );
-      await client.query(
-        "INSERT INTO auth_sessions(id,owner_id,token_hash,expires_at) VALUES($1,$2,$3,now()+interval '30 days')",
-        [id(), account, hash(token)],
-      );
-      await client.query(
-        "INSERT INTO audit(actor,action) VALUES($1,'accept-invitation')",
-        [account],
-      );
-      await client.query("COMMIT");
-      c.header("Cache-Control", "no-store");
-      return c.json(
-        {
-          token,
-          expiresInDays: 30,
-          account: { id: account, name: invite.name },
-        },
-        201,
-      );
-    } catch (e) {
-      await client.query("ROLLBACK");
-      throw e;
-    } finally {
-      client.release();
-    }
+    const result = await acceptInvitation(body.data.invite);
+    c.header("Cache-Control", "no-store");
+    const { status, ...response } = result;
+    return c.json(response, status);
   });
   app.post("/v1/logout", async (c) => {
     await db.query("DELETE FROM auth_sessions WHERE token_hash=$1", [
@@ -132,6 +139,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
       return c.json({ error: "需要管理员权限" }, 403);
     await next();
   });
+  registerPasswordAdminRoutes(app);
   app.get("/v1/admin/accounts", async (c) =>
     c.json({
       accounts: (

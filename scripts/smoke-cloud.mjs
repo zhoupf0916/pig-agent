@@ -129,21 +129,14 @@ assert.ok(
 const cancel = await create();
 await wait(cancel.id, ["running"]);
 const inspection = JSON.parse(
-  execFileSync("docker", ["inspect", "pig-" + cancel.id], { encoding: "utf8" }),
+  execFileSync("docker", ["inspect", "pig-agent-cloud-worker-1"], { encoding: "utf8" }),
 )[0];
-assert.equal(inspection.Config.User, "1000:1000");
-assert.equal(inspection.HostConfig.ReadonlyRootfs, true);
-assert.equal(inspection.HostConfig.Memory, 512 * 1024 * 1024);
-assert.equal(inspection.Mounts.length, 0);
-const network = JSON.parse(
-  execFileSync(
-    "docker",
-    ["network", "inspect", Object.keys(inspection.NetworkSettings.Networks)[0]],
-    { encoding: "utf8" },
-  ),
-)[0];
-assert.equal(network.Internal, true);
-assert.equal(Object.keys(network.Containers).length, 2);
+assert.equal(inspection.Config.User, "node");
+assert.ok(inspection.HostConfig.CapDrop.includes("ALL"));
+assert.ok(inspection.HostConfig.SecurityOpt.some(value => value.includes("no-new-privileges")));
+assert.equal(inspection.HostConfig.Memory, 4 * 1024 * 1024 * 1024);
+assert.ok(!inspection.Mounts.some(mount => mount.Destination === "/var/run/docker.sock"));
+assert.equal(execFileSync("docker", ["ps", "-q", "--filter", "label=pig-agent.run=" + cancel.id], {encoding:"utf8"}).trim(), "");
 
 await request(`/v1/runs/${cancel.id}/abort`, { token: admin, method: "POST" });
 assert.equal((await wait(cancel.id)).state, "cancelled");
@@ -205,5 +198,5 @@ assert.equal(
   "PIG_CLOUD_CONTAINER_OK\n",
 );
 console.log(
-  "Cloud smoke passed: auth, owner isolation, input validation, idempotency, real container write/read/download, SSE replay, 3 tasks, admin cancellation, worker restart recovery, audit, container/network cleanup, sandbox policies and control-plane restart persistence.",
+  "Cloud smoke passed: auth, owner isolation, input validation, idempotency, real native Runner write/read/download, SSE replay, 3 tasks, admin cancellation, worker restart recovery, audit, no per-task containers/networks, native Runner policies and control-plane restart persistence.",
 );

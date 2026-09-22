@@ -1,3 +1,4 @@
+import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -21,6 +22,8 @@ import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
 import { executeTool, summarizeToolArgs, type ToolContext, TOOL_DEFINITIONS } from "./tools.ts";
+
+export class ToolAuthorizationDenied extends Error {}
 
 export const MAX_TURNS = 20;
 export const MAX_CONSECUTIVE_ERRORS = 3;
@@ -65,7 +68,7 @@ export async function buildSystemPrompt(
 
   return [
     "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
-    "Your file tools execute in the configured workspace. File access is workspace-scoped; shell execution uses the configured host or Docker mode described below. Model inference uses the configured provider.",
+    "Your file tools execute in the configured workspace. File access is workspace-scoped; shell execution uses the configured native sandbox or explicit host mode described below. Model inference uses the configured provider.",
     "",
     "How you work (every non-trivial task):",
     "1. Plan — call update_plan with concrete, ordered steps before changing files.",
@@ -109,6 +112,8 @@ export async function runAgent(options: {
   /** Override pin injection (tests). Default: load recent in-scope pins. */
   memoryPins?: string[];
   /** Remote control-plane gate; runs before any mutation and may wait for a durable decision. */
+  allowComputer?: boolean;
+  networkFetch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
   authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
 }): Promise<Session> {
   const { settings, signal, emit, projectInstruction, expertInstruction, preferredSkillIds } = options;
@@ -126,6 +131,18 @@ export async function runAgent(options: {
   if (workbench) await saveWorkbench(session.id, workbench);
 
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
+  if (workbench?.checkpoint?.stopped) {
+    if (workbench.checkpoint.userMessageId === lastUser?.id) throw new Error("本轮已拒绝或取消，请发送新的指令后再执行。");
+    delete workbench.checkpoint; await saveWorkbench(session.id, workbench);
+  }
+  if (workbench?.checkpoint) {
+    const applied = new Set(workbench.operations.filter((op) => op.status === "applied").map((op) => op.callId));
+    for (const op of workbench.operations) if (applied.has(op.callId) && !session.messages.some((m) => m.toolCallId === op.callId)) {
+      session.messages.push({ id: newId("msg"), role: "tool", toolCallId: op.callId, toolOk: true, content: `applied: ${op.output ?? "已执行"}`, createdAt: nowIso() });
+    }
+    workbench.checkpoint.calls = workbench.checkpoint.calls.filter((call) => !applied.has(call.id));
+    await saveWorkbench(session.id, workbench);
+  }
   const { suggested, loaded } = await loadSuggestedSkills(lastUser?.content ?? "");
   const loadedBodies = loaded.map((s) => ({ name: s.name, body: s.body }));
   const seenSkills = new Set(loadedBodies.map((s) => s.name));
@@ -158,12 +175,16 @@ export async function runAgent(options: {
     createdAt: nowIso(),
   };
 
-  if (workbench) system.content += `\nExecution mode: ${workbench.policy.shell}. File tools use ${workbench.root}. Shell commands ${workbench.policy.shell === "docker" ? "execute inside a Docker container at /workspace; only workspace is mounted, root filesystem is read-only" : "execute on the host"}. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed with a durable journal"}.`;
+  if (workbench) system.content += `\nExecution mode: ${workbench.policy.shell}. File tools use ${workbench.root}. Shell commands ${workbench.policy.shell === "native" ? "execute inside an operating-system sandbox, restricted to this workspace" : workbench.policy.shell === "docker" ? "use the migrated native operating-system sandbox" : "execute directly on the host without OS isolation"}. Writes and shell calls ${workbench.policy.review ? "are queued for user review; a queued operation is NOT executed. Stop and wait for approval" : "are executed with a durable journal"}.`;
+
+  if (workbench) system.content += "\nHTTP requests always require a one-time review, independent of write review. If sandbox shell networking is blocked, use http_fetch for a specific URL; this queues an approval and does not grant shell network access. Host shell processes are not network-isolated.";
 
   const artifacts = new Map<string, Artifact>(
     session.artifacts.map((a) => [a.path, a]),
   );
 
+  const allowComputer = options.allowComputer !== false && hasComputerBridge() && settings.runtime === "pig" && session.executionTarget !== "remote" && !options.authorizeTool;
+  if (allowComputer) system.content += "\nComputer use is an optional desktop-only capability, separate from workspace tools. Each observation or input requires native user confirmation. Use accessibility text and bounds, never guess screen content; re-observe after input. It is unavailable until enabled in Settings → Computer use. Never use it to evade workspace or authorization restrictions.";
   const ctx: ToolContext = {
     workspaceRoot: settings.workspaceRoot,
     shellMode: workbench?.policy.shell,
@@ -193,6 +214,13 @@ export async function runAgent(options: {
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
       if (signal.aborted) throw new Error("Aborted");
 
+      const checkpoint = workbench?.checkpoint;
+      const resuming = checkpoint && !checkpoint.stopped;
+      let response: Awaited<ReturnType<typeof complete>>;
+      if (resuming && checkpoint.calls.length) {
+        response = { content: "", toolCalls: checkpoint.calls };
+      } else {
+      if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
       const history = trimHistory([system, ...session.messages]);
       if (forceSummary) {
         history.push({
@@ -215,8 +243,9 @@ export async function runAgent(options: {
       let reported: { prompt_tokens: number; completion_tokens: number } | undefined;
       const modelStarted = Date.now();
       if (workbench) { workbench.usage.calls++; await saveWorkbench(session.id, workbench); }
-      const { content, toolCalls, reasoningContent } = await complete(settings, history, {
+      response = await complete(settings, history, {
         signal,
+        extraTools: allowComputer ? [computerToolDefinition] : undefined,
         maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
         onUsage: workbench ? (usage) => { reported = usage; } : undefined,
         onDelta: (text) => emit({ type: "token", text }),
@@ -233,6 +262,7 @@ export async function runAgent(options: {
         throw err;
       });
 
+      const { content, toolCalls } = response;
       if (workbench) {
         const valid = reported && Number.isFinite(reported.prompt_tokens) && Number.isFinite(reported.completion_tokens) && reported.prompt_tokens >= 0 && reported.completion_tokens >= 0;
         const input = valid ? reported!.prompt_tokens : inputEstimate;
@@ -244,6 +274,9 @@ export async function runAgent(options: {
         workbench.usage.cost += (input * workbench.policy.inputPrice + output * workbench.policy.outputPrice) / 1000000;
         await saveWorkbench(session.id, workbench);
       }
+      }
+      const { content, toolCalls, reasoningContent } = response;
+      if (!resuming || !checkpoint?.calls.length) {
       const assistant: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
@@ -270,10 +303,11 @@ export async function runAgent(options: {
         return finishIdle(session, emit);
       }
 
+      }
       let turnHadError = false;
       let awaitingReview = false;
       if (workbench) await saveSession(session);
-      for (const call of toolCalls) {
+      for (const [callIndex, call] of toolCalls.entries()) {
         if (signal.aborted) throw new Error("Aborted");
         if (forceSummary) break;
         const parsed = safeJsonParse(call.arguments);
@@ -296,6 +330,10 @@ export async function runAgent(options: {
           emit({ type: "steps", steps: session.steps });
         }
 
+        if (workbench) {
+          workbench.checkpoint = { calls: toolCalls.slice(callIndex), userMessageId: lastUser?.id };
+          await saveWorkbench(session.id, workbench);
+        }
         let output = "";
         let ok = true;
         if (options.authorizeTool && MUTATIONS.has(call.name)) {
@@ -304,7 +342,18 @@ export async function runAgent(options: {
           if (signal.aborted) throw new Error("Aborted");
         }
         try {
-          if (workbench && MUTATIONS.has(call.name)) {
+          if (call.name === "http_fetch" && options.networkFetch) {
+            output = await options.networkFetch(parsed as Record<string, unknown>, call.id);
+          } else if (call.name === "computer_use") {
+            if (!allowComputer) throw Error("电脑操作只允许在桌面本机 Pig 任务中使用");
+            if (awaitingReview) throw Error("请先处理待批准操作");
+            output = await executeComputerTool(parsed as Record<string, unknown>, signal);
+          } else if (workbench && call.name === "http_fetch") {
+            const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
+            await saveWorkbench(session.id, workbench);
+            awaitingReview = true;
+            output = `单次网络访问待批准，尚未访问目标。变更单 ${op.id}；GET ${String((parsed as Record<string, unknown>).url || "")}。该授权仅对应这次读取，不开启 Shell 网络。请先处理审批。`;
+          } else if (workbench && MUTATIONS.has(call.name)) {
             const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
             await saveWorkbench(session.id, workbench);
             if (workbench.policy.review) {
@@ -326,6 +375,7 @@ export async function runAgent(options: {
             emit({ type: "steps", steps: session.steps });
           }
         } catch (err) {
+          if (err instanceof ToolAuthorizationDenied) throw err;
           ok = false;
           if (workbench?.operations.some((op) => op.callId === call.id && op.status === "error")) awaitingReview = true;
           turnHadError = true;
@@ -337,6 +387,16 @@ export async function runAgent(options: {
           emit({ type: "steps", steps: session.steps });
         }
 
+        if (awaitingReview && workbench?.operations.some((op) => op.callId === call.id && op.status === "pending")) {
+          workbench.checkpoint = { calls: toolCalls.slice(callIndex + 1), blockedCallId: call.id, userMessageId: lastUser?.id };
+          await saveWorkbench(session.id, workbench);
+          await saveSession(session);
+          break;
+        }
+        if (workbench) {
+          workbench.checkpoint = { calls: toolCalls.slice(callIndex + 1), userMessageId: lastUser?.id };
+          await saveWorkbench(session.id, workbench);
+        }
         const durationMs = Date.now() - t0;
         const toolMsg: ChatMessage = {
           id: newId("msg"),
@@ -351,11 +411,14 @@ export async function runAgent(options: {
         emit({ type: "tool_end", id: call.id, name: call.name, ok, output, durationMs });
         emit({ type: "message", message: toolMsg });
         if (workbench) await saveSession(session);
+        if (awaitingReview) break;
       }
 
       if (awaitingReview) {
-        const notice: ChatMessage = { id: newId("msg"), role: "assistant", content: workbench?.operations.some((op) => op.status === "error") ? "变更执行异常，可能已有部分影响。请在「执行与验收」核对文件与执行记录，确认后再继续。" : "已准备好变更预览，尚未执行。请打开「执行与验收」核对目标路径、差异或命令，批准后点击「继续任务」。", createdAt: nowIso() };
-        session.messages.push(notice); emit({ type: "message", message: notice });
+        const notice: ChatMessage = { id: newId("msg"), role: "assistant", content: workbench?.operations.some((op) => op.status === "error") ? "变更执行异常，可能已有部分影响。请在「执行与验收」核对文件与执行记录，确认后再继续。" : "已准备好变更预览，尚未执行。请打开「执行与验收」核对目标路径、差异或命令，批准后将从当前操作继续，一次只执行一项审批。", createdAt: nowIso() };
+        // A pending call has no tool result yet. Keep the provider transcript open;
+        // inserting an assistant notice here would split the tool-call/result protocol.
+        if (workbench?.operations.some((op) => op.status === "error")) { session.lastError = notice.content; emit({ type: "error", message: notice.content }); }
         return finishIdle(session, emit);
       }
       if (turnHadError) {

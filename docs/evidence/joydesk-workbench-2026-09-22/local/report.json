@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Create project with first directory; add second workspace via UI",
+    "Composer file input uploads actual file and blocks until stored",
+    "Real attachment bytes stored in selected directory; failed upload blocks send and can be removed",
+    "Selected workspace persists into task and actual file tree/read",
+    "Default survives reload; duplicate path shows validation error",
+    "Remove association preserves directory and existing task snapshot",
+    "15 actual stored tasks with long Chinese titles at 1440/1280/390 widths"
+  ],
+  "errors": [],
+  "environment": "isolated desktop API harness, actual filesystem and Chrome1440x900/390x844; no model calls"
+}

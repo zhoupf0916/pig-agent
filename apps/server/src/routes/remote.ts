@@ -1,3 +1,4 @@
+import { createRemoteAuthGate } from "./remote-auth-gate.ts";
 import type { Hono } from "hono";
 import { newId, nowIso } from "../util.ts";
 import {
@@ -6,7 +7,13 @@ import {
   stageOperation,
 } from "../store/workbench.ts";
 import { createSession } from "../store/sessions.ts";
-import { loadSettings, normalizeCloudBaseUrl } from "../store/settings.ts";
+import { desktopSecrets } from "../store/desktop-secrets.ts";
+import { resolveEffectiveCloudBaseUrl } from "../agent/cloud/env-json.ts";
+import {
+  loadSettings,
+  saveSettings,
+  normalizeCloudBaseUrl,
+} from "../store/settings.ts";
 import { createHash } from "node:crypto";
 import { planeJson } from "../control-plane/client.ts";
 import { getSession, saveSession } from "../store/sessions.ts";
@@ -16,6 +23,77 @@ import { planeFetch, createPlaneClient } from "../control-plane/client.ts";
 
 /** Narrow same-origin bridge for the shared Web/Electron UI; no arbitrary URL proxy. */
 export function registerRemoteRoutes(app: Hono): void {
+  const authGate = createRemoteAuthGate();
+  for (const operation of ["login", "register", "logout"] as const)
+    app.post(`/api/remote/auth/web/${operation}`, async (c) => {
+      const execute = async (current: () => boolean) => {
+        if (!current() || c.req.raw.signal.aborted)
+          return c.json({ error: "该登录操作已被更新的请求替代" }, 409);
+        const settings = await loadSettings();
+        const base = resolveEffectiveCloudBaseUrl(settings).replace(/\/+$/, "");
+        if (!base) return c.json({ error: "请先在设置中配置远端地址" }, 400);
+        try {
+          const body =
+            operation === "logout" ? {} : await c.req.json().catch(() => null);
+          if (!body || typeof body !== "object")
+            return c.json({ error: "登录参数无效" }, 400);
+          if (operation === "logout") {
+            // Clear local credentials even if the remote control plane is unavailable.
+            if (desktopSecrets) {
+              const secrets = await desktopSecrets.read();
+              await desktopSecrets.write({ ...secrets, cloudToken: "" });
+            } else await saveSettings({ cloudToken: "" });
+          }
+          const response = await fetch(base + "/auth/web/" + operation, {
+            method: "POST",
+            redirect: "error",
+            headers: {
+              "Content-Type": "application/json",
+              Origin: new URL(base).origin,
+              ...(operation === "logout"
+                ? { Cookie: "pig_web_session=" + settings.cloudToken }
+                : {}),
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(15000),
+          });
+          const result = await response.json();
+          if (response.ok && operation === "login") {
+            const session = response.headers
+              .get("set-cookie")
+              ?.match(/(?:^|,\s*)pig_web_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+            if (!session)
+              return c.json({ error: "控制面未返回有效登录会话" }, 502);
+            const latest = await loadSettings();
+            if (
+              !current() ||
+              c.req.raw.signal.aborted ||
+              resolveEffectiveCloudBaseUrl(latest).replace(/\/+$/, "") !== base
+            ) {
+              await fetch(base + "/auth/web/logout", {
+                method: "POST",
+                redirect: "error",
+                headers: {
+                  Origin: new URL(base).origin,
+                  Cookie: "pig_web_session=" + session,
+                },
+                signal: AbortSignal.timeout(5000),
+              }).catch(() => undefined);
+              return c.json(
+                { error: "登录已取消或远端地址已改变，请重新登录" },
+                409,
+              );
+            }
+            await saveSettings({ cloudToken: session });
+          }
+          c.header("Cache-Control", "no-store");
+          return c.json(result, response.status as 200);
+        } catch {
+          return c.json({ error: "无法连接控制面，请检查远端地址后重试" }, 502);
+        }
+      };
+      return operation === "register" ? execute(() => true) : authGate(execute);
+    });
   app.post("/api/remote/stage-artifacts/:id", async (c) => {
     const id = c.req.param("id");
     if (!/^run_[a-zA-Z0-9]+$/.test(id))
@@ -146,6 +224,22 @@ export function registerRemoteRoutes(app: Hono): void {
   app.all("/api/remote/*", async (c) => {
     const path = c.req.path.slice("/api/remote".length);
     const allowed =
+      (["GET", "POST"].includes(c.req.method) && path === "/v1/attachments") ||
+      (c.req.method === "GET" && /^\/v1\/runs\/[a-zA-Z0-9_-]+\/attachments$/.test(path)) ||
+      (["GET", "DELETE"].includes(c.req.method) && /^\/v1\/attachments\/[a-zA-Z0-9_-]+(?:\/download)?$/.test(path)) ||
+      (["GET", "PUT"].includes(c.req.method) && path === "/v1/settings") ||
+      (["GET", "POST"].includes(c.req.method) && path === "/v1/memory") ||
+      (c.req.method === "DELETE" &&
+        /^\/v1\/memory\/[a-zA-Z0-9_-]+$/.test(path)) ||
+      (c.req.method === "GET" && path === "/v1/search") ||
+      (["GET", "POST"].includes(c.req.method) && path === "/v1/projects") ||
+      (c.req.method === "GET" &&
+        /^\/v1\/projects\/[a-zA-Z0-9_-]+\/workspace$/.test(path)) ||
+      (c.req.method === "GET" && path === "/v1/me") ||
+      (c.req.method === "GET" &&
+        /^\/v1\/conversations\/[a-zA-Z0-9_-]+\/events$/.test(path)) ||
+      (c.req.method === "POST" &&
+        /^\/v1\/runs\/[a-zA-Z0-9_-]+\/follow-ups$/.test(path)) ||
       (c.req.method === "GET" &&
         /^\/v1\/runs\/[a-zA-Z0-9_-]+\/approvals$/.test(path)) ||
       (c.req.method === "POST" &&
@@ -178,13 +272,22 @@ export function registerRemoteRoutes(app: Hono): void {
       const headers: Record<string, string> = {};
       const key = c.req.header("Idempotency-Key");
       if (key) headers["Idempotency-Key"] = key;
+      const eventCursor = c.req.header("Last-Event-ID");
+      if (path.endsWith("/events") && eventCursor && /^\d+$/.test(eventCursor))
+        headers["Last-Event-ID"] = eventCursor;
       const after = c.req.query("after");
+      const search = c.req.query("q");
       const response = await planeFetch(
-        path + (after ? `?after=${encodeURIComponent(after)}` : ""),
+        path +
+          (after
+            ? `?after=${encodeURIComponent(after)}`
+            : path === "/v1/search" && search
+              ? `?q=${encodeURIComponent(search)}`
+              : ""),
         {
           method: c.req.method,
           headers,
-          body: ["POST", "PATCH"].includes(c.req.method)
+          body: ["POST", "PATCH", "PUT"].includes(c.req.method)
             ? await c.req.text()
             : undefined,
           // Dropping a stream only unsubscribes. Explicit POST abort cancels a run.

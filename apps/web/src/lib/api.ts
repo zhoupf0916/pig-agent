@@ -58,16 +58,29 @@ export const api = {
   sessions: () =>
     fetch("/api/sessions").then((r) => json<{ sessions: SessionSummary[] }>(r)),
 
-  session: (id: string) => fetch(`/api/sessions/${id}`).then((r) => json<Session>(r)),
+  session: (id: string) =>
+    fetch(`/api/sessions/${id}`).then((r) => json<Session>(r)),
 
-  createSession: (input?: { projectId?: string; expertId?: string; expertTeamId?: string } | string) => {
+  createSession: (
+    input?:
+      | {
+          projectId?: string;
+          workspaceId?: string;
+          expertId?: string;
+          expertTeamId?: string;
+        }
+      | string,
+  ) => {
     const body =
       typeof input === "string"
         ? { projectId: input }
         : {
             ...(input?.projectId ? { projectId: input.projectId } : {}),
+            ...(input?.workspaceId ? { workspaceId: input.workspaceId } : {}),
             ...(input?.expertId ? { expertId: input.expertId } : {}),
-            ...(input?.expertTeamId ? { expertTeamId: input.expertTeamId } : {}),
+            ...(input?.expertTeamId
+              ? { expertTeamId: input.expertTeamId }
+              : {}),
           };
     return fetch("/api/sessions", {
       method: "POST",
@@ -95,7 +108,9 @@ export const api = {
     }).then((r) => json<Session>(r)),
 
   deleteSession: (id: string) =>
-    fetch(`/api/sessions/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/sessions/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 
   abort: (id: string) =>
     fetch(`/api/sessions/${id}/abort`, { method: "POST" }).then((r) =>
@@ -107,38 +122,85 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "stop" }),
-    }).then((r) => json<{ ok: boolean; running: boolean; session: Session }>(r)),
+    }).then((r) =>
+      json<{ ok: boolean; running: boolean; session: Session }>(r),
+    ),
 
   projects: () =>
     fetch("/api/projects").then((r) => json<{ projects: ProjectSummary[] }>(r)),
 
-  project: (id: string) => fetch(`/api/projects/${id}`).then((r) => json<Project>(r)),
+  project: (id: string) =>
+    fetch(`/api/projects/${id}`).then((r) => json<Project>(r)),
 
-  createProject: (input: { name: string; instruction?: string }) =>
+  createProject: (input: {
+    name: string;
+    instruction?: string;
+    workspaceRoot?: string;
+  }) =>
     fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<Project>(r)),
 
-  patchProject: (id: string, patch: { name?: string; instruction?: string }) =>
+  patchProject: (
+    id: string,
+    patch: { name?: string; instruction?: string; workspaceRoot?: string },
+  ) =>
     fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     }).then((r) => json<Project>(r)),
 
-  deleteProject: (id: string) =>
-    fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+  addProjectWorkspace: (
+    projectId: string,
+    input: { name?: string; path: string; setDefault?: boolean },
+  ) =>
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/workspaces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((r) => json<Project>(r)),
+  updateProjectWorkspace: (
+    projectId: string,
+    workspaceId: string,
+    input: { name?: string; path?: string; setDefault?: boolean },
+  ) =>
+    fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      },
+    ).then((r) => json<Project>(r)),
+  removeProjectWorkspace: (projectId: string, workspaceId: string) =>
+    fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: "DELETE" },
+    ).then((r) => json<Project>(r)),
 
-  createTodo: (projectId: string, input: { title: string; status?: TodoStatus }) =>
+  deleteProject: (id: string) =>
+    fetch(`/api/projects/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
+
+  createTodo: (
+    projectId: string,
+    input: { title: string; status?: TodoStatus },
+  ) =>
     fetch(`/api/projects/${projectId}/todos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     }).then((r) => json<{ todos: Project["todos"] }>(r)),
 
-  patchTodo: (projectId: string, todoId: string, patch: { title?: string; status?: TodoStatus }) =>
+  patchTodo: (
+    projectId: string,
+    todoId: string,
+    patch: { title?: string; status?: TodoStatus },
+  ) =>
     fetch(`/api/projects/${projectId}/todos/${todoId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -146,13 +208,18 @@ export const api = {
     }).then((r) => json<{ todos: Project["todos"] }>(r)),
 
   deleteTodo: (projectId: string, todoId: string) =>
-    fetch(`/api/projects/${projectId}/todos/${todoId}`, { method: "DELETE" }).then((r) =>
-      json<{ todos: Project["todos"] }>(r),
-    ),
+    fetch(`/api/projects/${projectId}/todos/${todoId}`, {
+      method: "DELETE",
+    }).then((r) => json<{ todos: Project["todos"] }>(r)),
 
   uploadAsset: (
     projectId: string,
-    input: { filename: string; content?: string; contentBase64?: string; mimeType?: string },
+    input: {
+      filename: string;
+      content?: string;
+      contentBase64?: string;
+      mimeType?: string;
+    },
   ) =>
     fetch(`/api/projects/${projectId}/assets`, {
       method: "POST",
@@ -161,7 +228,9 @@ export const api = {
     }).then((r) => json<{ assets: Project["assets"] }>(r)),
 
   assetPreview: (projectId: string, assetId: string) =>
-    fetch(`/api/projects/${projectId}/assets/${assetId}`).then((r) => json<AssetPreview>(r)),
+    fetch(`/api/projects/${projectId}/assets/${assetId}`).then((r) =>
+      json<AssetPreview>(r),
+    ),
 
   assetDownloadUrl: (projectId: string, assetId: string, inline = false) =>
     `/api/projects/${projectId}/assets/${assetId}/download${inline ? "?inline=1" : ""}`,
@@ -196,7 +265,10 @@ export const api = {
       body: JSON.stringify({ body }),
     }).then((r) => json<{ messages: Project["messages"] }>(r)),
 
-  inviteMember: (projectId: string, input: { displayName?: string; note?: string } = {}) =>
+  inviteMember: (
+    projectId: string,
+    input: { displayName?: string; note?: string } = {},
+  ) =>
     fetch(`/api/projects/${projectId}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -216,27 +288,46 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
-    }).then((r) => json<{ project: Project; invite: ProjectInvite; member: ProjectMember }>(r)),
+    }).then((r) =>
+      json<{ project: Project; invite: ProjectInvite; member: ProjectMember }>(
+        r,
+      ),
+    ),
 
   revokeInvite: (projectId: string, inviteId: string) =>
-    fetch(`/api/projects/${projectId}/invites/${inviteId}`, { method: "DELETE" }).then((r) =>
-      json<{ invite: ProjectInvite; members: ProjectMember[]; invites: ProjectInvite[] }>(r),
+    fetch(`/api/projects/${projectId}/invites/${inviteId}`, {
+      method: "DELETE",
+    }).then((r) =>
+      json<{
+        invite: ProjectInvite;
+        members: ProjectMember[];
+        invites: ProjectInvite[];
+      }>(r),
     ),
 
   removeMember: (projectId: string, memberId: string) =>
-    fetch(`/api/projects/${projectId}/members/${memberId}`, { method: "DELETE" }).then((r) =>
-      json<{ members: ProjectMember[] }>(r),
-    ),
+    fetch(`/api/projects/${projectId}/members/${memberId}`, {
+      method: "DELETE",
+    }).then((r) => json<{ members: ProjectMember[] }>(r)),
 
   inbox: () =>
-    fetch("/api/inbox").then((r) => json<{ items: InboxItem[]; unread: number }>(r)),
+    fetch("/api/inbox").then((r) =>
+      json<{ items: InboxItem[]; unread: number }>(r),
+    ),
 
   markInboxRead: (id: string) =>
-    fetch(`/api/inbox/${id}/read`, { method: "POST" }).then((r) => json<InboxItem>(r)),
+    fetch(`/api/inbox/${id}/read`, { method: "POST" }).then((r) =>
+      json<InboxItem>(r),
+    ),
 
   acceptInboxInvite: (id: string) =>
     fetch(`/api/inbox/${id}/accept`, { method: "POST" }).then((r) =>
-      json<{ item: InboxItem; project: Project; invite: ProjectInvite; member: ProjectMember }>(r),
+      json<{
+        item: InboxItem;
+        project: Project;
+        invite: ProjectInvite;
+        member: ProjectMember;
+      }>(r),
     ),
 
   declineInboxInvite: (id: string) =>
@@ -244,9 +335,11 @@ export const api = {
       json<{ item: InboxItem; project: Project; invite: ProjectInvite }>(r),
     ),
 
-  experts: () => fetch("/api/experts").then((r) => json<{ experts: Expert[] }>(r)),
+  experts: () =>
+    fetch("/api/experts").then((r) => json<{ experts: Expert[] }>(r)),
 
-  expert: (id: string) => fetch(`/api/experts/${id}`).then((r) => json<Expert>(r)),
+  expert: (id: string) =>
+    fetch(`/api/experts/${id}`).then((r) => json<Expert>(r)),
 
   createExpert: (input: {
     name: string;
@@ -278,9 +371,12 @@ export const api = {
     }).then((r) => json<Expert>(r)),
 
   deleteExpert: (id: string) =>
-    fetch(`/api/experts/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/experts/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 
-  expertTeams: () => fetch("/api/expert-teams").then((r) => json<{ teams: ExpertTeam[] }>(r)),
+  expertTeams: () =>
+    fetch("/api/expert-teams").then((r) => json<{ teams: ExpertTeam[] }>(r)),
 
   createExpertTeam: (input: {
     name: string;
@@ -295,30 +391,42 @@ export const api = {
     }).then((r) => json<ExpertTeam>(r)),
 
   deleteExpertTeam: (id: string) =>
-    fetch(`/api/expert-teams/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/expert-teams/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 
-  automations: () => fetch("/api/automations").then((r) => json<{ automations: Automation[]; remoteError?: string }>(r)),
+  automations: () =>
+    fetch("/api/automations").then((r) =>
+      json<{ automations: Automation[]; remoteError?: string }>(r),
+    ),
 
-  automation: (id: string) => fetch(`/api/automations/${id}`).then((r) => json<Automation>(r)),
+  automation: (id: string) =>
+    fetch(`/api/automations/${id}`).then((r) => json<Automation>(r)),
 
-  createAutomation: (input: {
-    name: string;
-    prompt: string;
-    enabled?: boolean;
-    schedule?: string | null;
-    expertId?: string;
-    expertTeamId?: string;
-    projectId?: string;
-    executionTarget?: "local" | "remote";
-    engine?: "pig" | "codex";
-    timezone?: string;
-    misfirePolicy?: "skip" | "once";
-    runtime?: AgentRuntime;
-    saveArtifactsToProject?: boolean;
-  }, requestKey = crypto.randomUUID()) =>
+  createAutomation: (
+    input: {
+      name: string;
+      prompt: string;
+      enabled?: boolean;
+      schedule?: string | null;
+      expertId?: string;
+      expertTeamId?: string;
+      projectId?: string;
+      executionTarget?: "local" | "remote";
+      engine?: "pig" | "codex";
+      timezone?: string;
+      misfirePolicy?: "skip" | "once";
+      runtime?: AgentRuntime;
+      saveArtifactsToProject?: boolean;
+    },
+    requestKey = crypto.randomUUID(),
+  ) =>
     fetch("/api/automations", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Idempotency-Key": requestKey },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": requestKey,
+      },
       body: JSON.stringify(input),
     }).then((r) => json<Automation>(r)),
 
@@ -333,10 +441,10 @@ export const api = {
       expertTeamId?: string | null;
       projectId?: string | null;
       executionTarget?: "local" | "remote";
-    engine?: "pig" | "codex";
-    timezone?: string;
-    misfirePolicy?: "skip" | "once";
-    runtime?: AgentRuntime;
+      engine?: "pig" | "codex";
+      timezone?: string;
+      misfirePolicy?: "skip" | "once";
+      runtime?: AgentRuntime;
       saveArtifactsToProject?: boolean;
     },
   ) =>
@@ -347,11 +455,20 @@ export const api = {
     }).then((r) => json<Automation>(r)),
 
   deleteAutomation: (id: string) =>
-    fetch(`/api/automations/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/automations/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 
   runAutomation: (id: string, requestKey = crypto.randomUUID()) =>
-    fetch(`/api/automations/${id}/run`, { method: "POST", headers:{"Idempotency-Key":requestKey} }).then((r) =>
-      json<{ automation?: Automation; session?: Session; remoteRunId?: string }>(r),
+    fetch(`/api/automations/${id}/run`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestKey },
+    }).then((r) =>
+      json<{
+        automation?: Automation;
+        session?: Session;
+        remoteRunId?: string;
+      }>(r),
     ),
 
   saveArtifactToProject: (sessionId: string, name: string) =>
@@ -359,7 +476,12 @@ export const api = {
       `/api/sessions/${sessionId}/artifacts/${encodeURIComponent(name)}/save-to-project`,
       { method: "POST" },
     ).then((r) =>
-      json<{ projectId: string; artifactPath: string; asset: ProjectAsset; overwritten: boolean }>(r),
+      json<{
+        projectId: string;
+        artifactPath: string;
+        asset: ProjectAsset;
+        overwritten: boolean;
+      }>(r),
     ),
 
   saveAllArtifactsToProject: (sessionId: string, paths?: string[]) =>
@@ -370,22 +492,35 @@ export const api = {
     }).then((r) =>
       json<{
         projectId: string;
-        saved: Array<{ artifactPath: string; asset: ProjectAsset; overwritten: boolean }>;
+        saved: Array<{
+          artifactPath: string;
+          asset: ProjectAsset;
+          overwritten: boolean;
+        }>;
         skipped: Array<{ artifactPath: string; reason: string }>;
       }>(r),
     ),
 
-  memory: (filter?: { kind?: MemoryKind; sessionId?: string; projectId?: string; limit?: number }) => {
+  memory: (filter?: {
+    kind?: MemoryKind;
+    sessionId?: string;
+    projectId?: string;
+    limit?: number;
+  }) => {
     const params = new URLSearchParams();
     if (filter?.kind) params.set("kind", filter.kind);
     if (filter?.sessionId) params.set("sessionId", filter.sessionId);
     if (filter?.projectId) params.set("projectId", filter.projectId);
-    if (typeof filter?.limit === "number") params.set("limit", String(filter.limit));
+    if (typeof filter?.limit === "number")
+      params.set("limit", String(filter.limit));
     const qs = params.toString();
-    return fetch(`/api/memory${qs ? `?${qs}` : ""}`).then((r) => json<{ notes: MemoryNote[] }>(r));
+    return fetch(`/api/memory${qs ? `?${qs}` : ""}`).then((r) =>
+      json<{ notes: MemoryNote[] }>(r),
+    );
   },
 
-  memoryNote: (id: string) => fetch(`/api/memory/${id}`).then((r) => json<MemoryNote>(r)),
+  memoryNote: (id: string) =>
+    fetch(`/api/memory/${id}`).then((r) => json<MemoryNote>(r)),
 
   createMemory: (input: {
     kind?: MemoryKind;
@@ -417,10 +552,14 @@ export const api = {
     }).then((r) => json<MemoryNote>(r)),
 
   deleteMemory: (id: string) =>
-    fetch(`/api/memory/${id}`, { method: "DELETE" }).then((r) => json<{ ok: boolean }>(r)),
+    fetch(`/api/memory/${id}`, { method: "DELETE" }).then((r) =>
+      json<{ ok: boolean }>(r),
+    ),
 
   sessionRecap: (sessionId: string) =>
-    fetch(`/api/sessions/${sessionId}/recap`, { method: "POST" }).then((r) => json<MemoryNote>(r)),
+    fetch(`/api/sessions/${sessionId}/recap`, { method: "POST" }).then((r) =>
+      json<MemoryNote>(r),
+    ),
 
   search: (q: string, limit?: number) => {
     const params = new URLSearchParams({ q });
@@ -428,13 +567,17 @@ export const api = {
     return fetch(`/api/search?${params}`).then((r) => json<SearchResponse>(r));
   },
 
-  tree: () =>
-    fetch("/api/workspace/tree").then((r) =>
-      json<{ root: string; tree: WorkspaceNode }>(r),
-    ),
+  tree: (sessionId?: string) =>
+    fetch(
+      "/api/workspace/tree" +
+        (sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : ""),
+    ).then((r) => json<{ root: string; tree: WorkspaceNode }>(r)),
 
-  file: (path: string) =>
-    fetch(`/api/workspace/file?path=${encodeURIComponent(path)}`).then((r) =>
+  file: (path: string, sessionId?: string) =>
+    fetch(
+      `/api/workspace/file?path=${encodeURIComponent(path)}` +
+        (sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""),
+    ).then((r) =>
       json<{ path: string; content: string; binary: boolean; size: number }>(r),
     ),
 };
@@ -517,7 +660,11 @@ export async function streamRetry(
 
 export async function streamTeamRun(
   sessionId: string,
-  input: { action: "start" | "continue"; content?: string; clientMessageId?: string },
+  input: {
+    action: "start" | "continue";
+    content?: string;
+    clientMessageId?: string;
+  },
   onEvent: (event: AgentEvent, seq?: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {

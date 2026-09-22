@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile, readFile, access } from "node:fs/promises";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 const directory = "data/cloud-local",
   file = directory + "/stack.env";
 const command = process.argv[2] || "status";
@@ -54,40 +54,11 @@ if (command === "setup") {
 } else {
   await readFile(file);
   if (command === "up") {
-    await run(["--profile", "build", "build"]);
+    await run(["build"]);
     await run(["up", "-d", "--wait", "--wait-timeout", "90"]);
   } else if (command === "down") {
     await run(["stop", "worker"]);
-    const ids = await new Promise((resolve) => {
-      let s = "";
-      const p = spawn(
-        "docker",
-        ["ps", "-aq", "--filter", "label=pig-agent.managed=true"],
-        { stdio: ["ignore", "pipe", "inherit"] },
-      );
-      p.stdout.on("data", (b) => (s += b));
-      p.on("exit", () => resolve(s.trim().split(/\s+/).filter(Boolean)));
-    });
-    if (ids.length)
-      await new Promise((resolve) => {
-        spawn("docker", ["rm", "-f", ...ids], { stdio: "inherit" }).on(
-          "exit",
-          resolve,
-        );
-      });
     await run(["down"]);
-    const networks = execFileSync(
-      "docker",
-      ["network", "ls", "-q", "--filter", "label=pig-agent.managed=true"],
-      { encoding: "utf8" },
-    )
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    if (networks.length)
-      execFileSync("docker", ["network", "rm", ...networks], {
-        stdio: "inherit",
-      });
   } else if (command === "logs")
     await run(["logs", "--tail", "100", ...process.argv.slice(3)]);
   else await run(["ps"]);

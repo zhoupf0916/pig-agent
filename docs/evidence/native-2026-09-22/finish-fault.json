@@ -1,0 +1,68 @@
+{
+  "results": [
+    {
+      "inject": false,
+      "id": "run_f4b9c01f5a1d4b9ab880f3781c15077d",
+      "state": "succeeded",
+      "error": null,
+      "artifacts": [
+        "cloud-proof.txt"
+      ]
+    },
+    {
+      "inject": "before",
+      "id": "run_1fc170363ea34601bb14c0c23b179ef2",
+      "state": "succeeded",
+      "error": null,
+      "artifacts": [
+        "cloud-proof.txt"
+      ]
+    },
+    {
+      "inject": "after",
+      "id": "run_7e9a2f295efe4f9887da9529c56c7eb4",
+      "state": "succeeded",
+      "error": null,
+      "artifacts": [
+        "cloud-proof.txt"
+      ]
+    }
+  ],
+  "finishes": [
+    {
+      "ok": true,
+      "files": [
+        "cloud-proof.txt"
+      ],
+      "injected": false
+    },
+    {
+      "ok": true,
+      "files": [
+        "cloud-proof.txt"
+      ],
+      "injected": "before"
+    },
+    {
+      "ok": true,
+      "files": [
+        "cloud-proof.txt"
+      ],
+      "injected": false
+    },
+    {
+      "ok": true,
+      "files": [
+        "cloud-proof.txt"
+      ],
+      "injected": "after"
+    },
+    {
+      "ok": true,
+      "files": [
+        "cloud-proof.txt"
+      ],
+      "injected": false
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Create project with first directory; add second workspace via UI",
+    "Selected workspace persists into task and actual file tree/read",
+    "Default survives reload; duplicate path shows validation error",
+    "Remove association preserves directory and existing task snapshot"
+  ],
+  "errors": [],
+  "environment": "isolated desktop API harness, actual filesystem and Chrome1440x900/390x844; no model calls"
+}

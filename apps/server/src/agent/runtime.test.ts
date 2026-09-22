@@ -1,10 +1,11 @@
+import {loadWorkbench,saveWorkbench} from "../store/workbench.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Session, Settings } from "../types.ts";
-import { deliverableSummary, runAgent } from "./runtime.ts";
+import { deliverableSummary, runAgent, ToolAuthorizationDenied } from "./runtime.ts";
 
 function pigSettings(workspaceRoot: string, extra: Partial<Settings> = {}): Settings {
   return {
@@ -103,6 +104,45 @@ function toolDelta(
 }
 
 describe("runAgent harness", () => {
+  it.each([true,false])("local file policy review=%s actually gates filesystem mutation", async (review)=>{
+    const root=mkdtempSync(join(tmpdir(),"pig-policy-"));
+    const session=emptySession({id:"ses_policy_"+Date.now()+String(review),deliveryMode:true});
+    const policy=await loadWorkbench(session.id,root);policy.policy.review=review;await saveWorkbench(session.id,policy);
+    const mock=await startScriptedLlm([
+      (_raw,res)=>toolDelta(res,[{id:"policy-write",name:"write_file",args:{path:"proof.txt",content:"policy verified"}}]),
+      (_raw,res)=>sse(res,{choices:[{delta:{content:"完成"}}]}),
+    ]);
+    try{
+      await runAgent({session,settings:pigSettings(root,{llmBaseUrl:mock.url}),signal:new AbortController().signal,emit:()=>{}});
+      expect(existsSync(join(root,"proof.txt"))).toBe(!review);
+      const state=await loadWorkbench(session.id,root);
+      expect(state.operations[0]?.status).toBe(review?"pending":"applied");
+    }finally{await mock.close();}
+  });
+
+  it("stops the entire batch when a remote network approval is rejected", async () => {
+    const root=mkdtempSync(join(tmpdir(),"pig-rejected-network-"));
+    let models=0;
+    const mock=await startScriptedLlm([(_raw,res)=>{models++;toolDelta(res,[{id:"deny-net",name:"http_fetch",args:{url:"https://example.com/"}},{id:"after-denial",name:"write_file",args:{path:"must-not-exist.txt",content:"bad"}}]);}]);
+    try {
+      const result=await runAgent({session:emptySession(),settings:pigSettings(root,{llmBaseUrl:mock.url}),signal:new AbortController().signal,emit:()=>{},networkFetch:async()=>{throw new ToolAuthorizationDenied("用户拒绝网络访问");}});
+      expect(models).toBe(1);expect(result.lastError).toContain("用户拒绝");expect(existsSync(join(root,"must-not-exist.txt"))).toBe(false);
+    } finally {await mock.close();}
+  });
+  it("queues one-time HTTP approval even when automatic write execution is enabled", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-network-review-"));
+    const session=emptySession({id:"ses_network_review",deliveryMode:true});
+    const state=await loadWorkbench(session.id,root);state.policy.review=false;await saveWorkbench(session.id,state);
+    const mock=await startScriptedLlm([(_raw,res)=>toolDelta(res,[{id:"fetch-once",name:"http_fetch",args:{url:"https://example.com/"}}])]);
+    try {
+      const result=await runAgent({session,settings:pigSettings(root,{llmBaseUrl:mock.url}),signal:new AbortController().signal,emit:()=>{}});
+      const saved=await loadWorkbench(session.id,root);
+      expect(saved.operations).toHaveLength(1);expect(saved.operations[0]).toMatchObject({tool:"http_fetch",status:"pending",args:{url:"https://example.com/"},before:[],after:[]});
+      expect(result.messages.some(m=>m.role==="tool")).toBe(false);
+      expect(saved.checkpoint?.blockedCallId).toBe(saved.operations[0]?.callId);
+    }finally{await mock.close();}
+  });
+
   it.each([true, false])("waits for mutation authorization and respects decision %s", async (approved) => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-approval-"));
     const target = join(workspaceRoot, "approved.txt");

@@ -64,7 +64,7 @@ export function ExecutionPicker({
         <label className="flex items-center gap-1 text-xs text-ink-600">
           <input
             type="checkbox"
-            checked={!!session.remoteRequireApproval}
+            checked={session.remoteRequireApproval !== false}
             disabled={disabled || !!session.remoteRunId}
             onChange={(e) =>
               onChange({
@@ -74,7 +74,7 @@ export function ExecutionPicker({
               })
             }
           />
-          写入前审批
+          写入与命令需审批
         </label>
       )}
     </>

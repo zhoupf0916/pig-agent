@@ -1,0 +1,14 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "kernel": "27.0.0",
+  "node": "v24.21.0",
+  "backend": "Seatbelt",
+  "workload": "20 sequential /bin/sh -c true executions after one warmup, includes wrapper creation and cleanup",
+  "count": 20,
+  "medianMs": 11.381249999999966,
+  "p95Ms": 27.169375000000002,
+  "minMs": 9.373291999999992,
+  "maxMs": 35.83729199999999,
+  "scope": "Local process startup only; no model, file workload, Docker comparison or production throughput claim"
+}

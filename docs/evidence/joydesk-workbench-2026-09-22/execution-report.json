@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "runId": "run_bbd98187d2ce476cb321896f5045bef1",
+  "checks": [
+    "Expert create and actual run selection",
+    "User defaults not overwritten",
+    "Browser approval and actual runner completion",
+    "Desktop/mobile approval and result",
+    "Search finds actual message and opens conversation"
+  ],
+  "errors": []
+}

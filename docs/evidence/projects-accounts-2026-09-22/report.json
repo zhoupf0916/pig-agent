@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "username/password application awaits approval; pending account cannot log in; approved login succeeds",
+    "personal project has persistent named workspace; real completed container run adds downloadable file version",
+    "project collaboration stays a project branch; two password accounts share authors, approvals and results; mobile has no overflow"
+  ],
+  "conversationUrl": "http://127.0.0.1:8892/#/conversations/conv_e4895e8cdc5e4b628c1a08d2928d66c4",
+  "errors": []
+}

@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Atomic project creation imports nested files; metadata excludes source; cross-owner access and unsafe path rejected",
+    "Real Runner materializes nested seed; mock model executes real write_file/read_file; project seed update does not mutate queued run or idempotent replay",
+    "Follow-up container restores prior conversation snapshot rather than updated project seed",
+    "New conversation takes latest project seed; public run metadata never returns input/file bodies"
+  ],
+  "runs": [
+    "run_0640188555b64c349325ee7e825db139",
+    "run_b45411e442b04717949f92b60b44acd0",
+    "run_3ad17d6b521440f699f5d2080b90bb23"
+  ],
+  "model": "mock provider, real Docker Runner and file tools",
+  "completedAt": "2026-09-22T06:11:26.107Z"
+}

@@ -1,3 +1,4 @@
+import { mutateProjectWorkspace } from "../store/projects.ts";
 import type { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -37,12 +38,16 @@ import { listInbox, markInboxRead, removeInboxItemsForProject } from "../store/i
 import { clearMemoryRefs } from "../store/memory.ts";
 import { createSession, getSession, listSessions, saveSession } from "../store/sessions.ts";
 
+import { loadSettings } from "../store/settings.ts";
+
 const createSchema = z.object({
+  workspaceRoot: z.string().max(4096).optional(),
   name: z.string().min(1).max(120),
   instruction: z.string().max(20_000).optional(),
 });
 
 const patchSchema = z.object({
+  workspaceRoot: z.string().max(4096).optional(),
   name: z.string().min(1).max(120).optional(),
   instruction: z.string().max(20_000).optional(),
 });
@@ -99,21 +104,23 @@ export function registerProjectRoutes(app: Hono): void {
   app.post("/api/projects", async (c) => {
     const parsed = createSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "name is required" }, 400);
-    const project = await createProject(parsed.data);
-    return c.json(project, 201);
+    try { const project = await createProject(parsed.data); return c.json(project, 201); }
+    catch (err) { const e = fail(err); return c.json({error:e.error},e.status); }
   });
 
   app.get("/api/projects/:id", async (c) => {
     const project = await getProject(c.req.param("id"));
     if (!project) return c.json({ error: "Project not found" }, 404);
     const sessions = (await listSessions()).filter((s) => s.projectId === project.id);
-    return c.json({ ...project, sessions });
+    return c.json({ ...project, effectiveWorkspaceRoot: project.workspaceRoot || (await loadSettings()).workspaceRoot, sessions });
   });
 
   app.patch("/api/projects/:id", async (c) => {
     const parsed = patchSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "Invalid project patch" }, 400);
-    const project = await updateProject(c.req.param("id"), parsed.data);
+    let project;
+    try { project = await updateProject(c.req.param("id"), parsed.data); }
+    catch (err) { const e = fail(err); return c.json({error:e.error},e.status); }
     if (!project) return c.json({ error: "Project not found" }, 404);
     return c.json(project);
   });
@@ -134,6 +141,23 @@ export function registerProjectRoutes(app: Hono): void {
     await clearMemoryRefs("projectId", id);
     await removeInboxItemsForProject(id);
     return c.json({ ok: true });
+  });
+
+  app.post("/api/projects/:id/workspaces", async c => {
+    const parsed = z.object({path:z.string().min(1).max(4096),name:z.string().trim().min(1).max(120).optional(),setDefault:z.boolean().optional()}).strict().safeParse(await c.req.json().catch(()=>null));
+    if (!parsed.success) return c.json({error:"工作区参数无效"},400);
+    try { const project = await mutateProjectWorkspace(c.req.param("id"),undefined,parsed.data); return project ? c.json(project,201) : c.json({error:"项目不存在"},404); }
+    catch(err) {const e=fail(err);return c.json({error:e.error},e.status);}
+  });
+  app.patch("/api/projects/:id/workspaces/:workspaceId", async c => {
+    const parsed = z.object({path:z.string().min(1).max(4096).optional(),name:z.string().trim().min(1).max(120).optional(),setDefault:z.boolean().optional()}).strict().safeParse(await c.req.json().catch(()=>null));
+    if (!parsed.success) return c.json({error:"工作区参数无效"},400);
+    try { const project = await mutateProjectWorkspace(c.req.param("id"),c.req.param("workspaceId"),parsed.data); return project ? c.json(project) : c.json({error:"项目不存在"},404); }
+    catch(err) {const e=fail(err);return c.json({error:e.error},e.status);}
+  });
+  app.delete("/api/projects/:id/workspaces/:workspaceId", async c => {
+    try { const project = await mutateProjectWorkspace(c.req.param("id"),c.req.param("workspaceId"),{},true); return project ? c.json(project) : c.json({error:"项目不存在"},404); }
+    catch(err) {const e=fail(err);return c.json({error:e.error},e.status);}
   });
 
   app.get("/api/projects/:id/members", async (c) => {
@@ -368,7 +392,11 @@ export function registerProjectRoutes(app: Hono): void {
     const id = c.req.param("id");
     const project = await getProject(id);
     if (!project) return c.json({ error: "Project not found" }, 404);
-    const session = await createSession({ projectId: id });
+    const parsed = z.object({workspaceId:z.string().min(1).max(120).optional()}).strict().safeParse(await c.req.json().catch(()=>({})));
+    if (!parsed.success) return c.json({error:"工作区参数无效"},400);
+    let session;
+    try { session = await createSession({ projectId: id, workspaceId: parsed.data.workspaceId }); }
+    catch(err) {const e=fail(err);return c.json({error:e.error},e.status);}
     await recordSessionBound(id, session.id);
     return c.json(session, 201);
   });

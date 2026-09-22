@@ -1,0 +1,16 @@
+{
+  "at": "2026-09-22T03:39:46.549Z",
+  "environment": "local Docker cluster 2 control planes on8893/8894; 2 runners; mock model",
+  "checks": [
+    "database verifies common project context on both turns and previous member user message in followup model input",
+    "two users share durable history and attributed authors; editor followup with idempotency; viewer cannot write; live SSE sees subsequent turn and tokens across two control instances",
+    "concurrent multiuser followup is serialized: one201 one409; cursor replay excludes earlier sequence",
+    "membership removal and logout revoke already-open SSE streams within polling bound"
+  ],
+  "conversationId": "conv_5b320f8c3c654f67a459e3cf33545af2",
+  "runIds": [
+    "run_fb61a334ed3141f7b76a0f629dd0abe8",
+    "run_5b6af4bc965a4666b5297f141699b18d",
+    "run_829d8205116d4b7c8af7f236bb73a796"
+  ]
+}

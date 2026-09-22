@@ -1,0 +1,20 @@
+{
+  "at": "2026-09-22T07:00:07.371Z",
+  "base": "http://127.0.0.1:8892",
+  "mode": "mock",
+  "runIds": [
+    "run_4c7add7074de4ce7aeb2728724bdd07c",
+    "run_f061733be8584fb6a9e95a678c8d9451"
+  ],
+  "checks": [
+    "TXT/DOCX/PDF/large image upload, parse metadata and original download",
+    "Owner isolation: cross-account download and task injection denied",
+    "Spoofed PDF and sensitive filename rejected",
+    "Approval suspends execution budget with separate 30 minute deadline",
+    "Real Runner filesystem contains every original, including >512 KiB image",
+    "PDF and DOCX extracted text read back from real Runner filesystem",
+    "Approved execution succeeded; duplicate decision denied",
+    "Follow-up restores attachments independently of workspace snapshot; rejection stops run",
+    "Referenced inputs cannot be deleted"
+  ]
+}

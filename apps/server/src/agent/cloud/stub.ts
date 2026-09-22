@@ -67,6 +67,7 @@ export async function runStubCloudAgent(options: {
 
   try {
     const result = await runAgent({
+      allowComputer: false,
       session: {
         ...session,
         // Local-cloud has its own workspace lifecycle; host review is Pig-only.

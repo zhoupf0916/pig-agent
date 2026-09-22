@@ -17,6 +17,7 @@ const errors = [],
   checks = [];
 page.on("pageerror", (e) => errors.push(e.message));
 let sessionId;
+let streamingEvidence;
 const session = () =>
   fetch(`${base}/api/sessions/${sessionId}`).then((r) => r.json());
 async function send(text) {
@@ -53,7 +54,91 @@ try {
   checks.push(
     "real browser creation and inline remote approval without leaving task",
   );
-  await approve();
+  await page.evaluate(() => {
+    window.__streamSamples = [];
+    window.__streamObserver = new MutationObserver(() => {
+      const text =
+        document.querySelector('[data-streaming="true"]')?.textContent || "";
+      const list = window.__streamSamples;
+      if (text && text !== list.at(-1)?.text)
+        list.push({ text, at: performance.now() });
+    });
+    window.__streamObserver.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+  const firstApproval = approve();
+  await page.locator('[data-streaming="true"]').waitFor();
+  await page.screenshot({ path: evidence + "/flow-streaming.png" });
+  await firstApproval;
+  const samples = await page.evaluate(() => {
+    window.__streamObserver.disconnect();
+    return window.__streamSamples;
+  });
+  assert(
+    samples.length >= 2,
+    "real container reply must paint multiple incremental text fragments before completion",
+  );
+  const expectedText =
+    "容器执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。";
+  assert(
+    samples.every((sample) => expectedText.startsWith(sample.text)),
+    "stream must remain an exact prefix, without duplicated tokens from two SSE connections",
+  );
+  await expect(page.getByText(expectedText, { exact: true })).toHaveCount(1);
+  const recorded = await fetch(
+    `${base}/api/sessions/${sessionId}/events?live=0&after=0`,
+  ).then((r) => r.json());
+  const tokens = recorded.events.filter((row) => row.event.type === "token");
+  assert(tokens.length >= 2);
+  assert.equal(tokens.map((row) => row.event.text).join(""), expectedText);
+  const cursor = tokens[0].seq;
+  const resumed = await fetch(
+    `${base}/api/sessions/${sessionId}/events?live=0&after=${cursor}`,
+  ).then((r) => r.json());
+  assert(resumed.events.every((row) => row.seq > cursor));
+  assert.equal(
+    tokens[0].event.text +
+      resumed.events
+        .filter((row) => row.event.type === "token")
+        .map((row) => row.event.text)
+        .join(""),
+    expectedText,
+  );
+  const runId = (await session()).remoteRunId;
+  const remoteLog = await fetch(
+    `${base}/api/remote/v1/runs/${runId}/eventlog`,
+  ).then((r) => r.json());
+  const remoteTokens = remoteLog.events.filter(
+    (row) => row.event.type === "token",
+  );
+  assert(remoteTokens.length >= 2);
+  const resumedSse = await fetch(
+    `${base}/api/remote/v1/runs/${runId}/events?after=${remoteTokens[0].seq}`,
+  ).then((r) => r.text());
+  const replayed = resumedSse
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => JSON.parse(line.slice(5)))
+    .filter((event) => event.type === "token");
+  assert.equal(
+    remoteTokens[0].event.text + replayed.map((event) => event.text).join(""),
+    expectedText,
+    "control-plane SSE reconnect resumes exact suffix",
+  );
+  streamingEvidence = {
+    visualUpdates: samples.length,
+    tokenEvents: tokens.length,
+    visibleOutputSpanMs: Math.round(samples.at(-1).at - samples[0].at),
+    exactPrefixes: true,
+    cursorReplayExact: true,
+  };
+  await page.screenshot({ path: evidence + "/flow-streamed.png" });
+  checks.push(
+    "real container paints progressive exact text; dual SSE delivery and cursor replay do not duplicate tokens",
+  );
   await page.getByRole("button", { name: /项成果可核验/ }).click();
   const inspector = page.getByRole("complementary", { name: "远端成果检查器" });
   const downloadPromise = page.waitForEvent("download");
@@ -137,6 +222,7 @@ try {
         model: "isolated mock",
         sessionId,
         checks,
+        streamingEvidence,
         errors,
       },
       null,

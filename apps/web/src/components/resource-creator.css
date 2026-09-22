@@ -1,0 +1,7 @@
+.resource-creator { margin: 0 auto 24px; max-width: 768px; width: 100%; }
+.resource-creator-body { display: grid; gap: 14px; margin-top: 16px; }
+.resource-creator-body label > span { font-size: 13px; color: var(--ink-600); }
+.resource-creator-body .field { width: 100%; }
+.resource-creator-body textarea { resize: vertical; }
+.resource-creator-body > p { margin: 0; }
+.resource-creator-body .resource-creator-body { margin-top: 4px; }

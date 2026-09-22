@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Create project and open project overview",
+    "Open workspace panel",
+    "Expert search empty state",
+    "Expert detail dialog",
+    "Expert creation dialog desktop and mobile",
+    "No horizontal mobile overflow"
+  ],
+  "errors": []
+}

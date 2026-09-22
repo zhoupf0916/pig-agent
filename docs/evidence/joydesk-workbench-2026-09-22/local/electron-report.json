@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Actual Electron isolated profile",
+    "Native directory picker IPC with deterministic dialog result",
+    "Two project workspace bindings",
+    "Selected task root and actual file tree"
+  ],
+  "errors": []
+}

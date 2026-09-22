@@ -17,13 +17,21 @@ import {
   Search,
   PanelRight,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AutomationsPanel } from "./components/AutomationsPanel";
 import { ChatPanel } from "./components/ChatPanel";
 import { ExpertsPanel } from "./components/ExpertsPanel";
 import { InboxMenu } from "./components/InboxMenu";
 import { isMorePage, MoreMenu } from "./components/MoreMenu";
 import { MemoryPanel } from "./components/MemoryPanel";
+import { CloudWorkspace } from "./cloud/CloudWorkspace";
 import { ProjectsPanel } from "./components/ProjectsPanel";
 import { RightPanel } from "./components/RightPanel";
 import { SearchBox } from "./components/SearchBox";
@@ -192,7 +200,9 @@ export function App() {
 
   const refreshTree = useCallback(async () => {
     try {
-      const data = await api.tree();
+      const identity = activeIdRef.current;
+      const data = await api.tree(identity || undefined);
+      if (identity !== activeIdRef.current) return;
       setTree((prev) => applyWorkspaceTreeSnapshot(prev, data.tree));
     } catch {
       setTree(null);
@@ -466,25 +476,25 @@ export function App() {
   useEffect(() => {
     return startWorkspaceTreeSync({
       fetchTree: async () => {
-        const { tree: next } = await api.tree();
+        const { tree: next } = await api.tree(activeId || undefined);
         return next;
       },
       onTree: (next) =>
         setTree((prev) => applyWorkspaceTreeSnapshot(prev, next)),
     });
-  }, []);
+  }, [activeId]);
 
   useEffect(() => {
     if (!previewPath) return;
     return startWorkspaceFileSync({
       path: previewPath,
-      fetchFile: (path) => api.file(path),
+      fetchFile: (path) => api.file(path, activeId || undefined),
       onFile: (next) => {
         setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
         if (next === null) setPreviewPath(null);
       },
     });
-  }, [previewPath]);
+  }, [previewPath, activeId]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -551,7 +561,9 @@ export function App() {
     setPreviewPath(path);
     setPreview(null);
     try {
-      const next = await api.file(path);
+      const identity = activeIdRef.current;
+      const next = await api.file(path, identity || undefined);
+      if (identity !== activeIdRef.current) return;
       if (request !== fileRequestRef.current) return;
       setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
     } catch (err) {
@@ -568,7 +580,7 @@ export function App() {
   }, []);
 
   const createSession = useCallback(
-    async (projectId?: string) => {
+    async (projectId?: string, workspaceId?: string) => {
       if (
         loadingSessionRef.current ||
         creatingSessionRef.current ||
@@ -580,12 +592,13 @@ export function App() {
       setTaskActionError(null);
       try {
         const created = await api.createSession(
-          projectId ? { projectId } : undefined,
+          projectId ? { projectId, workspaceId } : undefined,
         );
         await refreshSessions();
         await refreshProjects();
         goWorkstation(created.id);
         await loadSession(created.id);
+        return created;
       } catch (error) {
         setTaskActionError(
           redactSecretsForDisplay(
@@ -1202,6 +1215,7 @@ export function App() {
   const pageTitles = {
     workstation: session?.title || "新任务",
     projects: "项目",
+    collaboration: "项目协同",
     experts: "专家",
     automations: "自动化",
     memory: "记忆",
@@ -1289,7 +1303,7 @@ export function App() {
           onClick={() => navigate(() => void createSession())}
         >
           <Plus size={17} />
-          新任务
+          {route.name === "collaboration" ? "新建本机任务" : "新任务"}
         </button>
         <nav className="global-links">
           {[
@@ -1330,15 +1344,49 @@ export function App() {
               action: () => goSearch(),
             },
           ].map(({ label, name, icon: Icon, action }) => (
-            <button
-              key={name}
-              className={route.name === name ? "selected" : ""}
-              aria-current={route.name === name ? "page" : undefined}
-              onClick={() => navigate(action)}
-            >
-              <Icon size={17} />
-              {label}
-            </button>
+            <Fragment key={name}>
+              <button
+                className={
+                  route.name === name ||
+                  (name === "projects" && route.name === "collaboration")
+                    ? "selected"
+                    : ""
+                }
+                aria-current={route.name === name ? "page" : undefined}
+                onClick={() => navigate(action)}
+              >
+                <Icon size={17} />
+                {label}
+              </button>
+              {name === "projects" && (
+                <>
+                  {(route.name === "projects" ||
+                    route.name === "collaboration") && (
+                    <nav aria-label="项目分支" className="project-branches">
+                      <button
+                        className={route.name === "projects" ? "selected" : ""}
+                        onClick={() => navigate(() => goProjects())}
+                      >
+                        普通项目
+                      </button>
+                      <button
+                        className={
+                          route.name === "collaboration" ? "selected" : ""
+                        }
+                        onClick={() =>
+                          navigate(() => {
+                            location.hash = "/projects/collaboration";
+                          })
+                        }
+                      >
+                        <Users size={15} />
+                        项目协同
+                      </button>
+                    </nav>
+                  )}
+                </>
+              )}
+            </Fragment>
           ))}
           <button
             className={route.name === "remote" ? "selected" : ""}
@@ -1512,7 +1560,16 @@ export function App() {
         <div
           className={`workspace-shell flex min-h-0 min-w-0 flex-1 overflow-hidden ${filesOpen ? "show-files" : ""}`}
         >
-          {route.name === "remote" ? (
+          {route.name === "collaboration" ? (
+            <CloudWorkspace
+              embedded
+              apiBase="/api/remote"
+              webBaseUrl={
+                settings?.cloudBaseUrl ||
+                settings?.cloudStatus?.effectiveBaseUrl
+              }
+            />
+          ) : route.name === "remote" ? (
             <RemoteRunsPanel
               embedded
               runId={route.runId}
@@ -1536,7 +1593,9 @@ export function App() {
                 void loadSession(id);
                 goWorkstation(id);
               }}
-              onCreateSession={(projectId) => void createSession(projectId)}
+              onCreateSession={(projectId, workspaceId) =>
+                void createSession(projectId, workspaceId)
+              }
             />
           ) : route.name === "search" ? (
             <SearchPanel initialQ={route.q} onOpenHit={openHit} />
@@ -1577,7 +1636,9 @@ export function App() {
                 remoteActivity={remoteActivity}
                 configurationOpen={configurationOpen}
                 executionControls={executionControls}
-                workspaceRoot={settings?.workspaceRoot}
+                workspaceRoot={
+                  session?.workspaceRoot || settings?.workspaceRoot
+                }
                 onOpenSettings={() => setSettingsOpen(true)}
                 onOpenArtifacts={() => setFilesOpen(true)}
                 initializing={
@@ -1607,6 +1668,7 @@ export function App() {
                   if (activeId) void loadSession(activeId);
                   void refreshTree();
                 }}
+                onEnsureSession={async () => { const target = session || await createSession(); if (!target) throw new Error("任务正在初始化，请稍后重试。"); return target; }}
                 onSend={() => void send()}
                 onStop={() => void stop()}
                 onTeamRun={() => void startTeamRun()}
@@ -1629,7 +1691,9 @@ export function App() {
                     }}
                     artifacts={session?.artifacts ?? []}
                     tree={tree}
-                    workspaceRoot={settings?.workspaceRoot ?? ""}
+                    workspaceRoot={
+                      session?.workspaceRoot || settings?.workspaceRoot || ""
+                    }
                     previewPath={previewPath}
                     preview={preview}
                     onOpenFile={(path) => void openFile(path)}

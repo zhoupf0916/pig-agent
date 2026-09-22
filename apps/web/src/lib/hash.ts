@@ -1,5 +1,6 @@
 export type AppRoute =
   | { name: "workstation"; sessionId?: string }
+  | { name: "collaboration"; conversationId?: string }
   | { name: "projects"; projectId?: string; assetId?: string; todoId?: string }
   | { name: "experts"; expertId?: string }
   | { name: "automations"; automationId?: string }
@@ -24,6 +25,14 @@ export function splitHash(hash: string): {
 export function parseHash(hash = window.location.hash): AppRoute {
   const { path, query } = splitHash(hash);
   const parts = path.split("/").filter(Boolean);
+  if (
+    parts[0] === "shared" ||
+    (parts[0] === "projects" && parts[1] === "collaboration")
+  )
+    return {
+      name: "collaboration",
+      conversationId: parts[0] === "shared" ? parts[1] : parts[2],
+    };
   if (parts[0] === "projects") {
     return {
       name: "projects",

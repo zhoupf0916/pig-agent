@@ -9,6 +9,9 @@ import type {
 import { useDialog } from "../lib/use-dialog";
 import { SharedProjectsPanel } from "./SharedProjectsPanel";
 import { MarkdownView } from "./MarkdownView";
+import { ExecutionJournal } from "./ExecutionJournal";
+import { executionJournal } from "../lib/execution-journal";
+import type { AgentEvent } from "../types";
 const labels: Record<string, string> = {
   queued: "排队中",
   preparing: "准备容器",
@@ -91,16 +94,7 @@ export function RemoteRunsPanel({
   const [loadedDetail, setDetail] = useState<CloudRunSummary | null>(null);
   const detail = loadedDetail?.id === selected ? loadedDetail : null;
   const [events, setEvents] = useState<
-    Array<{
-      seq: string;
-      event: {
-        type: string;
-        message?: { content: string };
-        output?: string;
-        name?: string;
-        ok?: boolean;
-      };
-    }>
+    Array<{ seq: string; event: AgentEvent }>
   >([]);
   const [artifacts, setArtifacts] = useState<CloudArtifactSummary[]>([]);
   const [error, setError] = useState("");
@@ -483,9 +477,10 @@ export function RemoteRunsPanel({
                     <p className="whitespace-pre-wrap break-words text-sm">
                       {detail.prompt}
                     </p>
-                    <code className="mt-3 block break-all text-[11px] text-ink-500">
-                      {detail.id}
-                    </code>
+                    <details className="mt-3 text-xs text-ink-500">
+                      <summary className="cursor-pointer">运行标识</summary>
+                      <code className="break-all">{detail.id}</code>
+                    </details>
                   </div>
                   {detail.can_write === false && (
                     <p className="text-xs text-ink-500">
@@ -504,7 +499,12 @@ export function RemoteRunsPanel({
                   <nav className="remote-detail-tabs" aria-label="运行详情视图">
                     {(
                       [
-                        ["process", "过程", events.length],
+                        [
+                          "process",
+                          "过程",
+                          executionJournal(events.map((row) => row.event))
+                            .length,
+                        ],
                         ["artifacts", "成果", artifacts.length],
                         ["approvals", "审批", approvals.length],
                       ] as const
@@ -650,7 +650,7 @@ export function RemoteRunsPanel({
                 <h4 className="border-t border-ink-300 pt-4 text-sm font-medium">
                   执行过程{" "}
                   <span className="ml-2 text-xs font-normal text-ink-500">
-                    回复与工具日志
+                    工具操作 · 点击查看详情
                   </span>
                 </h4>
               )}
@@ -661,27 +661,33 @@ export function RemoteRunsPanel({
                     : "尚无执行事件。"}
                 </p>
               )}
-              {tab === "process" &&
-                detail &&
-                events.map(({ seq, event }) =>
-                  event.type === "message" && event.message?.content?.trim() ? (
-                    <div key={seq} className="rounded-card bg-ink-100 p-3">
-                      <MarkdownView text={event.message?.content || ""} />
-                    </div>
-                  ) : event.type === "tool_end" ? (
-                    <details
-                      key={seq}
-                      className="rounded-card border border-ink-300 p-3 text-xs"
-                    >
-                      <summary className="cursor-pointer font-medium">
-                        {event.ok ? "✓" : "✕"} {event.name}
-                      </summary>
-                      <pre className="mt-2 whitespace-pre-wrap break-all">
-                        {event.output}
-                      </pre>
-                    </details>
-                  ) : null,
-                )}
+              {tab === "process" && detail && (
+                <>
+                  {events
+                    .filter(
+                      ({ event }) =>
+                        event.type === "message" &&
+                        event.message.role === "assistant" &&
+                        event.message.content.trim(),
+                    )
+                    .slice(-1)
+                    .map(
+                      ({ seq, event }) =>
+                        event.type === "message" && (
+                          <details
+                            key={seq}
+                            className="rounded-btn border border-ink-300 p-3 text-sm"
+                          >
+                            <summary className="cursor-pointer">
+                              查看最终回复
+                            </summary>
+                            <MarkdownView text={event.message.content} />
+                          </details>
+                        ),
+                    )}
+                  <ExecutionJournal events={events.map((row) => row.event)} />
+                </>
+              )}
               {tab === "artifacts" && detail && !artifacts.length && (
                 <p className="remote-detail-empty">
                   此运行尚无已保存成果。执行结束后会自动更新。

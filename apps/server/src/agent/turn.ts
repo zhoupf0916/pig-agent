@@ -3,7 +3,7 @@ import { resolveExpertPlaybook } from "../store/experts.ts";
 import { publishPersistedEvent } from "../store/events.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
 import { saveSession } from "../store/sessions.ts";
-import { loadSettings } from "../store/settings.ts";
+import { loadSessionSettings } from "../store/settings.ts";
 import { shouldRunSequentialTeam } from "../store/team-run-state.ts";
 import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts";
 import { newId, nowIso, truncate } from "../util.ts";
@@ -73,6 +73,8 @@ export function prepareUserMessage(session: Session, content: string, clientMess
 }
 
 export type SessionTurnHooks = {
+  /** Keep approval execution and its resumed batch under the same cancellation fence. */
+  controller?: AbortController;
   onEvent?: (event: AgentEvent, seq: number) => Promise<void> | void;
   /** Override settings.runtime (automations default to pig). */
   runtime?: AgentRuntime;
@@ -89,7 +91,7 @@ export async function runSessionTurn(
   session: Session,
   hooks: SessionTurnHooks = {},
 ): Promise<Session> {
-  const settings = await loadSettings();
+  const settings = await loadSessionSettings(session);
   const runtime = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
   if (runtime === "cloud") {
     if (session.executionTarget === "remote" || settings.cloudMode === "remote") session.executionTarget = "remote";
@@ -99,7 +101,7 @@ export async function runSessionTurn(
   if (session.executionTarget === "remote") settings.cloudMode = "remote";
   await saveSession(session);
   if (runtime === "pig") session.deliveryMode = true;
-  const controller = new AbortController();
+  const controller = hooks.controller ?? new AbortController();
   runningTurns.set(session.id, controller);
 
   let writes = Promise.resolve();

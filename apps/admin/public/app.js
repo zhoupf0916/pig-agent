@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 let token = sessionStorage.getItem("pig.cloud.token") || "";
+let cookieLogin = true;
 let snapshot,
   refreshing = false,
   selectedRun = null,
@@ -103,7 +104,8 @@ window.addEventListener("keydown", (e) => {
   }
 });
 window.addEventListener("resize", () => {
-  if (innerWidth > 700 || !document.body.classList.contains("nav-open")) setNavOpen(false);
+  if (innerWidth > 700 || !document.body.classList.contains("nav-open"))
+    setNavOpen(false);
 });
 function navigate() {
   window.scrollTo({ top: 0 });
@@ -146,7 +148,7 @@ async function api(path, init = {}) {
     ...init,
     signal: AbortSignal.timeout(30000),
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       "Content-Type": "application/json",
     },
   });
@@ -236,7 +238,7 @@ function renderOverview() {
     }),
   );
   $("mode").textContent =
-    overview.modelMode === "mock" ? "模拟模型 · 真实容器" : "真实模型渠道";
+    overview.modelMode === "mock" ? "模拟模型 · 真实沙箱" : "真实模型渠道";
   const available = overview.workers.filter(
     (w) => w.online && w.enabled && !w.draining,
   );
@@ -540,6 +542,7 @@ function renderAccounts() {
         button("还原", () => {
           accountDrafts.delete(a.id);
           renderAccounts();
+          renderRegistrationRequests();
         }),
       );
       quota.onsubmit = async (event) => {
@@ -724,21 +727,29 @@ function renderAudit() {
     $("audit").append(empty("暂无审计记录。"));
 }
 async function refresh() {
-  if (!token || refreshing) return;
+  if ((!token && !cookieLogin) || refreshing) return;
   refreshing = true;
   const before = generation;
   $("refresh").disabled = true;
   if (!snapshot) $("connection").textContent = "正在加载平台状态…";
   try {
-    const [overview, list, accountData, channelData, resourceData, policyData] =
-      await Promise.all([
-        api("/v1/admin/overview"),
-        api("/v1/runs"),
-        api("/v1/admin/accounts"),
-        api("/v1/admin/channels"),
-        api("/v1/admin/resources"),
-        api("/v1/admin/execution-policy"),
-      ]);
+    const [
+      overview,
+      list,
+      accountData,
+      channelData,
+      resourceData,
+      policyData,
+      registrationData,
+    ] = await Promise.all([
+      api("/v1/admin/overview"),
+      api("/v1/runs"),
+      api("/v1/admin/accounts"),
+      api("/v1/admin/channels"),
+      api("/v1/admin/resources"),
+      api("/v1/admin/execution-policy"),
+      api("/v1/admin/registration-requests"),
+    ]);
     if (before !== generation) return;
     if (connectionError) {
       showError("");
@@ -751,6 +762,7 @@ async function refresh() {
       channelData,
       resourceData,
       policyData,
+      registrationData,
     };
     connected(true);
     $("connection").textContent = "● 控制面已连接";
@@ -762,6 +774,7 @@ async function refresh() {
     renderRuns();
     renderWorkers();
     renderAccounts();
+    renderRegistrationRequests();
     renderSettings();
     renderAudit();
     if ($("run-dialog").open && selectedRun) void updateDetail(selectedRun);
@@ -770,11 +783,12 @@ async function refresh() {
     if (e.status === 401 || e.status === 403) {
       connected(false);
       token = "";
+      cookieLogin = false;
       sessionStorage.removeItem("pig.cloud.token");
       $("connection").textContent = "需要重新登录";
       $("connection").dataset.state = "offline";
       $("connection").title = "需要重新登录";
-      showError("访问令牌无效、已过期或没有管理员权限，请重新连接。");
+      showError("登录已过期或没有管理员权限，请使用管理员账号登录。");
     } else {
       connectionError = true;
       $("connection").textContent = "连接中断 · 正在自动重试";
@@ -959,12 +973,108 @@ $("close-detail").onclick = () => $("run-dialog").close();
 $("run-dialog").onclose = () => {
   selectedRun = null;
 };
+function renderRegistrationRequests() {
+  if ($("registration-requests").contains(document.activeElement)) return;
+  const rows = snapshot.registrationData.requests;
+  $("registration-requests").replaceChildren(
+    ...rows.map((request) => {
+      const row = node("div", "", "registration-card");
+      row.append(
+        node("strong", `${request.name} · ${request.username}`),
+        node("p", request.reason || "未填写用途"),
+        node(
+          "small",
+          `${dates(request.created_at)} · ${{ pending: "待审批", approved: "已批准", rejected: "已拒绝" }[request.state]}`,
+        ),
+      );
+      if (request.state === "pending") {
+        for (const [decision, label] of [
+          ["approve", "批准账号"],
+          ["reject", "拒绝申请"],
+        ]) {
+          const button = node(
+            "button",
+            label,
+            decision === "approve" ? "primary" : "",
+          );
+          button.onclick = async () => {
+            const reason =
+              decision === "reject" ? prompt("拒绝原因（可选）", "") : "";
+            if (reason === null) return;
+            await action(
+              `/v1/admin/registration-requests/${request.id}/decision`,
+              { decision, reason },
+              "POST",
+              decision === "approve"
+                ? "账号已批准，可使用申请时的密码登录"
+                : "申请已拒绝",
+              button,
+            );
+          };
+          row.append(button);
+        }
+      } else if (request.review_note)
+        row.append(node("p", request.review_note));
+      return row;
+    }),
+  );
+  if (!rows.length)
+    $("registration-requests").append(empty("暂时没有账号申请。"));
+}
+$("password-login-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  showError("");
+  token = "";
+  sessionStorage.removeItem("pig.cloud.token");
+  try {
+    await api("/auth/web/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("admin-username").value,
+        password: $("admin-password").value,
+      }),
+    });
+    cookieLogin = true;
+    generation++;
+    snapshot = undefined;
+    $("admin-password").value = "";
+    await refresh();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+  }
+};
+$("admin-password-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await api("/v1/admin/password-account", {
+      method: "POST",
+      body: JSON.stringify({
+        username: $("new-admin-username").value,
+        password: $("new-admin-password").value,
+      }),
+    });
+    $("admin-password-form").reset();
+    await $("logout").onclick();
+    feedback("账号密码已设置，请重新登录");
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+  }
+};
 $("login-form").onsubmit = async (event) => {
   event.preventDefault();
   if (refreshing) return;
   generation++;
   snapshot = undefined;
   token = $("token").value.trim();
+  cookieLogin = false;
   const submit = event.submitter;
   submit.disabled = true;
   showError("");
@@ -984,6 +1094,7 @@ $("logout").onclick = async () => {
   generation++;
   const oldToken = token;
   token = "";
+  cookieLogin = false;
   snapshot = undefined;
   connected(false);
   dirtyForms.clear();
@@ -997,9 +1108,9 @@ $("logout").onclick = async () => {
   $("connection").textContent = "已退出登录";
   sessionStorage.removeItem("pig.cloud.token");
   try {
-    await fetch("/v1/logout", {
+    await fetch(oldToken ? "/v1/logout" : "/auth/web/logout", {
       method: "POST",
-      headers: { Authorization: `Bearer ${oldToken}` },
+      headers: oldToken ? { Authorization: `Bearer ${oldToken}` } : {},
       signal: AbortSignal.timeout(5000),
     });
   } catch {}

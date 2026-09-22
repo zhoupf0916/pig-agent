@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Full original navigation",
+    "Manual skill create and task selection",
+    "Nested project collaboration",
+    "Memory save and refresh",
+    "Settings save and refresh",
+    "Automation search runs real pages",
+    "Mobile navigation and settings",
+    "Late old-identity 401 does not sign out new identity"
+  ],
+  "errors": [],
+  "localRequests": [],
+  "overflow": false
+}

@@ -1,3 +1,4 @@
+import { nativeFileTool } from "../file-helper-client.ts";
 import type { Session, Settings } from "../../types.ts";
 import { prependBoundInstructions, type BoundInstructions } from "../bound-instructions.ts";
 import { CloudRuntimeError, type CloudCreateRunRequest, type CloudWorkspaceHandoff } from "./contract.ts";
@@ -19,7 +20,7 @@ export function buildCreateRunRequest(
   const body: CloudCreateRunRequest = {
     prompt: prependBoundInstructions(lastUser?.content ?? "", bound ?? {}),
     sessionId: session.id,
-    ...(session.remoteRequireApproval ? {requireApproval:true} : {}),
+    ...(typeof session.remoteRequireApproval === "boolean" ? {requireApproval:session.remoteRequireApproval} : {}),
     messages: session.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({
@@ -68,4 +69,12 @@ export function assertNoSecretsInPayload(payload: unknown, settings: Settings): 
       throw cloudRemoteError("secrets_refused");
     }
   }
+}
+
+/** Production handoff reads happen inside the native sandbox, including install hint files. */
+export async function buildSafeRemoteWorkspaceHandoff(settings: Settings, signal?: AbortSignal): Promise<CloudWorkspaceHandoff> {
+  try {
+    const safeSettings={cloudRepoUrl:settings.cloudRepoUrl,cloudRepoRef:settings.cloudRepoRef};
+    return JSON.parse((await nativeFileTool("__handoff", {settings:safeSettings}, {workspaceRoot:settings.workspaceRoot,shellMode:"native",artifacts:[],recordArtifact:()=>{},signal})).output);
+  } catch(error) { throw cloudRemoteError("snapshot_failed",error instanceof Error ? error.message : String(error)); }
 }

@@ -20,3 +20,6 @@ release/
 apps/desktop/assets/AppIcon.iconset/
 
 cloud-dist/
+
+# Generated trusted native file-tool bundle
+native-dist/

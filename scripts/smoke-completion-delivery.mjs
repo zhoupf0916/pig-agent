@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { spawn, execFileSync } from "node:child_process";
 import { parseEnv } from "node:util";
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 const env = parseEnv(await readFile("data/cluster-local/stack.env", "utf8"));
 const base = "http://127.0.0.1:8892";
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -34,6 +35,7 @@ let fault = false,
   child;
 const proxy = createServer(async (req, res) => {
   try {
+    if (req.headers.authorization !== `Bearer ${env.WORKER_TOKEN}`) {res.writeHead(401);res.end();return;}
     let chunks = [];
     for await (const b of req) chunks.push(b);
     const body = Buffer.concat(chunks);
@@ -73,18 +75,11 @@ const proxy = createServer(async (req, res) => {
     res.end("{}");
   }
 });
-await new Promise((r) => proxy.listen(18895, "127.0.0.1", r));
-const sock = execFileSync(
-  "docker",
-  ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
-  { encoding: "utf8" },
-)
-  .trim()
-  .replace("unix://", "");
-await writeFile(
-  "data/acceptance-redesign/docker-shim.mjs",
-  `import http from 'node:http';const socket=${JSON.stringify(sock)};for(const name of ['request','get']){const original=http[name];http[name]=function(options,...rest){if(options?.socketPath==='/var/run/docker.sock')options={...options,socketPath:socket};return original.call(this,options,...rest)}}`,
-);
+await new Promise((r) => proxy.listen(18895, "0.0.0.0", r));
+const containerName = "pig-agent-finish-fault-" + Date.now();
+const dockerEnv = {...process.env, WORKER_TOKEN:env.WORKER_TOKEN};
+const docker = (args) => execFileSync("docker", args, {encoding:"utf8",env:dockerEnv}).trim();
+const outboxEmpty = (id) => docker(["exec",containerName,"node","-e",`process.stdout.write(String(!require('node:fs').existsSync('/tmp/outbox/${id}.json')))`]) === "true";
 const workerId = "redesign-finish-fault";
 const results = [];
 try {
@@ -95,28 +90,9 @@ try {
         { enabled: false },
         "PATCH",
       );
-  const workerEnv = {
-    ...process.env,
-    CONTROL_URL: "http://127.0.0.1:18895",
-    WORKER_TOKEN: env.WORKER_TOKEN,
-    WORKER_ID: workerId,
-    WORKER_OUTBOX_DIR: "data/acceptance-redesign/outbox",
-    WORKER_CAPACITY: "1",
-    WORKER_NAMESPACE: "pig-agent-review",
-    GATEWAY_CONTAINER: "pig-agent-cluster-gateway-1",
-    RUNNER_IMAGE: "pig-agent-cluster-runner:local",
-  };
-  child = spawn(
-    process.execPath,
-    [
-      "--import",
-      "./data/acceptance-redesign/docker-shim.mjs",
-      "--import",
-      "tsx",
-      "apps/worker/src/index.ts",
-    ],
-    { env: workerEnv, stdio: ["ignore", "pipe", "pipe"] },
-  );
+  docker(["create", "--name",containerName,"--init","--network","pig-agent-cluster_control","--cap-drop","ALL","--security-opt","no-new-privileges:true","--security-opt","systempaths=unconfined","--security-opt","seccomp="+resolve("infra/cloud/runner-seccomp.json"),"-e","WORKER_TOKEN","-e","CONTROL_URL=http://host.docker.internal:18895","-e","GATEWAY_URL=http://gateway:8891","-e",`WORKER_ID=${workerId}`,"-e","WORKER_OUTBOX_DIR=/tmp/outbox","-e","WORKER_CAPACITY=1","pig-agent-cluster-worker:local"]);
+  docker(["network","connect","pig-agent-cluster_egress",containerName]);
+  child=spawn("docker",["start","-a",containerName],{env:dockerEnv,stdio:["ignore","pipe","pipe"]});
   child.stdout.on("data", (b) => process.stdout.write(b));
   child.stderr.on("data", (b) => process.stderr.write(b));
   for (let i = 0; i < 50; i++) {
@@ -131,7 +107,7 @@ try {
     fault = inject;
     const run = await api(
       "/v1/runs",
-      { prompt: "Acceptance review: mock container writes cloud-proof.txt" },
+      { prompt: "Acceptance review: native sandbox writes cloud-proof.txt", requireApproval: false },
       undefined,
       env.MEMBER_TOKEN,
     );
@@ -141,20 +117,8 @@ try {
       if (["succeeded", "failed", "cancelled"].includes(state.state)) break;
       await wait(300);
     }
-    for (let i = 0; i < 100; i++) {
-      const pending = await readFile(
-        `data/acceptance-redesign/outbox/${run.id}.json`,
-      ).catch(() => null);
-      if (!pending) break;
-      await wait(100);
-    }
-    assert.equal(
-      await readFile(`data/acceptance-redesign/outbox/${run.id}.json`).catch(
-        () => null,
-      ),
-      null,
-      "completion must be acknowledged before next scenario",
-    );
+    for (let i=0;i<100 && !outboxEmpty(run.id);i++) await wait(100);
+    assert.ok(outboxEmpty(run.id),"completion must be acknowledged before next scenario");
     const artifacts = await api("/v1/runs/" + run.id + "/artifacts");
     assert.equal(state.state, "succeeded");
     assert(artifacts.artifacts.some((a) => a.path === "cloud-proof.txt"));
@@ -181,6 +145,7 @@ try {
 } finally {
   if (child) {
     const exited = new Promise((r) => child.once("exit", r));
+    try {docker(["stop","-t","5",containerName]);} catch {}
     child.kill("SIGTERM");
     await Promise.race([exited, wait(5000)]);
     if (child.exitCode === null) child.kill("SIGKILL");
@@ -195,5 +160,6 @@ try {
         { enabled: true },
         "PATCH",
       );
+  try {docker(["rm","-f",containerName]);} catch {}
   proxy.close();
 }

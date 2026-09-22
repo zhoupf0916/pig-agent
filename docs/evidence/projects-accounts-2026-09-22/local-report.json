@@ -1,0 +1,11 @@
+{
+  "sessionId": "ses_ec1fb756464ecbeb",
+  "checks": [
+    "local project directory saves and persists refresh",
+    "new session inherits actual project directory",
+    "file tree and file preview use session workspace; global file absent",
+    "project collaboration stays inside App project navigation",
+    "mobile no horizontal overflow"
+  ],
+  "errors": []
+}

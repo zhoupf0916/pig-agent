@@ -12,6 +12,7 @@ import { formatBytes, isMarkdown } from "../lib/format";
 import { MarkdownView } from "./MarkdownView";
 import { DiffView } from "./DiffView";
 import type { AgentEvent } from "../types";
+import { ExecutionJournal } from "./ExecutionJournal";
 
 /** Remote previews are immutable run snapshots; importing creates a separate local review. */
 export function RemoteArtifactPanel({
@@ -152,7 +153,7 @@ export function RemoteArtifactPanel({
       aria-label="远端成果检查器"
     >
       <header className="flex items-center justify-between gap-2 border-b border-ink-300 p-4">
-        <p className="text-sm text-ink-600">远端快照 · 本机文件未被修改</p>
+        <p className="text-sm text-ink-600">成果 · 远端快照</p>
         <button
           className="btn-ghost"
           disabled={loading}
@@ -222,29 +223,7 @@ export function RemoteArtifactPanel({
             {!events.length && !logsError && (
               <p className="text-sm text-ink-600">此运行尚无日志。</p>
             )}
-            {events.map((event, i) => (
-              <details key={i} className="border-b border-ink-300 py-2">
-                <summary className="cursor-pointer text-sm">
-                  {i + 1}.{" "}
-                  {event.type === "tool_start"
-                    ? `执行 ${event.name}`
-                    : event.type === "tool_end"
-                      ? event.ok
-                        ? "操作完成"
-                        : "操作失败"
-                      : event.type === "artifact"
-                        ? `成果 ${event.artifact.path}`
-                        : event.type === "error"
-                          ? "运行错误"
-                          : event.type === "message"
-                            ? "消息"
-                            : event.type}
-                </summary>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-5">
-                  {JSON.stringify(event, null, 2)}
-                </pre>
-              </details>
-            ))}
+            <ExecutionJournal events={events} />
           </section>
         ) : (
           <>
@@ -305,7 +284,7 @@ export function RemoteArtifactPanel({
                       {current.path}
                     </h3>
                     <p className="mt-1 text-xs text-ink-600">
-                      远端运行 {current.runId.slice(-8)} 的已保存版本
+                      已保存快照 · 本机文件未被修改
                     </p>
                   </div>
                   <a

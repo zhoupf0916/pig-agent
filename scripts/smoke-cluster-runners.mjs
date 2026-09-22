@@ -84,7 +84,7 @@ try {
   await until(async () => {
     const p = await Promise.all(batch.map(pending));
     return p.every(Boolean);
-  }, "four real containers waiting for approval");
+  }, "four native Runner processes waiting for approval");
   const assigned = await Promise.all(batch.map(state));
   assert.equal(new Set(assigned.map((r) => r.worker_id)).size, 2);
   const listed =
@@ -104,11 +104,14 @@ try {
     ])
       .split("\n")
       .filter(Boolean).length;
-  assert.equal(listed, 4);
+  assert.equal(listed, 0, "tasks must not create Docker containers");
+  const nativeProcesses = ["runner-a", "runner-b"].reduce((sum, service) => sum + Number(compose(["exec", "-T", service, "node", "-e", "const fs=require('fs'); console.log(fs.readdirSync('/proc').filter(p=>/^\\d+$/.test(p)).filter(p=>{try{return fs.readFileSync('/proc/'+p+'/cmdline','utf8').split('\\0')[1]==='/app/runner.mjs'}catch{return false}}).length)"])), 0);
+  assert.equal(nativeProcesses, 4);
   evidence.push({
     scenario: "two real Runners execute concurrently",
     tasks: 4,
     containers: listed,
+    nativeProcesses,
     workers: [...new Set(assigned.map((r) => r.worker_id))],
   });
   const queued = await create(env.MEMBER_TOKEN);
@@ -236,7 +239,7 @@ try {
     ),
   );
   console.log(
-    "PASS: real 2x2 cluster, four containers, queued progress, SIGKILL lease expiry, control failover, cancellation, bounded SIGTERM drain and container cleanup.",
+    "PASS: real 2x2 cluster, four native processes, queued progress, SIGKILL lease expiry, control failover, cancellation, bounded SIGTERM drain and container cleanup.",
   );
 } finally {
   compose(["start", "cloud-a", "runner-a", "runner-b"]);

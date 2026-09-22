@@ -8,12 +8,19 @@ const env = await readFile(
 );
 const token = env.match(/^ADMIN_TOKEN=(.+)$/m)?.[1]?.trim();
 assert(token, "Admin token must exist in the local environment file");
-const browser = await chromium.launch({ channel: process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome", headless: true });
+const browser = await chromium.launch({
+  channel:
+    process.env.PIG_BROWSER_CHANNEL === "chromium" ? undefined : "chrome",
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 async function navigateTo(name) {
-  if (page.viewportSize().width <= 700) await page.getByRole("button", {name:"打开管理导航",exact:true}).click();
-  await page.getByRole("link", {name,exact:true}).click();
+  if (page.viewportSize().width <= 700)
+    await page
+      .getByRole("button", { name: "打开管理导航", exact: true })
+      .click();
+  await page.getByRole("link", { name, exact: true }).click();
 }
 let originalQueueTimeout;
 let invitationFixtureId;
@@ -92,6 +99,8 @@ async function delayedInviteAfterLogout(trigger) {
   }
 }
 async function loginAgain() {
+  if (!(await page.getByLabel("管理员令牌").isVisible()))
+    await page.getByText("首次部署 / 内部令牌登录", { exact: true }).click();
   await page.getByLabel("管理员令牌").fill(token);
   await page.getByRole("button", { name: "连接平台", exact: true }).click();
   await page.locator("#dashboard").waitFor({ state: "visible" });
@@ -101,6 +110,7 @@ page.on("pageerror", (e) => errors.push(e.message));
 await mkdir("data/product-evidence", { recursive: true });
 try {
   await page.goto(base + "/admin/");
+  await page.getByText("首次部署 / 内部令牌登录", { exact: true }).click();
   await page.getByLabel("管理员令牌").fill("invalid-token");
   await page.getByRole("button", { name: "连接平台", exact: true }).click();
   await page.locator("#error").waitFor({ state: "visible" });
@@ -261,6 +271,9 @@ try {
     );
   }
   await navigateTo("账号与配额");
+  await page
+    .getByText("高级兼容方式：设备邀请与内部令牌", { exact: true })
+    .click();
   const fixtureName = `UI delayed invitation ${Date.now()}`;
   const invite = await delayedInviteAfterLogout(async () => {
     await page.getByLabel("新账号名称").fill(fixtureName);

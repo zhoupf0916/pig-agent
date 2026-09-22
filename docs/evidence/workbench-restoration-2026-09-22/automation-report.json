@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "runId": "run_743a945f1e304b57827c1887d742a27b",
+  "checks": [
+    "Manual automation create",
+    "Run without conversation opens detail",
+    "Actual container approval and completion",
+    "Artifact preview actual PIG_CLOUD_CONTAINER_OK",
+    "Mobile artifact layout",
+    "Pause and history",
+    "Run detail reload deep link"
+  ],
+  "errors": []
+}

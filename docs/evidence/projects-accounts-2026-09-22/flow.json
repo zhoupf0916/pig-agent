@@ -1,0 +1,15 @@
+{
+  "at": "2026-09-22T04:41:01.186Z",
+  "base": "http://127.0.0.1:8892",
+  "checks": [
+    "User submits account/password application through real browser",
+    "Pending application cannot log in",
+    "390×844 mobile admin approval controls visible; no horizontal overflow",
+    "Administrator logs in by password and approves in actual admin UI",
+    "Approval is idempotent; conflicting repeated decision rejected; no password hashes in list",
+    "Approved user logs in with original password; reload keeps session",
+    "Member cannot access admin approval API",
+    "Rejected application cannot log in",
+    "Wrong password rejected; persisted password is salted scrypt; logout works"
+  ]
+}

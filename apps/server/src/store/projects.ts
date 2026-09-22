@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { existsSync, constants } from "node:fs";
+import { mkdir, readdir, readFile, rm, writeFile, realpath, stat, access } from "node:fs/promises";
+import { basename, join, isAbsolute } from "node:path";
 import { DATA_DIR, ensureDir } from "../config.ts";
 import type {
   InboxItem,
@@ -90,8 +90,13 @@ function normalizeInvite(raw: ProjectInvite): ProjectInvite {
 }
 
 function normalizeProject(raw: Project): Project {
+  const workspaces = raw.workspaces ?? (raw.workspaceRoot ? [{id: "ws_legacy", name: basename(raw.workspaceRoot), path: raw.workspaceRoot, createdAt: raw.createdAt}] : []);
+  const defaultWorkspaceId = workspaces.find(w => w.id === raw.defaultWorkspaceId)?.id ?? workspaces[0]?.id;
   return {
     ...raw,
+    workspaces,
+    defaultWorkspaceId,
+    workspaceRoot: workspaces.find(w => w.id === defaultWorkspaceId)?.path,
     instruction: raw.instruction ?? "",
     members: raw.members ?? [],
     invites: (raw.invites ?? []).map(normalizeInvite),
@@ -138,9 +143,13 @@ async function activity(
 export async function createProject(input: {
   name: string;
   instruction?: string;
+  workspaceRoot?: string;
 }): Promise<Project> {
   ensureDir(DIR);
   const project = emptyProject(input.name, input.instruction ?? "");
+  project.workspaceRoot = await validateProjectWorkspace(input.workspaceRoot);
+  project.workspaces = project.workspaceRoot ? [{id: newId("ws"), name: basename(project.workspaceRoot), path: project.workspaceRoot, createdAt: nowIso()}] : [];
+  project.defaultWorkspaceId = project.workspaces[0]?.id;
   await activity(project, `创建了项目「${project.name}」`);
   await writeProject(project);
   return project;
@@ -170,6 +179,9 @@ export async function listProjects(): Promise<ProjectSummary[]> {
     id: project.id,
     name: project.name,
     instruction: project.instruction,
+    workspaceRoot: project.workspaceRoot,
+    workspaces: project.workspaces,
+    defaultWorkspaceId: project.defaultWorkspaceId,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
     memberCount: project.members.length,
@@ -181,10 +193,21 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 
 export async function updateProject(
   id: string,
-  patch: { name?: string; instruction?: string },
+  patch: { name?: string; instruction?: string; workspaceRoot?: string },
 ): Promise<Project | null> {
+  return serializeProject(id, async () => {
   const project = await readProjectFile(id);
   if (!project) return null;
+  if (patch.workspaceRoot !== undefined) {
+    const root = await validateProjectWorkspace(patch.workspaceRoot);
+    const existing = project.workspaces!.find(w => w.id === project.defaultWorkspaceId);
+    if (root) {
+      if (project.workspaces!.some(w => w.id !== existing?.id && w.path === root)) throw new ProjectInviteError("目录已在此项目中");
+      if (existing) existing.path = root;
+      else project.workspaces!.push({id: newId("ws"), name: basename(root), path: root, createdAt: nowIso()});
+    } else project.workspaces = project.workspaces!.filter(w => w.id !== existing?.id);
+    syncWorkspaceDefault(project);
+  }
   if (typeof patch.name === "string" && patch.name.trim() && patch.name.trim() !== project.name) {
     const next = patch.name.trim();
     await activity(project, `将项目名改为「${next}」`);
@@ -195,6 +218,7 @@ export async function updateProject(
     await activity(project, "更新了项目指令");
   }
   return writeProject(project);
+  });
 }
 
 export async function deleteProject(id: string): Promise<boolean> {
@@ -696,4 +720,51 @@ export async function clearProjectSessionRefs(sessionId: string): Promise<void> 
     }
     if (changed) await writeProject(project);
   }
+}
+
+/** Explicit local project roots must already exist; never create arbitrary paths. */
+export async function validateProjectWorkspace(value?: string): Promise<string | undefined> {
+  if (!value?.trim()) return undefined;
+  if (!isAbsolute(value) || value.includes("\0")) throw new ProjectInviteError("工作区必须是已存在的绝对目录");
+  try {
+    const root = await realpath(value);
+    if (!(await stat(root)).isDirectory()) throw new Error("not a directory");
+    await access(root, constants.R_OK | constants.X_OK);
+    return root;
+  } catch { throw new ProjectInviteError("工作区目录不存在或无法访问"); }
+}
+
+function syncWorkspaceDefault(project: Project) {
+  project.defaultWorkspaceId = project.workspaces?.find(w => w.id === project.defaultWorkspaceId)?.id ?? project.workspaces?.[0]?.id;
+  project.workspaceRoot = project.workspaces?.find(w => w.id === project.defaultWorkspaceId)?.path;
+}
+const workspaceWrites = new Map<string, Promise<unknown>>();
+async function serializeProject<T>(id: string, operation: () => Promise<T>): Promise<T> {
+  const previous = workspaceWrites.get(id) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  workspaceWrites.set(id, current);
+  try { return await current; } finally { if (workspaceWrites.get(id) === current) workspaceWrites.delete(id); }
+}
+export async function mutateProjectWorkspace(id: string, workspaceId: string | undefined, patch: {name?: string; path?: string; setDefault?: boolean}, remove = false): Promise<Project | null> {
+  return serializeProject(id, async () => {
+    const project = await readProjectFile(id);
+    if (!project) return null;
+    const workspaces = project.workspaces!;
+    let workspace = workspaceId ? workspaces.find(w => w.id === workspaceId) : undefined;
+    if (workspaceId && !workspace) throw new ProjectInviteError("工作区不存在", 404);
+    if (remove) project.workspaces = workspaces.filter(w => w.id !== workspaceId);
+    else {
+      const path = patch.path !== undefined ? await validateProjectWorkspace(patch.path) : workspace?.path;
+      if (!path) throw new ProjectInviteError("请选择已存在的工作目录");
+      if (workspaces.some(w => w.id !== workspaceId && w.path === path)) throw new ProjectInviteError("目录已在此项目中", 409);
+      if (!workspace) {
+        if (workspaces.length >= 32) throw new ProjectInviteError("每个项目最多支持32个工作区");
+        workspace = {id: newId("ws"), name: patch.name?.trim() || basename(path), path, createdAt: nowIso()};
+        workspaces.push(workspace);
+      } else { workspace.path = path; if (patch.name !== undefined) workspace.name = patch.name.trim() || basename(path); }
+      if (patch.setDefault) project.defaultWorkspaceId = workspace.id;
+    }
+    syncWorkspaceDefault(project);
+    return writeProject(project);
+  });
 }

@@ -3,6 +3,7 @@ import type { RemoteActivity } from "../lib/remote-activity";
 import { WorkbenchPanel } from "./WorkbenchPanel";
 import {
   ArrowUp,
+  Plus,
   FileText,
   FolderOpen,
   Sparkles,
@@ -55,6 +56,7 @@ export function ChatPanel({
   onDraft,
   onResume,
   onRefresh,
+  onEnsureSession,
   onSend,
   onStop,
   onTeamRun,
@@ -85,6 +87,7 @@ export function ChatPanel({
   onDraft: (v: string) => void;
   onResume: () => void;
   onRefresh: () => void;
+  onEnsureSession?: () => Promise<Session>;
   onSend: () => void;
   onStop: () => void;
   onTeamRun: () => void;
@@ -160,8 +163,16 @@ export function ChatPanel({
   );
 
   const empty = visible.length === 0 && !streaming;
+  const attachments = useLocalAttachments(
+    session,
+    onRefresh,
+    onEnsureSession,
+    initializing,
+    streaming || session?.status === "running",
+  );
   const composer = (
     <Composer
+      attachments={attachments}
       draft={draft}
       streaming={streaming || session?.status === "running"}
       disabled={initializing}
@@ -390,15 +401,33 @@ export function ChatPanel({
             />
           )}
 
-          {interleave(visible, tools).map((item) =>
+          {compactToolHistory(interleave(visible, tools)).map((item) =>
             item.kind === "message" ? (
               <MessageBlock key={item.message.id} message={item.message} />
+            ) : item.kind === "tool-group" ? (
+              <details
+                key={item.tools[0]!.id}
+                className="rounded-btn border border-ink-300 p-3 text-sm text-ink-600"
+              >
+                <summary className="cursor-pointer">
+                  已完成 {item.tools.length} 项操作{" "}
+                  <span className="text-xs">· 展开查看</span>
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {item.tools.map((tool) => (
+                    <ToolCard key={tool.id} tool={tool} />
+                  ))}
+                </div>
+              </details>
             ) : (
               <ToolCard
                 key={item.tool.id}
                 tool={item.tool}
                 awaitingApproval={remoteActivity?.approvals.some(
-                  (a) => a.state === "pending" && a.call_id === item.tool.id,
+                  (a) =>
+                    !item.tool.done &&
+                    a.state === "pending" &&
+                    a.call_id === item.tool.id,
                 )}
               />
             ),
@@ -414,7 +443,11 @@ export function ChatPanel({
           {streaming && tools.every((t) => t.done) && (
             <div className="flex items-center gap-2 text-xs text-ink-500">
               <Loader2 size={14} className="animate-spin text-accent" />
-              {streamingStatusLabel(session?.steps ?? [])}
+              {session?.messages.some(
+                (message) => message.id === "stream_live" && message.content,
+              )
+                ? "正在生成回复…"
+                : streamingStatusLabel(session?.steps ?? [])}
             </div>
           )}
           {!!session?.artifacts.length && !streaming && (
@@ -561,6 +594,35 @@ function interleave(
   return out;
 }
 
+function compactToolHistory(items: ReturnType<typeof interleave>) {
+  const result: Array<
+    (typeof items)[number] | { kind: "tool-group"; tools: LiveTool[] }
+  > = [];
+  let completed: LiveTool[] = [];
+  const flush = () => {
+    if (completed.length === 1)
+      result.push({ kind: "tool", tool: completed[0]! });
+    else if (completed.length > 1)
+      result.push({ kind: "tool-group", tools: completed });
+    completed = [];
+  };
+  for (const item of items) {
+    if (
+      item.kind === "tool" &&
+      item.tool.done &&
+      item.tool.ok &&
+      !/^(待批准|前序变更等待|undone:|rejected:)/.test(item.tool.output || "")
+    )
+      completed.push(item.tool);
+    else {
+      flush();
+      result.push(item);
+    }
+  }
+  flush();
+  return result;
+}
+
 function TeamPipeline({
   teamName,
   members,
@@ -649,7 +711,11 @@ function MessageBlock({ message }: { message: ChatMessage }) {
   const mine = message.role === "user";
   return (
     <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div className={`message-body ${mine ? "from-user" : "from-agent"}`}>
+      <div
+        className={`message-body ${mine ? "from-user" : "from-agent"}`}
+        data-streaming={message.id === "stream_live" ? "true" : undefined}
+        aria-busy={message.id === "stream_live" || undefined}
+      >
         {mine ? (
           <div className="whitespace-pre-wrap">{message.content}</div>
         ) : (
@@ -732,6 +798,7 @@ function ToolCard({
 }
 
 function Composer({
+  attachments,
   draft,
   streaming,
   disabled,
@@ -739,6 +806,7 @@ function Composer({
   onSend,
   onStop,
 }: {
+  attachments: ReturnType<typeof useLocalAttachments>;
   draft: string;
   streaming: boolean;
   disabled: boolean;
@@ -746,10 +814,110 @@ function Composer({
   onSend: () => void;
   onStop: () => void;
 }) {
+  const {
+    picker,
+    uploads,
+    uploadError,
+    available,
+    blocked,
+    uploadLock,
+    uploadFiles,
+    setUploads,
+  } = attachments;
   return (
-    <div className="composer-shell bg-ink-50">
+    <div
+      className="composer-shell bg-ink-50"
+      onDragOver={(e) => {
+        if (available) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={(e) => {
+        if (available) {
+          e.preventDefault();
+          void uploadFiles(Array.from(e.dataTransfer.files));
+        }
+      }}
+    >
+      {uploads.length > 0 && (
+        <div
+          className="local-attachments mx-auto max-w-3xl"
+          aria-label="任务附件"
+        >
+          {uploads.map((row) => (
+            <div key={row.id}>
+              <FileText size={16} />
+              <span>
+                {row.file.name}
+                <small>
+                  {row.state === "uploading"
+                    ? "正在上传…"
+                    : row.state === "done"
+                      ? "已保存到工作区"
+                      : row.error}
+                </small>
+              </span>
+              {row.state === "error" && (
+                <>
+                  <button
+                    onClick={() => {
+                      setUploads((rows) => rows.filter((f) => f.id !== row.id));
+                      void uploadFiles([row.file]);
+                    }}
+                  >
+                    重试
+                  </button>
+                  <button
+                    aria-label={`移除 ${row.file.name}`}
+                    onClick={() =>
+                      setUploads((rows) => rows.filter((f) => f.id !== row.id))
+                    }
+                  >
+                    <X size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {uploadError && (
+        <p role="alert" className="mx-auto max-w-3xl text-danger">
+          {uploadError}
+        </p>
+      )}
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        aria-label="添加本地任务文件"
+        onChange={(e) => {
+          void uploadFiles(Array.from(e.target.files || []));
+          e.target.value = "";
+        }}
+      />
       <div className="composer-box mx-auto flex max-w-3xl items-end gap-3 rounded-card border border-ink-400 bg-panel px-3 py-2 shadow-panel">
+        {available && (
+          <button
+            type="button"
+            className="btn-quiet mb-1"
+            aria-label="添加文件"
+            title="添加文件，每个不超过5MB；也可拖拽或粘贴截图"
+            disabled={disabled || streaming || blocked}
+            onClick={() => picker.current?.click()}
+          >
+            <Plus size={20} />
+          </button>
+        )}
         <textarea
+          onPaste={(e) => {
+            if (available && e.clipboardData.files.length) {
+              e.preventDefault();
+              void uploadFiles(Array.from(e.clipboardData.files));
+            }
+          }}
           value={draft}
           disabled={disabled || streaming}
           placeholder={
@@ -766,7 +934,14 @@ function Composer({
               !e.nativeEvent.isComposing
             ) {
               e.preventDefault();
-              onSend();
+              if (
+                !blocked &&
+                !uploadLock.current &&
+                !disabled &&
+                !streaming &&
+                draft.trim()
+              )
+                onSend();
             }
           }}
           className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-body text-ink-800 placeholder:text-ink-500 disabled:cursor-not-allowed disabled:text-ink-500"
@@ -784,8 +959,10 @@ function Composer({
         ) : (
           <button
             type="button"
-            disabled={disabled || !draft.trim()}
-            onClick={onSend}
+            disabled={disabled || blocked || !draft.trim()}
+            onClick={() => {
+              if (!uploadLock.current && !blocked) onSend();
+            }}
             className="btn-primary mb-1 h-10 w-10 shrink-0 rounded-xl"
             aria-label="发送"
             title="发送"
@@ -795,7 +972,7 @@ function Composer({
         )}
       </div>
       <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
-        Enter 发送 · Shift+Enter 换行
+        Enter 发送 · Shift+Enter 换行{available ? " · 拖拽文件或粘贴截图" : ""}
       </p>
     </div>
   );
@@ -848,4 +1025,101 @@ function EmptyState({
       )}
     </div>
   );
+}
+
+function useLocalAttachments(
+  session: Session | null,
+  onRefresh: () => void,
+  onEnsureSession: (() => Promise<Session>) | undefined,
+  disabled: boolean,
+  streaming: boolean,
+) {
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+  const picker = useRef<HTMLInputElement>(null);
+  const uploadLock = useRef(false);
+  const attachmentSession = useRef(session?.id);
+  attachmentSession.current = session?.id;
+  useEffect(() => {
+    if (!uploadLock.current) {
+      setUploads([]);
+      setUploadError("");
+    }
+  }, [session?.id]);
+  const [uploads, setUploads] = useState<
+    Array<{
+      id: string;
+      file: File;
+      state: "uploading" | "done" | "error";
+      error?: string;
+    }>
+  >([]);
+  const [uploadError, setUploadError] = useState("");
+  const available =
+    !session ||
+    (session.executionTarget !== "remote" &&
+      (!session.engine || session.engine === "pig"));
+  const blocked = uploads.some((f) => f.state !== "done");
+  async function uploadFiles(files: File[]) {
+    if (
+      !available ||
+      disabled ||
+      streaming ||
+      uploadLock.current ||
+      !files.length
+    )
+      return;
+    uploadLock.current = true;
+    setUploadError("");
+    try {
+      const target = session || (await onEnsureSession?.());
+      if (!target) throw new Error("请先新建任务，再添加文件。");
+      for (const file of files) {
+        const id = crypto.randomUUID();
+        setUploads((rows) => [...rows, { id, file, state: "uploading" }]);
+        try {
+          if (file.size > 5 * 1024 * 1024) throw new Error("超过5MB上限");
+          const body = new FormData();
+          body.append("file", file);
+          const response = await fetch(`/api/sessions/${target.id}/upload`, {
+            method: "POST",
+            body,
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "上传失败");
+          setUploads((rows) =>
+            rows.map((row) =>
+              row.id === id ? { ...row, state: "done" } : row,
+            ),
+          );
+        } catch (e) {
+          setUploads((rows) =>
+            rows.map((row) =>
+              row.id === id
+                ? { ...row, state: "error", error: String(e) }
+                : row,
+            ),
+          );
+        }
+      }
+      if (attachmentSession.current && attachmentSession.current !== target.id)
+        setUploads([]);
+      refreshRef.current();
+    } catch (e) {
+      setUploadError(String(e));
+    } finally {
+      uploadLock.current = false;
+    }
+  }
+
+  return {
+    picker,
+    uploads,
+    uploadError,
+    available,
+    blocked,
+    uploadLock,
+    uploadFiles,
+    setUploads,
+  };
 }

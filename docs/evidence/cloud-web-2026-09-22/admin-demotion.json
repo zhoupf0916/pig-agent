@@ -1,0 +1,13 @@
+{
+  "at": "2026-09-22T03:47:48.966Z",
+  "environment": "local 2-control-plane Docker cluster :8892",
+  "fixturePrincipal": "auth_review_f1ed5fac8e924de19d8634cf1b4144f3",
+  "runId": "run_dee5762a2b1347658f579b1f71c7fc45",
+  "checks": [
+    "Fixture admin could subscribe to member-owned private run",
+    "Demotion closed already-open run SSE",
+    "Demoted fixture cannot fetch private run or resubscribe"
+  ],
+  "revocationObservedWithinMs": 108,
+  "existingAdminUnmodified": true
+}

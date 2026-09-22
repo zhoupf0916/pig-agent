@@ -1,3 +1,4 @@
+import { nativeFileTool } from "./agent/file-helper-client.ts";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveInWorkspace, toRel } from "./agent/sandbox.ts";
@@ -11,6 +12,8 @@ export async function buildTree(
   rel = ".",
   maxDepth = 6,
 ): Promise<WorkspaceNode> {
+  if (process.env.PIG_FILE_HELPER !== "1") return JSON.parse((await nativeFileTool("__tree", {path:rel,maxDepth}, {workspaceRoot,shellMode:"native",artifacts:[],recordArtifact:()=>{}})).output);
+
   const abs = resolveInWorkspace(workspaceRoot, rel, { mustExist: true });
   let count = 0;
 
@@ -74,6 +77,8 @@ export async function readWorkspaceText(
   workspaceRoot: string,
   rel: string,
 ): Promise<{ path: string; content: string; binary: boolean; size: number }> {
+  if (process.env.PIG_FILE_HELPER !== "1") return JSON.parse((await nativeFileTool("__preview", {path:rel}, {workspaceRoot,shellMode:"native",artifacts:[],recordArtifact:()=>{}})).output);
+
   const abs = resolveInWorkspace(workspaceRoot, rel, { mustExist: true });
   const st = await stat(abs);
   if (st.isDirectory()) {

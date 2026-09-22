@@ -1,3 +1,5 @@
+import { executionPolicy } from "./execution-policy.ts";
+import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import type { Hono } from "hono";
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
@@ -7,6 +9,8 @@ import type { CloudEnv } from "./types.ts";
 import { InvalidScheduleError, missedFire, nextFire } from "./schedule-time.ts";
 
 const schema = z.object({
+  requireApproval: z.boolean().optional(),
+  networkPolicy: z.enum(["ask","blocked"]).optional(),
   name: z.string().trim().min(1).max(120),
   prompt: z.string().trim().min(1).max(20000),
   enabled: z.boolean().default(true),
@@ -21,7 +25,7 @@ type Row = {
   id: string;
   owner_id: string;
   name: string;
-  input: { prompt: string; messages: unknown[] };
+  input: { prompt: string; messages: unknown[]; requireApproval?: boolean; networkPolicy?: "ask"|"blocked" };
   enabled: boolean;
   cron: string | null;
   timezone: string;
@@ -37,6 +41,8 @@ const view = (r: Row) => ({
   id: r.id,
   name: r.name,
   prompt: r.input.prompt,
+  requireApproval: r.input.requireApproval ?? true,
+  networkPolicy: r.input.networkPolicy ?? "ask",
   enabled: r.enabled,
   schedule: r.cron,
   timezone: r.timezone,
@@ -91,7 +97,20 @@ async function enqueue(c: PoolClient, row: Row, key: string): Promise<string> {
   const id = `run_${randomUUID().replaceAll("-", "")}`;
   await c.query(
     "INSERT INTO runs(id,owner_id,input,request_key,schedule_id) VALUES($1,$2,$3,$4,$5)",
-    [id, row.owner_id, row.input, key, row.id],
+    [
+      id,
+      row.owner_id,
+      {
+        ...row.input,
+        privateMemoryContext: await buildUserContext(
+          row.owner_id,
+          undefined,
+          c,
+        ),
+      },
+      key,
+      row.id,
+    ],
   );
   await c.query(
     "UPDATE schedules SET last_run_id=$2,last_run_at=now(),last_error=NULL,updated_at=now() WHERE id=$1",
@@ -206,6 +225,7 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
         [c.get("principal").id],
       );
       if (Number(count.rows[0].count) >= 100) return null;
+      const defaults = await loadUserSettings(c.get("principal").id, client);
       return (
         await client.query(
           "INSERT INTO schedules(id,owner_id,request_key,name,input,cron,timezone,enabled,misfire,next_fire_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
@@ -214,7 +234,11 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
             c.get("principal").id,
             key,
             p.name,
-            { prompt: p.prompt, messages: [] },
+            {
+              prompt: p.prompt,
+              messages: [],
+              ...executionPolicy(p,defaults),
+            },
             p.schedule,
             p.timezone,
             p.enabled,
@@ -229,6 +253,8 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
       result.deleted_at ||
       result.name !== p.name ||
       result.input.prompt !== p.prompt ||
+      (p.requireApproval !== undefined && result.input.requireApproval !== p.requireApproval) ||
+      (p.networkPolicy !== undefined && result.input.networkPolicy !== p.networkPolicy) ||
       result.cron !== p.schedule ||
       result.timezone !== p.timezone ||
       result.misfire !== p.misfirePolicy ||
@@ -278,7 +304,7 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
             [
               old.id,
               p.name,
-              { ...old.input, prompt: p.prompt },
+              { ...old.input, prompt: p.prompt, requireApproval:p.requireApproval, networkPolicy:p.networkPolicy },
               p.schedule,
               p.timezone,
               p.enabled,

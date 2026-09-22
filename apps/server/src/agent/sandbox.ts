@@ -57,6 +57,10 @@ export function resolveInWorkspace(
     return assertRealpathInside(root, candidate);
   }
 
+  if (!existsSync(candidate) && lstatSync(candidate, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new SandboxError("Dangling symbolic link is not a writable workspace file");
+  }
+
   if (existsSync(candidate)) {
     return assertRealpathInside(root, candidate);
   }

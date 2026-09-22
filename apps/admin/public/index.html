@@ -59,19 +59,41 @@
           <span class="eyebrow">WELCOME TO PIG AGENT</span>
           <h1>连接你的执行平台</h1>
           <p>管理任务、Runner 与模型渠道，在一个控制面中掌握执行状态。</p>
-          <form id="login-form">
-            <label for="token">管理员令牌</label
-            ><input
-              id="token"
-              type="password"
-              autocomplete="off"
-              placeholder="输入管理员访问令牌"
-              required
-            /><button class="primary">连接平台</button>
+          <form id="password-login-form">
+            <label
+              >管理员账号<input
+                id="admin-username"
+                autocomplete="username"
+                required
+                minlength="3"
+                maxlength="32"
+            /></label>
+            <label
+              >密码<input
+                id="admin-password"
+                type="password"
+                autocomplete="current-password"
+                required
+                minlength="10"
+                maxlength="128"
+            /></label>
+            <button class="primary">登录管理后台</button>
           </form>
-          <p class="hint">
-            使用平台管理员提供的访问令牌。后台操作会记录审计日志；登录仅保留在当前标签页。
-          </p>
+          <details>
+            <summary>首次部署 / 内部令牌登录</summary>
+            <form id="login-form">
+              <label for="token">管理员令牌</label
+              ><input
+                id="token"
+                type="password"
+                autocomplete="off"
+                required
+              /><button>连接平台</button>
+            </form>
+            <p class="hint">
+              首次部署可使用管理员令牌，在账号页绑定密码后使用账号登录。
+            </p>
+          </details>
         </section>
         <div id="error" class="notice error" role="alert" hidden></div>
         <div id="feedback" class="notice success" role="status" hidden></div>
@@ -154,7 +176,7 @@
               <div>
                 <span class="eyebrow">RUNNER FLEET</span>
                 <h1>Runner 集群</h1>
-                <p>每个 Runner 在自己的 Docker 环境中创建隔离执行容器。</p>
+                <p>Runner 在独立工作区中启动原生沙箱执行任务；平台服务可使用 Docker 部署。</p>
               </div>
             </div>
             <div class="notice neutral">
@@ -309,20 +331,54 @@
                 <p>管理成员访问权限、登录会话和每日模型调用额度。</p>
               </div>
             </div>
-            <form id="invite-form" class="panel inline-form">
-              <label
-                >新账号名称<input
-                  id="invite-name"
-                  placeholder="成员名称"
-                  required
-                  maxlength="80" /></label
-              ><button class="primary">创建 24 小时邀请</button
-              ><output
-                id="invite-result"
-                class="invite-output"
-                aria-live="polite"
-              ></output>
-            </form>
+            <section class="panel">
+              <h2>账号申请</h2>
+              <p>
+                核对申请人的姓名与用途，批准后才能登录。密码不会向管理员展示。
+              </p>
+              <div id="registration-requests"></div>
+            </section>
+            <details class="panel">
+              <summary>设置我的管理员账号密码</summary>
+              <form id="admin-password-form">
+                <label
+                  >账号<input
+                    id="new-admin-username"
+                    required
+                    minlength="3"
+                    maxlength="32"
+                    autocomplete="username" /></label
+                ><label
+                  >新密码<input
+                    id="new-admin-password"
+                    type="password"
+                    required
+                    minlength="10"
+                    maxlength="128"
+                    autocomplete="new-password" /></label
+                ><button>保存并重新登录</button>
+              </form>
+            </details>
+            <details class="panel">
+              <summary>高级兼容方式：设备邀请与内部令牌</summary>
+              <p class="hint">
+                新成员请在工作台申请账号，并在上方审核。此方式仅保留给旧版设备接入。
+              </p>
+              <form id="invite-form" class="panel inline-form">
+                <label
+                  >新账号名称<input
+                    id="invite-name"
+                    placeholder="成员名称"
+                    required
+                    maxlength="80" /></label
+                ><button class="primary">创建 24 小时邀请</button
+                ><output
+                  id="invite-result"
+                  class="invite-output"
+                  aria-live="polite"
+                ></output>
+              </form>
+            </details>
             <label class="checkbox-label"
               ><input id="show-disabled" type="checkbox" />显示已禁用账号</label
             >

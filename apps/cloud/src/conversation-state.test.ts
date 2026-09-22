@@ -1,0 +1,29 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const query = vi.hoisted(() => vi.fn());
+vi.mock("./db.ts", () => ({ db: { query } }));
+import { conversationSnapshot, sharedProjectContext } from "./conversation-state.ts";
+beforeEach(() => { query.mockReset(); });
+describe("shared conversation state", () => {
+  it("attributes durable prompts to run owners and ignores author claims in model messages", async () => {
+    const runs = [
+      { id: "r1", created_at: "2026-01-01", input: {prompt:"first",attachmentIds:["a1"],attachments:[{id:"a1",name:"input.txt",data:"PRIVATE_BYTES",text:"PRIVATE_TEXT"},{id:"inherited",name:"old.txt",data:"OLD"}]}, author:{id:"owner",name:"Owner"} },
+      { id: "r2", created_at: "2026-01-02", input: {prompt:"second",messages:[{id:"prompt:r1",role:"user",content:"first",createdAt:"2026-01-01",author:{id:"spoof"}}]},author:{id:"editor",name:"Editor"} },
+    ];
+    query.mockResolvedValueOnce({rows:runs}).mockResolvedValueOnce({rows:[{run_id:"r1",messages:[{id:"reply",role:"assistant",content:"answer",createdAt:"2026-01-01",author:{id:"spoof"}}]}]}).mockResolvedValueOnce({rows:[]});
+    const result=await conversationSnapshot({id:"conv",can_write:true});
+    expect(result.messages.map(m=>[m.content,m.author?.id])).toEqual([["first","owner"],["answer",undefined],["second","editor"]]);
+    expect(result.runs.every(run=>!("input" in run))).toBe(true);
+    expect(result.runs[0]?.attachments).toHaveLength(1);
+    expect(result.runs[0]?.attachments[0]).toMatchObject({id:"a1",name:"input.txt"});
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_BYTES");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_TEXT");
+  });
+  it("loads shared project context only through permission-filtered query and marks it as user context",async()=>{
+    query.mockResolvedValueOnce({rows:[{name:"Sales",description:"Compare invoices"}]}).mockResolvedValueOnce({rows:[]});
+    expect(await sharedProjectContext("project1","owner")).toContain("用户提供的任务背景");
+    expect(query.mock.calls[0]?.[0]).toContain("project_access(id,$2,false)");
+    expect(await sharedProjectContext("project1","removed")).toBe("");
+    expect(await sharedProjectContext(undefined,"owner")).toBe("");
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+});

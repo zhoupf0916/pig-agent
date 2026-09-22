@@ -185,3 +185,9 @@ export function publicSettings(settings: Settings): Settings & {
     executionSurface: inspectExecutionSurface(settings),
   };
 }
+
+/** A project task keeps its original directory even when project defaults change. */
+export async function loadSessionSettings(session: { workspaceRoot?: string }): Promise<Settings> {
+  const settings = await loadSettings();
+  return session.workspaceRoot ? { ...settings, workspaceRoot: session.workspaceRoot } : settings;
+}

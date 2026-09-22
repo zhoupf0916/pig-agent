@@ -31,7 +31,7 @@ function compose(args) {
   if (r.status !== 0) process.exit(r.status || 1);
 }
 if (command === "up") {
-  compose(["--profile", "build", "build"]);
+  compose(["build"]);
   compose(["up", "-d", "--wait", "--wait-timeout", "120"]);
   compose([
     "exec",
@@ -71,31 +71,6 @@ if (command === "up") {
   console.log("Published control entrypoint is healthy: http://127.0.0.1:8892");
 } else if (command === "down") {
   compose(["stop", "runner-a", "runner-b"]);
-  // Only resources explicitly labeled for this isolated stack may be removed.
-  const owned = (kind) => {
-    const args =
-      kind === "containers" ? ["ps", "-aq"] : ["network", "ls", "-q"];
-    const r = spawnSync(
-      "docker",
-      [...args, "--filter", "label=pig-agent.cluster=pig-agent-cluster"],
-      { encoding: "utf8" },
-    );
-    if (r.status !== 0) throw Error("Cannot list cluster resources");
-    return r.stdout.trim().split(/\s+/).filter(Boolean);
-  };
-  for (const id of owned("containers")) {
-    const r = spawnSync("docker", ["rm", "-f", id], { stdio: "inherit" });
-    if (r.status !== 0) throw Error("Cannot remove cluster container");
-  }
-  for (const id of owned("networks")) {
-    spawnSync(
-      "docker",
-      ["network", "disconnect", "-f", id, "pig-agent-cluster-gateway-1"],
-      { stdio: "ignore" },
-    );
-    const r = spawnSync("docker", ["network", "rm", id], { stdio: "inherit" });
-    if (r.status !== 0) throw Error("Cannot remove cluster network");
-  }
   compose(["down"]);
 } else if (command === "logs")
   compose(["logs", "--tail", "100", ...process.argv.slice(3)]);

@@ -25,6 +25,18 @@ describe("shouldSkipCloudHandoffName", () => {
 });
 
 describe("workspace snapshot", () => {
+  it("excludes immutable attachment inputs without truncating generated outputs", () => {
+    const source=mkdtempSync(join(tmpdir(),"pig-snap-attachments-"));
+    mkdirSync(join(source,"attachments"));
+    writeFileSync(join(source,"attachments","large.png"),Buffer.alloc(800000,1));
+    writeFileSync(join(source,"attachments","edited.md"),"new deliverable");
+    writeFileSync(join(source,"report.md"),"summary");
+    const snapshot=packWorkspaceSnapshot(source,["attachments/large.png"]);
+    expect(snapshot.truncated).not.toBe(true);
+    expect(snapshot.files).toEqual(expect.arrayContaining(["attachments/edited.md","report.md"]));
+    expect(snapshot.files).not.toContain("attachments/large.png");
+    expect(packWorkspaceSnapshot(source).truncated).toBe(true);
+  });
   it("packs sandbox-safe files and skips secrets / heavy dirs", () => {
     const source = mkdtempSync(join(tmpdir(), "pig-snap-src-"));
     mkdirSync(join(source, "notes"));

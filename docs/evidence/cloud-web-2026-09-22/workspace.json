@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "two separate accounts log in with cookie sessions",
+    "create organization/project with shared background and editor join through actual UI",
+    "peer opens conversation deep link and sees prompt during running",
+    "peer receives progressive text before terminal; refresh does not duplicate final reply",
+    "cloud artifact preview content matches real container output",
+    "second user continues same conversation and first user approves",
+    "desktop and mobile actual screenshots; no horizontal overflow",
+    "held pre-logout project response cannot repopulate old-account metadata after login as another account without page reload"
+  ],
+  "conversationUrl": "http://127.0.0.1:8892/#/conversations/conv_3cfb3cc9b74f493897f25ddb518f2185",
+  "errors": []
+}

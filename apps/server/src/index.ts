@@ -1,3 +1,5 @@
+import { createWebEntry } from "./web-entry.ts";
+import { loadSettings } from "./store/settings.ts";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { existsSync } from "node:fs";
@@ -9,11 +11,17 @@ import { PORT, PROJECT_ROOT } from "./config.ts";
 
 process.chdir(PROJECT_ROOT);
 
-const app = createApp();
-startAutomationScheduler();
+// Local API is for the desktop test harness only, never the default Web surface.
+const localHarness = process.env.PIG_LOCAL_WORKBENCH === "1" || process.env.PIG_DESKTOP === "1";
+const settings = localHarness ? undefined : await loadSettings();
+const app = localHarness ? createApp() : createWebEntry(process.env.CLOUD_WEB_URL || settings?.cloudBaseUrl || "http://127.0.0.1:8890");
+if (localHarness) {
+  app.get("/api/deployment", c => c.json({ surface: "local-dev" }));
+  startAutomationScheduler();
+}
 const webDist = resolve(PROJECT_ROOT, "apps/web/dist");
 
-if (existsSync(webDist)) {
+if (localHarness && existsSync(webDist)) {
   const rel = "apps/web/dist";
   app.use("/*", serveStatic({ root: rel }));
   app.get("*", serveStatic({ root: rel, path: "index.html" }));
@@ -29,7 +37,7 @@ serve(
     const here = dirname(fileURLToPath(import.meta.url));
     console.log(`Pig Agent API  http://127.0.0.1:${info.port}`);
     console.log(`UI (dev)       http://127.0.0.1:5173`);
-    if (existsSync(webDist)) {
+    if (localHarness && existsSync(webDist)) {
       console.log(`UI (static)    http://127.0.0.1:${info.port}`);
     }
     console.log(`cwd            ${here}`);

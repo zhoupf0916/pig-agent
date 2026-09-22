@@ -10,6 +10,7 @@ x-cloud: &cloud
     MEMBER2_TOKEN: ${MEMBER2_TOKEN}
     WORKER_TOKEN: ${WORKER_TOKEN}
     MODEL_MODE: mock
+    WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-}
   networks: [control, egress]
   depends_on:
     postgres: { condition: service_healthy }
@@ -24,17 +25,30 @@ x-worker: &worker
   environment: &worker-env
     CONTROL_URL: http://control:8890
     WORKER_TOKEN: ${WORKER_TOKEN}
-    RUNNER_IMAGE: pig-agent-cluster-runner:local
     WORKER_CAPACITY: 2
     WORKER_NAMESPACE: pig-agent-cluster
-    GATEWAY_CONTAINER: pig-agent-cluster-gateway-1
-  volumes: ["/var/run/docker.sock:/var/run/docker.sock", "worker-outbox:/app/data/worker-outbox"]
+  volumes: ["worker-outbox:/app/data/worker-outbox"]
+  init: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true", "seccomp=../cloud/runner-seccomp.json", "systempaths=unconfined"]
+  mem_limit: 4g
+  pids_limit: 1024
   networks: [control]
   stop_grace_period: 40s
   depends_on:
+    worker-storage-init: { condition: service_completed_successfully }
     control: { condition: service_started }
     gateway: { condition: service_started }
 services:
+  worker-storage-init:
+    image: pig-agent-cluster-worker:local
+    user: "0:0"
+    command: ["chown", "-R", "1000:1000", "/outbox"]
+    volumes: ["worker-outbox:/outbox"]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
   postgres:
     image: postgres:17-alpine
     environment: { POSTGRES_USER: pig, POSTGRES_DB: pig, POSTGRES_PASSWORD: "${DB_PASSWORD}" }
@@ -67,10 +81,11 @@ services:
     image: pig-agent-cluster-gateway:local
     build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: gateway }
     environment:
+      NETWORK_DNS_MODE: public
       CONTROL_URL: http://control:8890
       WORKER_TOKEN: ${WORKER_TOKEN}
       MODEL_MODE: mock
-    networks: [control]
+    networks: [control, egress]
     depends_on: [control]
   runner-a:
     <<: *worker
@@ -78,11 +93,6 @@ services:
   runner-b:
     <<: *worker
     hostname: pig-cluster-runner-b
-  runner-image:
-    image: pig-agent-cluster-runner:local
-    build: { context: ../../cloud-dist, dockerfile: ../infra/cloud/Dockerfile, target: runner }
-    profiles: [build]
-    network_mode: none
 volumes:
   worker-outbox:
   database:

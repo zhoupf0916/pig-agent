@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "base": "http://127.0.0.1:8892",
+  "checks": [
+    "Single task header, contextual project drawer, empty collaboration has no invalid composer",
+    "390x844 project drawer close button and Escape both close drawer",
+    "1280x800 execution options remain inside composer; artifact drawer overlays without compressing chat; Escape closes"
+  ],
+  "errors": [],
+  "sizes": [
+    "1440x900",
+    "390x844",
+    "1280x800"
+  ]
+}

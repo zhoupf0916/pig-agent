@@ -10,7 +10,7 @@ import { deleteSessionEvents, getLastEventSeq } from "./events.ts";
 const DIR = join(DATA_DIR, "sessions");
 
 export async function createSession(
-  input: { projectId?: string; expertId?: string; expertTeamId?: string } = {},
+  input: { workspaceId?: string; projectId?: string; expertId?: string; expertTeamId?: string } = {},
 ): Promise<Session> {
   ensureDir(DIR);
   const ts = nowIso();
@@ -26,7 +26,20 @@ export async function createSession(
     artifacts: [],
     eventCheckpointSeq: 0,
   };
-  if (input.projectId) session.projectId = input.projectId;
+  if (input.workspaceId && !input.projectId) throw new Error("工作区必须属于项目");
+  if (input.projectId) {
+    session.projectId = input.projectId;
+    const { getProject, validateProjectWorkspace } = await import("./projects.ts");
+    const { loadSettings } = await import("./settings.ts");
+    const project = await getProject(input.projectId);
+    if (!project) throw new Error("项目不存在");
+    const selectedId = input.workspaceId ?? project.defaultWorkspaceId;
+    const workspace = project.workspaces?.find(w => w.id === selectedId);
+    if (selectedId && !workspace) throw new Error("工作区不属于此项目或已移除");
+    session.workspaceId = workspace?.id;
+    session.workspaceName = workspace?.name;
+    session.workspaceRoot = await validateProjectWorkspace(workspace?.path || (await loadSettings()).workspaceRoot);
+  }
   if (input.expertId) session.expertId = input.expertId;
   if (input.expertTeamId) session.expertTeamId = input.expertTeamId;
   await writeSession(session);
@@ -57,6 +70,9 @@ export async function listSessions(): Promise<SessionSummary[]> {
     updatedAt: session.updatedAt,
     status: session.status,
     projectId: session.projectId,
+    workspaceId: session.workspaceId,
+    workspaceRoot: session.workspaceRoot,
+    workspaceName: session.workspaceName,
     expertId: session.expertId,
     expertTeamId: session.expertTeamId,
   }));

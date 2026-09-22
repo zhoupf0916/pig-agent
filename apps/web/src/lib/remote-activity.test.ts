@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   activityForRun,
+  reconcileApprovals,
   approvalAllowed,
   type RemoteActivity,
 } from "./remote-activity";
@@ -35,4 +36,19 @@ describe("remote task context isolation", () => {
     expect(approvalAllowed("preparing")).toBe(true);
     expect(approvalAllowed("running")).toBe(true);
   });
+});
+
+it("does not revive approved actions from an older pending poll, but accepts runner consumption", () => {
+  const approval = {
+    id: "a",
+    state: "approved",
+  } as RemoteActivity["approvals"][number];
+  expect(
+    reconcileApprovals([approval], [{ ...approval, state: "pending" }])[0]
+      ?.state,
+  ).toBe("approved");
+  expect(
+    reconcileApprovals([approval], [{ ...approval, state: "consumed" }])[0]
+      ?.state,
+  ).toBe("consumed");
 });

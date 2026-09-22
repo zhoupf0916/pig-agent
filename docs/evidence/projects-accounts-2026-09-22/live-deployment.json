@@ -1,0 +1,14 @@
+{
+  "at": "2026-09-22T04:43:41.709Z",
+  "checks": [
+    "live8890 administrator password login and role verified",
+    "projects endpoint available",
+    "logout verified request succeeded",
+    "8797 redirects to cloud workbench",
+    "initial password file0600"
+  ],
+  "health": {
+    "ok": true,
+    "modelMode": "provider"
+  }
+}

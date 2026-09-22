@@ -1,0 +1,137 @@
+.cloud-automations {
+  padding: 28px;
+  overflow: auto;
+  height: 100%;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+.cloud-automations header,
+.ca-row,
+.ca-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cloud-automations h2,
+.cloud-automations h3 {
+  margin: 0 0 8px;
+}
+.cloud-automations p,
+.cloud-automations small {
+  line-height: 1.6;
+}
+.cloud-automations button {
+  padding: 9px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.cloud-automations button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cloud-automations .primary-button {
+  background: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+.ca-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.ca-list article {
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--bg-panel);
+}
+.ca-prompt {
+  white-space: pre-wrap;
+  max-height: 120px;
+  overflow: auto;
+}
+.ca-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.ca-empty {
+  text-align: center;
+  padding: 64px 20px;
+}
+.ca-error {
+  color: #b42318;
+}
+.ca-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: #14243c55;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.ca-overlay > form,
+.ca-overlay > section {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  padding: 24px;
+  width: min(560px, 100%);
+  box-sizing: border-box;
+  max-height: 90vh;
+  overflow: auto;
+}
+.ca-overlay label {
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+}
+.ca-overlay input,
+.ca-overlay textarea,
+.ca-overlay select {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  color: inherit;
+  background: var(--bg-panel);
+}
+.ca-overlay .ca-check {
+  display: flex;
+}
+.ca-check input {
+  width: auto;
+}
+.ca-history {
+  width: 100%;
+  margin-top: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .cloud-automations {
+    padding: 16px;
+  }
+  .cloud-automations > header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .ca-overlay > form,
+  .ca-overlay > section {
+    padding: 18px;
+  }
+  .ca-actions button {
+    flex-grow: 1;
+    justify-content: center;
+  }
+}

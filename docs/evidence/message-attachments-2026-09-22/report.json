@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "runId": "run_5f9fcea87d75465aafda4ca47e64e42b",
+  "checks": [
+    "upload ready",
+    "draft and attachment refresh recovery",
+    "unsupported file blocks send",
+    "remove failed attachment",
+    "mobile composer",
+    "run association",
+    "real Runner completes after approval",
+    "authenticated original download after reload"
+  ],
+  "errors": []
+}

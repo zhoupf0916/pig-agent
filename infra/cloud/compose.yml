@@ -1,5 +1,14 @@
 name: pig-agent-cloud
 services:
+  worker-storage-init:
+    image: pig-agent-worker:local
+    user: "0:0"
+    command: ["chown", "-R", "1000:1000", "/outbox"]
+    volumes: ["worker-outbox:/outbox"]
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
   postgres:
     image: postgres:17-alpine
     environment:
@@ -29,6 +38,7 @@ services:
       MEMBER2_TOKEN: ${MEMBER2_TOKEN}
       WORKER_TOKEN: ${WORKER_TOKEN}
       MODEL_MODE: ${MODEL_MODE:-mock}
+      WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-}
     ports: ["127.0.0.1:8890:8890"]
     networks: [control]
     depends_on:
@@ -53,13 +63,14 @@ services:
         target: gateway,
       }
     environment:
+      NETWORK_DNS_MODE: public
       CONTROL_URL: http://cloud:8890
       WORKER_TOKEN: ${WORKER_TOKEN}
       MODEL_MODE: ${MODEL_MODE:-mock}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com/v1}
       MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
-    networks: [control]
+    networks: [control, egress]
     depends_on:
       cloud: { condition: service_healthy }
   worker:
@@ -74,24 +85,20 @@ services:
     environment:
       CONTROL_URL: http://cloud:8890
       WORKER_TOKEN: ${WORKER_TOKEN}
-      RUNNER_IMAGE: pig-agent-runner:local
-    volumes: ["/var/run/docker.sock:/var/run/docker.sock", "worker-outbox:/app/data/worker-outbox"]
+    volumes: ["worker-outbox:/app/data/worker-outbox"]
+    init: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true", "seccomp=./runner-seccomp.json", "systempaths=unconfined"]
+    mem_limit: 4g
+    pids_limit: 1024
     networks: [control]
     depends_on:
+      worker-storage-init: { condition: service_completed_successfully }
       cloud: { condition: service_healthy }
       gateway: { condition: service_started }
-  runner-image:
-    image: pig-agent-runner:local
-    build:
-      {
-        context: ../../cloud-dist,
-        dockerfile: ../infra/cloud/Dockerfile,
-        target: runner,
-      }
-    profiles: [build]
-    network_mode: none
 volumes:
   worker-outbox:
   database:
 networks:
   control:
+  egress:

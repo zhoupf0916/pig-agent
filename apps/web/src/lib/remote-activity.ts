@@ -8,6 +8,7 @@ export type RemoteActivity = {
   approvals: CloudApproval[];
   error: string;
   loading: boolean;
+  onApprovalDecided?: (id: string, state: "approved" | "rejected") => void;
 };
 export const remoteStateLabels: Record<string, string> = {
   queued: "排队中",
@@ -38,6 +39,18 @@ export function activityForRun(
     ? state
     : { run: null, approvals: [], error: "", loading: !!runId };
 }
+/** A confirmed decision cannot return to pending when an older poll completes. */
+export function reconcileApprovals(
+  previous: CloudApproval[],
+  incoming: CloudApproval[],
+) {
+  return incoming.map((approval) => {
+    const confirmed = previous.find(
+      (a) => a.id === approval.id && a.state !== "pending",
+    );
+    return approval.state === "pending" && confirmed ? confirmed : approval;
+  });
+}
 export function useRemoteActivity(runId?: string): RemoteActivity {
   const [state, setState] = useState<RemoteActivity & { identity?: string }>({
     run: null,
@@ -63,13 +76,16 @@ export function useRemoteActivity(runId?: string): RemoteActivity {
           remoteRequest(`/v1/runs/${runId}/approvals`),
         ]);
         if (active)
-          setState({
+          setState((current) => ({
             identity: runId,
             run,
-            approvals: review.approvals,
+            approvals: reconcileApprovals(
+              current.identity === runId ? current.approvals : [],
+              review.approvals,
+            ),
             error: "",
             loading: false,
-          });
+          }));
       } catch (error) {
         if (active)
           setState((s) => ({
@@ -87,5 +103,20 @@ export function useRemoteActivity(runId?: string): RemoteActivity {
       clearTimeout(timer);
     };
   }, [runId]);
-  return activityForRun(state, runId);
+  return {
+    ...activityForRun(state, runId),
+    onApprovalDecided: (id, decision) =>
+      setState((current) =>
+        current.identity !== runId
+          ? current
+          : {
+              ...current,
+              approvals: current.approvals.map((approval) =>
+                approval.id === id
+                  ? { ...approval, state: decision }
+                  : approval,
+              ),
+            },
+      ),
+  };
 }

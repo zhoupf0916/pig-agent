@@ -2,7 +2,7 @@ import type { ChatMessage, ToolCall } from "../types.ts";
 import { TOOL_DEFINITIONS } from "./tools.ts";
 
 export type TokenUsage = { prompt_tokens: number; completion_tokens: number };
-type CompletionOptions = { signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number };
+type CompletionOptions = { extraTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>; allowTools?: boolean; signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number };
 
 export type LlmSettings = {
   llmBaseUrl: string;
@@ -110,8 +110,7 @@ async function completeOnce(
   const body: Record<string, unknown> = {
     model: settings.llmModel,
     messages: toOpenAiMessages(messages),
-    tools: TOOL_DEFINITIONS,
-    tool_choice: "auto",
+    ...(options.allowTools === false ? {} : { tools: [...TOOL_DEFINITIONS, ...(options.extraTools ?? [])], tool_choice: "auto" }),
     stream: attempt.stream,
     temperature: 0.2,
   };
@@ -124,7 +123,7 @@ async function completeOnce(
   }
   if (options.maxOutputTokens) body.max_tokens = options.maxOutputTokens;
   if (attempt.stream && attempt.parallelTools && options.onUsage) body.stream_options = { include_usage: true };
-  if (attempt.parallelTools) {
+  if (attempt.parallelTools && options.allowTools !== false) {
     body.parallel_tool_calls = true;
   }
 

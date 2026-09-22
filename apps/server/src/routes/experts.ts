@@ -1,3 +1,4 @@
+import { registerResourceDraftRoutes } from "./resource-drafts.ts";
 import type { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -54,6 +55,7 @@ function fail(err: unknown): { error: string; status: 400 } {
 }
 
 export function registerExpertRoutes(app: Hono): void {
+  registerResourceDraftRoutes(app);
   app.get("/api/experts", async (c) => {
     return c.json({ experts: await listExpertsForRead() });
   });
@@ -79,9 +81,14 @@ export function registerExpertRoutes(app: Hono): void {
   app.patch("/api/experts/:id", async (c) => {
     const parsed = patchExpertSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "Invalid expert patch" }, 400);
-    const expert = await updateExpert(c.req.param("id"), parsed.data);
-    if (!expert) return c.json({ error: "Expert not found" }, 404);
-    return c.json(expert);
+    try {
+      const expert = await updateExpert(c.req.param("id"), parsed.data);
+      if (!expert) return c.json({ error: "Expert not found" }, 404);
+      return c.json(expert);
+    } catch (err) {
+      const { error, status } = fail(err);
+      return c.json({ error }, status);
+    }
   });
 
   app.delete("/api/experts/:id", async (c) => {

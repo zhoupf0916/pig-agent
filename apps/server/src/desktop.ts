@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import { setComputerBridge } from "./desktop/computer.ts";
 import { desktopAuth } from "./desktop/security.ts";
 import { Hono } from "hono";
 import { createApp } from "./app.ts";
@@ -24,6 +25,19 @@ const pending = new Map<
   { resolve(value: DesktopSecrets): void; reject(error: Error): void }
 >();
 let sequence = 0;
+const computerPending = new Map<
+  number,
+  { resolve(value: unknown): void; reject(error: Error): void }
+>();
+setComputerBridge(
+  (method, value) =>
+    new Promise((resolve, reject) => {
+      const id = ++sequence;
+      // Native consent is user-paced; never time out and later execute a hidden request.
+      computerPending.set(id, { resolve, reject });
+      parent!.postMessage({ type: "computer", id, method, value });
+    }),
+);
 function secretRequest(
   method: "read" | "write",
   value?: DesktopSecrets,
@@ -67,7 +81,12 @@ const server = serve(
   (info) => parent.postMessage({ type: "ready", port: info.port }),
 );
 parent.on("message", ({ data }) => {
-  if (data.type === "secret-result") {
+  if (data.type === "computer-result") {
+    const item = computerPending.get(data.id);
+    computerPending.delete(data.id);
+    if (data.error) item?.reject(new Error(data.error));
+    else item?.resolve(data.value);
+  } else if (data.type === "secret-result") {
     const item = pending.get(data.id);
     pending.delete(data.id);
     if (data.error) item?.reject(new Error("系统密钥存储不可用"));

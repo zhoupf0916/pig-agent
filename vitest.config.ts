@@ -6,6 +6,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: [
       "apps/cloud/src/**/*.test.ts",
+      "apps/desktop/src/**/*.test.ts",
       "apps/worker/src/**/*.test.ts",
       "apps/server/src/**/*.test.ts",
       "apps/web/src/**/*.test.ts",

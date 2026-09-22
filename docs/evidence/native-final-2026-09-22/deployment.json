@@ -1,0 +1,31 @@
+{
+  "at": "2026-09-22T07:13:22.307Z",
+  "health": [
+    {
+      "url": "http://127.0.0.1:8890/health",
+      "ok": true,
+      "modelMode": "provider"
+    },
+    {
+      "url": "http://127.0.0.1:8892/health",
+      "ok": true,
+      "modelMode": "mock"
+    }
+  ],
+  "platformContainers": [
+    "pig-agent-cloud-worker-1",
+    "pig-agent-cloud-gateway-1",
+    "pig-agent-cloud-cloud-1",
+    "pig-agent-cluster-runner-a-1",
+    "pig-agent-cluster-runner-b-1",
+    "pig-agent-cluster-cloud-b-1",
+    "pig-agent-cluster-cloud-a-1",
+    "pig-agent-cluster-gateway-1",
+    "pig-agent-cluster-control-1",
+    "pig-agent-cluster-postgres-1",
+    "pig-agent-cloud-postgres-1"
+  ],
+  "taskContainerCount": 0,
+  "desktop": "release/mac-arm64/Pig Agent.app",
+  "backup": "data/cloud-local/backups/2026-09-22T07-01-27.745Z.dump"
+}

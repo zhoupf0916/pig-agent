@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "projectId": "project_50d6f987533c4a20956336fb6df25a4d",
+  "checks": [
+    "Native directory filechooser opened from button",
+    "Two text files selected; env and npmrc skipped",
+    "Folder name autofilled project and workspace",
+    "Real POST created project",
+    "Initial workspace manifest rendered"
+  ],
+  "errors": []
+}

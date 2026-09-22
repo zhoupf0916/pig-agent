@@ -1,3 +1,4 @@
+import { workspaceFilesSchema, loadProjectFiles, seedManifest } from "./project-files.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Hono } from "hono";
@@ -6,6 +7,47 @@ import { db, hash } from "./db.ts";
 const id = (prefix: string) => prefix + "_" + randomUUID().replaceAll("-", "");
 const role = z.enum(["viewer", "editor", "admin"]);
 export function registerCollaborationRoutes(app: Hono<CloudEnv>) {
+  app.get("/v1/projects", async c => c.json({projects: (await db.query(`
+    SELECT p.*,s.name AS space_name,CASE WHEN p.space_id IS NULL THEN 'personal' ELSE 'collaborative' END AS kind,
+      CASE WHEN p.space_id IS NULL THEN 'admin' ELSE m.role END AS role
+    FROM shared_projects p LEFT JOIN spaces s ON s.id=p.space_id
+    LEFT JOIN space_members m ON m.space_id=p.space_id AND m.principal_id=$1
+    WHERE project_access(p.id,$1,false) ORDER BY p.created_at DESC`,[c.get("principal").id])).rows}));
+  app.post("/v1/projects", async c => {
+    const parsed=z.object({name:z.string().trim().min(1).max(100),description:z.string().max(4000).default(""),workspaceName:z.string().trim().min(1).max(100).default("工作区"),workspaceFiles:workspaceFilesSchema.optional()}).strict().safeParse(await c.req.json().catch(()=>({})));
+    if(!parsed.success) return c.json({error:parsed.error.issues[0]?.message || "项目参数无效"},400);
+    const client=await db.connect(), actor=c.get("principal").id, projectId=id("project");
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM principals WHERE id=$1 FOR UPDATE",[actor]);
+      if(Number((await client.query("SELECT count(*) FROM shared_projects WHERE owner_id=$1 AND space_id IS NULL",[actor])).rows[0].count)>=100) {
+        await client.query("ROLLBACK"); return c.json({error:"最多创建100个个人项目"},429);
+      }
+      await client.query("INSERT INTO shared_projects(id,owner_id,name,description,workspace_name) VALUES($1,$2,$3,$4,$5)",[projectId,actor,parsed.data.name,parsed.data.description,parsed.data.workspaceName]);
+      if(parsed.data.workspaceFiles) await client.query("INSERT INTO project_workspace_files(project_id,files) VALUES($1,$2::jsonb)",[projectId,JSON.stringify(parsed.data.workspaceFiles)]);
+      await client.query("INSERT INTO audit(actor,action) VALUES($1,$2)",[actor,"project:create:"+projectId]);
+      await client.query("COMMIT"); return c.json({id:projectId},201);
+    } catch(e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+  });
+  app.put("/v1/projects/:id/workspace/files", async c => {
+    const parsed=z.object({files:workspaceFilesSchema}).strict().safeParse(await c.req.json().catch(()=>({})));
+    if(!parsed.success) return c.json({error:parsed.error.issues[0]?.message || "工作区文件无效"},400);
+    const result=await db.query(`INSERT INTO project_workspace_files(project_id,files)
+      SELECT id,$3::jsonb FROM shared_projects WHERE id=$1 AND owner_id=$2 AND space_id IS NULL
+      ON CONFLICT(project_id) DO UPDATE SET files=EXCLUDED.files,updated_at=now() RETURNING project_id`,
+      [c.req.param("id"),c.get("principal").id,JSON.stringify(parsed.data.files)]);
+    if(!result.rowCount) return c.json({error:"个人项目不存在或没有权限"},404);
+    return c.json({seed:seedManifest(parsed.data.files)});
+  });
+  app.get("/v1/projects/:id/workspace", async c => {
+    const actor=c.get("principal").id, projectId=c.req.param("id");
+    const project=(await db.query("SELECT * FROM shared_projects WHERE id=$1 AND project_access(id,$2,false)",[projectId,actor])).rows[0];
+    if(!project) return c.json({error:"项目不存在"},404);
+    const conversations=(await db.query(`SELECT c.id,c.title,
+      COALESCE((SELECT json_agg(json_build_object('run_id',v.run_id,'created_at',v.created_at,'manifest',v.snapshot-'data') ORDER BY v.created_at DESC) FROM workspace_versions v WHERE v.conversation_id=c.id),'[]'::json) AS versions
+      FROM conversations c WHERE c.project_id=$1 ORDER BY c.updated_at DESC LIMIT 100`,[projectId])).rows;
+    return c.json({projectId,workspaceName:project.workspace_name,workspaceMode:"conversation",seed:seedManifest(await loadProjectFiles(projectId,actor)),conversations});
+  });
   app.get("/v1/shared-projects/:id/runs", async (c) => {
     if (
       !(

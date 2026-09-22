@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "kind": "expert",
+  "model": "deepseek-chat",
+  "instructionChars": 934,
+  "durationMs": 3846,
+  "stored": false
+}

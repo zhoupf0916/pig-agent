@@ -1,3 +1,6 @@
+import { ComputerPanel } from "./ComputerPanel";
+import { ExtensionsPanel } from "./ExtensionsPanel";
+import { ResourceCreator } from "./ResourceCreator";
 import { useEffect, useRef, useState } from "react";
 import { useDialog } from "../lib/use-dialog";
 import { describeExecutionSurface } from "../lib/runtime-surface";
@@ -17,8 +20,11 @@ const sections = [
   { id: "execution", title: "执行默认值", hint: "新任务的执行方式" },
   { id: "workspace", title: "工作区", hint: "文件范围与远端仓库" },
   { id: "remote", title: "远端连接", hint: "加入控制面与检查连接" },
+  { id: "computer", title: "电脑操作", hint: "桌面辅助功能与授权" },
+  { id: "skills", title: "技能", hint: "一句话创建与本地技能" },
+  { id: "extensions", title: "插件", hint: "可复用的专家与技能包" },
   { id: "appearance", title: "外观", hint: "这台设备的显示偏好" },
-  { id: "advanced", title: "高级选项", hint: "运行诊断与本地技能" },
+  { id: "advanced", title: "高级选项", hint: "运行诊断与特殊环境" },
 ] as const;
 type Section = typeof sections[number]["id"];
 
@@ -186,7 +192,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
               <label className="settings-check"><input type="checkbox" checked={form.codexNetworkAccess} onChange={e => patch({ codexNetworkAccess: e.target.checked })} /><span>允许 Codex 工作区访问外网<small>默认关闭；开启后允许下载和请求第三方服务。</small></span></label>
               <p className="settings-note">Codex 使用自己的工作区沙箱，文件操作不经过 Pig 写入审批。其网络权限不会开启完整系统访问。</p>
             </>}
-            {form.runtime === "pig" && <p className="settings-note">本机 Pig 默认在主机执行命令。可在单个任务的执行配置中选择 Docker 隔离。</p>}
+            {form.runtime === "pig" && <p className="settings-note">本机 Pig 默认使用原生沙箱。可在任务执行配置中调整审批和网络权限。</p>}
             {form.runtime === "cloud" && <button type="button" className="btn-quiet" onClick={() => setSection("remote")}>配置远端连接 →</button>}
           </>}
           {section === "workspace" && <>
@@ -216,6 +222,13 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
             <div className="settings-choice-list" role="group" aria-label="配色方案"><Choice title="浅色" hint="适合明亮环境" active={appearance === "light"} onClick={() => changeTheme("light")} /><Choice title="深色" hint="适合低光环境" active={appearance === "dark"} onClick={() => changeTheme("dark")} /></div>
             <p className="settings-note" role="status">已使用{appearance === "dark" ? "深色" : "浅色"}外观，刷新后保持。</p>
           </>}
+          {section === "computer" && <ComputerPanel />}
+          {section === "extensions" && <ExtensionsPanel />}
+          {section === "skills" && <>
+            <ResourceCreator kind="skill" />
+            <h4>本地技能 <span className="settings-count">{skills.length}</span></h4>
+            <ul className="settings-skill-list">{skills.length ? skills.map(skill => <li key={skill.name}><strong>{skill.name}</strong><span>{skill.description}</span></li>) : <li>还没有本地技能。描述你的工作流程即可创建。</li>}</ul>
+          </>}
           {section === "advanced" && <>
             <div className="settings-scope">用于排障和特殊执行环境。普通任务无需修改。</div>
             <Field label="Codex 二进制路径" hint="留空时从系统 PATH 查找 codex。"><input className="field" value={form.codexBinaryPath} onChange={e => patch({ codexBinaryPath: e.target.value })} placeholder="codex 或 /usr/local/bin/codex" /></Field>
@@ -228,8 +241,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
               {settings?.cloudStatus?.installHints && <pre className="settings-code">{JSON.stringify(settings.cloudStatus.installHints, null, 2)}</pre>}
             </div></details>
             <details className="settings-details"><summary>执行协议与能力边界</summary><div><p className="settings-note">Pig 使用 Chat Completions 工具调用。Codex 通过 codex exec --json 子进程使用 Responses 接口，并使用 workspace-write 沙箱；不会自动复用 Codex App 登录，也不桥接 Pig skills、update_plan 或细粒度 token 流。</p><p className="settings-note">远端使用控制面调度的独立容器。测试模式 local-stub 在本机复用 Pig 循环。全局并发、队列和 Runner 限制由管理端配置。</p></div></details>
-            <h4>本地技能 <span className="settings-count">{skills.length}</span></h4>
-            <ul className="settings-skill-list">{skills.length ? skills.map(skill => <li key={skill.name}><strong>{skill.name}</strong><span>{skill.description}</span></li>) : <li>还没有本地技能。可在 skills/ 中添加技能文件。</li>}</ul>
+
           </>}
           </fieldset>
         </div>

@@ -1,12 +1,18 @@
-import { conversationTranscript, modelHistory } from "./transcript.ts";
+import { attachmentIdsSchema, resolveAttachments, bindAttachments } from "./attachments.ts";
+import { loadUserSettings, buildUserContext } from "./user-data.ts";
+import { resolveCapabilityContext } from "./capabilities.ts";
+import { getRequestCredential } from "./web-auth.ts";
+import { streamSSE } from "hono/streaming";
+import { conversationFor, conversationSnapshot } from "./conversation-state.ts";
+import { modelHistory } from "./transcript.ts";
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db, terminal } from "./db.ts";
+import { db, hash, terminal } from "./db.ts";
 import type { CloudEnv } from "./types.ts";
 
 const followSchema = z
-  .object({ prompt: z.string().trim().min(1).max(32000) })
+  .object({ prompt: z.string().trim().min(1).max(32000), attachmentIds: attachmentIdsSchema })
   .strict();
 export function registerConversationRoutes(app: Hono<CloudEnv>) {
   app.get("/v1/conversations", async (c) =>
@@ -23,37 +29,42 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
   );
   app.get("/v1/conversations/:id", async (c) => {
     const p = c.get("principal");
-    const conversation = (
-      await db.query(
-        "SELECT * FROM conversations WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,false) END)",
-        [c.req.param("id"), p.id, p.role === "admin"],
-      )
-    ).rows[0];
-    if (!conversation) return c.json({ error: "会话不存在" }, 404);
-    const runs = (
-      await db.query(
-        "SELECT id,parent_run_id,state,error,input,input->>'prompt' AS prompt,created_at FROM runs WHERE conversation_id=$1 ORDER BY created_at",
-        [conversation.id],
-      )
-    ).rows;
-    const history = (
-      await db.query(
-        `SELECT run_id,event->'session'->'messages' AS messages FROM events WHERE run_id IN (SELECT id FROM runs WHERE conversation_id=$1) AND event->>'type'='done' ORDER BY seq`,
-        [conversation.id],
-      )
-    ).rows;
-    const messages = conversationTranscript(runs, history);
-    const versions = (
-      await db.query(
-        "SELECT run_id,created_at,snapshot-'data' AS manifest FROM workspace_versions WHERE conversation_id=$1 ORDER BY created_at DESC",
-        [conversation.id],
-      )
-    ).rows;
-    return c.json({
-      conversation,
-      runs: runs.map(({ input, ...run }) => run),
-      messages,
-      versions,
+    const conversation = await conversationFor(c.req.param("id"),p);
+    if (!conversation) return c.json({error:"会话不存在"},404);
+    return c.json(await conversationSnapshot(conversation));
+  });
+  app.get("/v1/conversations/:id/events", async c => {
+    const id=c.req.param("id");
+    if (!await conversationFor(id,c.get("principal"))) return c.json({error:"会话不存在"},404);
+    let after=Number(c.req.query("after") || c.req.header("Last-Event-ID") || 0);
+    if (!Number.isSafeInteger(after) || after<0) return c.json({error:"Invalid cursor"},400);
+    const supplied=getRequestCredential(c);
+    const credential=hash(supplied.token);
+    c.header("Cache-Control","no-cache, no-transform");
+    c.header("X-Accel-Buffering","no");
+    return streamSSE(c,async stream=>{
+      let revision="",heartbeat=0;
+      while (!stream.aborted) {
+        // Re-read identity, session validity and project membership on every poll.
+        const principal=(await db.query(`SELECT id,role FROM principals WHERE id=$1 AND enabled AND (($3 AND token_hash=$2) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,[c.get("principal").id,credential,supplied.source === "bearer"])).rows[0];
+        const conversation=principal && await conversationFor(id,principal);
+        if (!conversation) { await stream.writeSSE({data:JSON.stringify({type:"access_revoked"})}); break; }
+        const stamp=(await db.query(`SELECT r.id,r.state,r.error,r.updated_at,(SELECT count(*) FROM workspace_versions WHERE run_id=r.id) AS versions,
+          (SELECT max(seq) FROM events WHERE run_id=r.id AND event->>'type' IN ('done','approval')) AS terminal_event FROM runs r WHERE conversation_id=$1 ORDER BY r.created_at,r.id`,[id])).rows;
+        const next=JSON.stringify([conversation,stamp]);
+        if(next!==revision){
+          await stream.writeSSE({data:JSON.stringify({type:"conversation_snapshot",...await conversationSnapshot(conversation)})});
+          revision=next;
+        }
+        const events=(await db.query(`SELECT e.seq,e.run_id,e.event FROM events e JOIN runs r ON r.id=e.run_id WHERE r.conversation_id=$1 AND e.seq>$2 ORDER BY e.seq LIMIT 200`,[id,after])).rows;
+        for(const row of events){
+          await stream.writeSSE({id:String(row.seq),data:JSON.stringify({type:"run_event",runId:row.run_id,seq:Number(row.seq),event:row.event})});
+          after=Number(row.seq);
+        }
+        if(Date.now()-heartbeat>10000){await stream.writeSSE({event:"heartbeat",data:"{}"});heartbeat=Date.now();}
+        // A conversation remains subscribed through idle time and subsequent turns.
+        if(events.length<200) await stream.sleep(events.length ? 100 : 500);
+      }
     });
   });
   app.get("/v1/conversations/:id/workspace/:run", async (c) => {
@@ -98,7 +109,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       }
       const old = (
         await client.query(
-          "SELECT id,state,parent_run_id,input->>'prompt' AS prompt FROM runs WHERE owner_id=$1 AND request_key=$2",
+          "SELECT id,state,parent_run_id,input->>'prompt' AS prompt,input->'attachmentIds' AS attachment_ids FROM runs WHERE owner_id=$1 AND request_key=$2",
           [p.id, key],
         )
       ).rows[0];
@@ -106,7 +117,8 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         await client.query("ROLLBACK");
         if (
           old.parent_run_id !== parent.id ||
-          old.prompt !== parsed.data.prompt
+          old.prompt !== parsed.data.prompt ||
+          JSON.stringify(old.attachment_ids || []) !== JSON.stringify(parsed.data.attachmentIds || [])
         )
           return c.json({ error: "请求标识已用于其他任务" }, 409);
         return c.json({ id: old.id, status: old.state });
@@ -189,13 +201,33 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
           last?.messages || parent.input.messages || [],
         ).slice(-40),
       };
+      // A new participant never inherits somebody else's automatic execution consent.
+      if (parent.owner_id !== p.id) {
+        const defaults=await loadUserSettings(p.id,client);
+        input.requireApproval=defaults.requireApproval;
+        input.networkPolicy=defaults.networkPolicy;
+      }
       delete input.files;
-      if (checkpoint) input.workspace = { snapshot: checkpoint.snapshot };
+      delete input.attachments;
+      input.attachmentIds=parsed.data.attachmentIds;
+      try {
+        const added=await resolveAttachments(p.id,parsed.data.attachmentIds,client);
+        const existing=Array.isArray(parent.input.attachments) ? parent.input.attachments : [];
+        input.attachments=[...existing.filter((a: {id:string})=>!added.some(b=>b.id===a.id)),...added];
+        if(input.attachments.reduce((sum:number,a:{size:number})=>sum+a.size,0)>8*1024*1024) throw Error("此会话附件累计超过 8 MiB，请新建会话处理更多附件");
+      } catch(error) {await client.query("ROLLBACK");return c.json({error:(error as Error).message},400);}
+      delete input.requestInput;
+      if(parent.owner_id !== p.id) { delete input.expertId; delete input.skillIds; }
+      try { input.capabilityContext=parent.owner_id===p.id && parent.input.capabilityContext ? parent.input.capabilityContext : await resolveCapabilityContext(p.id,input,client); }
+      catch(e) { await client.query("ROLLBACK");return c.json({error:(e as Error).message},400); }
+      input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);
+      if (checkpoint) { input.workspace = { snapshot: checkpoint.snapshot }; delete input.projectFiles; }
       const id = "run_" + randomUUID().replaceAll("-", "");
       await client.query(
         "INSERT INTO runs(id,owner_id,input,request_key,conversation_id,parent_run_id) VALUES($1,$2,$3,$4,$5,$6)",
         [id, p.id, input, key, conversationId, parent.id],
       );
+      await bindAttachments(id,input.attachments.map((a:{id:string})=>a.id),client);
       await client.query(
         "UPDATE conversations SET updated_at=now() WHERE id=$1",
         [conversationId],

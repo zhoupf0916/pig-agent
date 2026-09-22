@@ -1,9 +1,8 @@
+import { nativeFileTool } from "../agent/file-helper-client.ts";
 import { basename } from "node:path";
-import { readFile, stat } from "node:fs/promises";
-import { resolveInWorkspace } from "../agent/sandbox.ts";
 import type { Artifact, ProjectAsset, Session } from "../types.ts";
 import { getProject, upsertAsset } from "./projects.ts";
-import { loadSettings } from "./settings.ts";
+import { loadSettings, loadSessionSettings } from "./settings.ts";
 import { createPlaneClient } from "../control-plane/client.ts";
 
 export const MAX_ARTIFACT_ASSET_BYTES = 1_500_000;
@@ -103,15 +102,8 @@ export async function readArtifactBytes(
     if (bytes.length > MAX_ARTIFACT_ASSET_BYTES) throw new ArtifactSaveError("artifact too large (1.5MB max)", 400);
     return bytes;
   }
-  const abs = resolveInWorkspace(workspaceRoot, artifact.path, { mustExist: true });
-  const st = await stat(abs);
-  if (st.isDirectory()) {
-    throw new ArtifactSaveError(`Artifact is a directory: ${artifact.path}`, 400);
-  }
-  if (st.size > MAX_ARTIFACT_ASSET_BYTES) {
-    throw new ArtifactSaveError("artifact too large (1.5MB max)", 400);
-  }
-  return readFile(abs);
+  const result = await nativeFileTool("__readbinary", {path:artifact.path}, {workspaceRoot,shellMode:"native",artifacts:[],recordArtifact:()=>{}});
+  return Buffer.from(result.output,"base64");
 }
 
 export type SavedArtifact = {
@@ -174,7 +166,7 @@ export async function saveSessionArtifactToProject(
 ): Promise<SavedArtifact & { projectId: string }> {
   const projectId = requireBoundProject(session);
   const artifact = findSessionArtifact(session, name);
-  const settings = workspaceRoot ? { workspaceRoot } : await loadSettings();
+  const settings = workspaceRoot ? { workspaceRoot } : await loadSessionSettings(session);
   const saved = await copyOne(session, artifact, settings.workspaceRoot);
   return { ...saved, projectId };
 }
@@ -191,7 +183,7 @@ export async function saveAllSessionArtifactsToProject(
   const artifacts = session.artifacts.filter((a) => !wanted || wanted.includes(a.path));
   const settings = options.workspaceRoot
     ? { workspaceRoot: options.workspaceRoot }
-    : await loadSettings();
+    : await loadSessionSettings(session);
 
   const saved: SavedArtifact[] = [];
   const skipped: SkippedArtifact[] = [];
