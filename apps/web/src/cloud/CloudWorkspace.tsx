@@ -184,7 +184,7 @@ export function CloudWorkspace({
     [workspaceLoading, setWorkspaceLoading] = useState(false),
     [networkPolicy, setNetworkPolicy] = useState<"ask" | "blocked">("ask");
   const [networkChanged, setNetworkChanged] = useState(false);
-  const [requireApproval, setRequireApproval] = useState(true),
+  const [requireApproval, setRequireApproval] = useState(false),
     [approvalChanged, setApprovalChanged] = useState(false);
   const [expertId, setExpertId] = useState(taskOptions?.expertId || ""),
     [skillIds, setSkillIds] = useState<string[]>(taskOptions?.skillIds || []);
@@ -1076,7 +1076,7 @@ export function CloudWorkspace({
           {!selected && (
             <div className="jd-home">
               <h1>Pig Agent</h1>
-              <p>交代一个任务，在云端沙箱里做完，你来批准和核对。</p>
+              <p>沙箱执行任务，结果由你核对。</p>
               {project && (
                 <>
                   <h2>{project.name}</h2>
@@ -1100,8 +1100,8 @@ export function CloudWorkspace({
                     {project.kind === "collaborative" && (
                       <button type="button" onClick={() => setMembersOpen(true)}>
                         <Users size={22} />
-                        <strong>协作成员与权限</strong>
-                        <span>管理共享范围，与成员一起推进任务</span>
+                        <strong>成员</strong>
+                        <span>权限与邀请</span>
                       </button>
                     )}
                   </div>
@@ -1275,7 +1275,7 @@ export function CloudWorkspace({
                 canWrite
                   ? selected
                     ? "继续这个任务…"
-                    : "从一个问题开始"
+                    : "拖入文件，或描述任务"
                   : !projectId && projectBranch === "collaborative"
                     ? "先选择或创建协同项目"
                     : selected && !current
@@ -1408,9 +1408,7 @@ export function CloudWorkspace({
                         )}
                       </label>
                     </div>
-                    <p>
-                      任务在原生沙箱内执行。网络请求单次授权，与文件和命令审批独立。
-                    </p>
+                    <p>沙箱内执行。联网单独授权。</p>
                   </div>
                 </details>
               )}
@@ -1447,7 +1445,6 @@ export function CloudWorkspace({
             <>
               <div className="jd-picks">
                 <label>
-                  选择项目
                   <select
                     aria-label="选择项目"
                     value={projectId}
@@ -1456,7 +1453,7 @@ export function CloudWorkspace({
                       setSelected("");
                     }}
                   >
-                    <option value="">不归入项目</option>
+                    <option value="">选择项目</option>
                     {projects.filter((item) => item.kind === "personal").length >
                       0 && (
                       <optgroup label="我的项目">
@@ -1485,13 +1482,12 @@ export function CloudWorkspace({
                 </label>
                 {!apiBase && (
                   <label>
-                    选择专家
                     <select
                       aria-label="选择专家"
                       value={expertId}
                       onChange={(e) => setExpertId(e.target.value)}
                     >
-                      <option value="">通用助手</option>
+                      <option value="">选择专家</option>
                       {experts.map((item) => (
                         <option value={item.id} key={item.id}>
                           {item.name}
@@ -1504,27 +1500,27 @@ export function CloudWorkspace({
               <div className="jd-starters">
                 {[
                   {
-                    title: "联网查资料",
-                    detail: "查公开页面，整理成结论",
+                    title: "联网搜索",
+                    detail: "查资料，整理结论",
                     prompt: "帮我查公开资料，并整理成简短结论。主题：",
                     icon: Search,
                     network: true,
                   },
                   {
-                    title: "处理项目文件",
-                    detail: "阅读工作区文件并修改",
+                    title: "处理文件",
+                    detail: "阅读并修改工作区",
                     prompt: "先查看当前项目里的文件，再按这个目标修改：",
                     icon: FolderKanban,
                   },
                   {
-                    title: "写一份文档",
-                    detail: "说明、纪要或长文",
+                    title: "写文档",
+                    detail: "说明、纪要、长文",
                     prompt: "帮我写一份文档。要求：",
                     icon: PenLine,
                   },
                   {
-                    title: "先计划再改动",
-                    detail: "改文件或执行命令前等我批准",
+                    title: "先出计划",
+                    detail: "改动前等待批准",
                     prompt:
                       "先给出计划。需要改文件或执行命令时停下来等我批准。目标：",
                     icon: ShieldCheck,
@@ -1548,8 +1544,10 @@ export function CloudWorkspace({
                     }}
                   >
                     <item.icon size={16} />
-                    <strong>{item.title}</strong>
-                    <span>{item.detail}</span>
+                    <span className="jd-starter-copy">
+                      <strong>{item.title}</strong>
+                      <span>{item.detail}</span>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1777,18 +1775,17 @@ export function CloudWorkspace({
                 <X size={18} />
               </button>
             </header>
-            <p>选择谁可以看见这个项目里的对话和文件。</p>
             <div className="jd-visibility">
               <button type="button" onClick={() => setProjectBranch("personal")}>
                 <strong>仅自己</strong>
-                <span>对话和文件只在你的账号里。</span>
+                <span>仅当前账号</span>
               </button>
               <button
                 type="button"
                 onClick={() => setProjectBranch("collaborative")}
               >
                 <strong>与成员共享</strong>
-                <span>组织成员可以查看，编辑者可以继续任务。</span>
+                <span>组织内可见，编辑者可继续</span>
               </button>
             </div>
           </section>
@@ -1884,15 +1881,14 @@ function SpacesDialog({
         className="cw-space-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="项目协同"
+            aria-label="共享项目"
       >
         <header>
-          <h2>项目协同</h2>
+          <h2>共享项目</h2>
           <button aria-label="关闭空间管理" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
-        <p>组织成员在共享项目里查看会话与成果，编辑者可继续任务。</p>
         {(error || membersError) && (
           <p role="alert" className="cw-notice error">
             {error || membersError}
@@ -1911,17 +1907,57 @@ function SpacesDialog({
         </label>
         {space && (
           <>
-            <ul>
+            <ul className="jd-members">
               {members.map((m) => (
                 <li key={m.id}>
-                  {m.name}
-                  <span>
-                    {m.role === "viewer"
-                      ? "只读"
-                      : m.role === "admin"
-                        ? "管理员"
-                        : "编辑者"}
-                  </span>
+                  <span>{m.name}</span>
+                  {space.role === "admin" ? (
+                    <>
+                      <select
+                        aria-label={`${m.name}的权限`}
+                        value={m.role}
+                        disabled={busy}
+                        onChange={(e) =>
+                          void act(async () => {
+                            await request(
+                              `/v1/spaces/${spaceId}/members/${m.id}`,
+                              "PATCH",
+                              { role: e.target.value },
+                            );
+                            const next = await request(`/v1/spaces/${spaceId}/members`);
+                            setMembers(next.members);
+                          })
+                        }
+                      >
+                        <option value="viewer">只读</option>
+                        <option value="editor">编辑</option>
+                        <option value="admin">管理</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void act(async () => {
+                            await request(
+                              `/v1/spaces/${spaceId}/members/${m.id}`,
+                              "DELETE",
+                            );
+                            setMembers((current) => current.filter((item) => item.id !== m.id));
+                          })
+                        }
+                      >
+                        移除
+                      </button>
+                    </>
+                  ) : (
+                    <span>
+                      {m.role === "viewer"
+                        ? "只读"
+                        : m.role === "admin"
+                          ? "管理"
+                          : "编辑"}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -1950,31 +1986,30 @@ function SpacesDialog({
                   />
                 </label>
                 <label>
-                  共享背景
+                  说明
                   <textarea
-                    aria-label="共享背景"
+                    aria-label="项目说明"
                     value={background}
                     maxLength={4000}
                     onChange={(e) => setBackground(e.target.value)}
-                    placeholder="团队目标、术语和任务共用的背景"
                   />
                 </label>
                 <button disabled={busy || !projectName.trim()}>
-                  创建共享项目
+                  创建项目
                 </button>
               </form>
             )}
             {space.role === "admin" && (
               <details>
-                <summary>邀请已有账号加入组织</summary>
+                <summary>邀请成员</summary>
                 <label>
-                  成员权限
+                  权限
                   <select
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                   >
                     <option value="viewer">只读</option>
-                    <option value="editor">编辑者</option>
+                    <option value="editor">编辑</option>
                     <option value="admin">管理员</option>
                   </select>
                 </label>
@@ -1991,7 +2026,7 @@ function SpacesDialog({
                     })
                   }
                 >
-                  生成一次性邀请码
+                  生成邀请码
                 </button>
                 {invite && (
                   <label>
@@ -2029,7 +2064,7 @@ function SpacesDialog({
           </form>
         </details>
         <details>
-          <summary>使用组织邀请码加入</summary>
+          <summary>加入组织</summary>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -2160,7 +2195,7 @@ function PersonalProjectDialog({
       setName((current) => current || name);
       setWorkspaceFiles(rows);
       setFolderStatus(
-        `${rows.length} 个文本文件 · ${bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`}${skipped ? ` · 已跳过 ${skipped} 个依赖、敏感或非文本文件` : ""}`,
+        `${rows.length} 个文件 · ${bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`}${skipped ? ` · 跳过 ${skipped}` : ""}`,
       );
     } catch (e) {
       setFolderError(e instanceof Error ? e.message : String(e));
@@ -2175,15 +2210,14 @@ function PersonalProjectDialog({
         className="cw-space-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="新建普通项目"
+            aria-label="新建项目"
       >
         <header>
-          <h2>新建普通项目</h2>
+          <h2>新建项目</h2>
           <button aria-label="关闭新建项目" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
-        <p>整理相关任务和背景，在项目工作区查看每次任务保存的文件。</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -2234,9 +2268,7 @@ function PersonalProjectDialog({
               <FolderKanban size={16} />
               {readingFolder ? "正在读取文件…" : folderName || "选择本地文件夹"}
             </button>
-            <p>
-              将代码或文档上传为云端工作区副本，任务在云端运行，不会直接修改本地目录。需要持续读写本地文件，请在客户端绑定目录。
-            </p>
+            <p>上传为云端副本，不改本地目录。</p>
             {folderStatus && <p role="status">{folderStatus}</p>}
             {(folderName || folderError) && (
               <button

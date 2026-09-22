@@ -2,9 +2,12 @@ import { useEffect, useState, useRef } from "react";
 import { cloudRequest as api } from "./cloud-api";
 export function CloudSettingsPanel() {
   const [value, setValue] = useState<{
+      name?: string;
       networkPolicy: "ask" | "blocked";
       requireApproval: boolean;
       memoryEnabled: boolean;
+      timezone?: string;
+      defaultRunTarget?: "cloud" | "local";
     } | null>(null),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(""),
@@ -28,7 +31,7 @@ export function CloudSettingsPanel() {
     <section className="cloud-page">
       <h2 className="jd-duplicate-title">设置</h2>
       <p className="muted">
-        账号设置保存后作用于新任务，进行中的任务保持原有配置。
+        对新任务生效。进行中的任务不变。
       </p>
       {error && <p role="alert">{error}</p>}
       {!value ? (
@@ -39,7 +42,7 @@ export function CloudSettingsPanel() {
         )
       ) : (
         <form
-          className="cloud-form"
+          className="cloud-form settings-grid"
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy) return;
@@ -49,9 +52,12 @@ export function CloudSettingsPanel() {
             try {
               setValue(
                 await api("/v1/settings", "PUT", {
+                  displayName: value.name,
                   networkPolicy: value.networkPolicy,
                   requireApproval: value.requireApproval,
                   memoryEnabled: value.memoryEnabled,
+                  timezone: value.timezone || "Asia/Shanghai",
+                  defaultRunTarget: value.defaultRunTarget || "cloud",
                 }),
               );
               setSaved("设置已保存，下一次新任务生效。");
@@ -62,6 +68,56 @@ export function CloudSettingsPanel() {
             }
           }}
         >
+          <label>
+            显示名称
+            <input
+              disabled={busy}
+              maxLength={40}
+              value={value.name || ""}
+              onChange={(e) => setValue({ ...value, name: e.target.value })}
+            />
+            <small>协作中显示的名字。</small>
+          </label>
+          <label>
+            时区
+            <select
+              disabled={busy}
+              value={value.timezone || "Asia/Shanghai"}
+              onChange={(e) => setValue({ ...value, timezone: e.target.value })}
+            >
+              {[
+                ["Asia/Shanghai", "北京时间"],
+                ["Asia/Tokyo", "东京"],
+                ["Asia/Singapore", "新加坡"],
+                ["Europe/London", "伦敦"],
+                ["America/New_York", "纽约"],
+                ["America/Los_Angeles", "洛杉矶"],
+                ["UTC", "UTC"],
+              ].map(([zone, label]) => (
+                <option key={zone} value={zone}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <small>计划使用此时区。</small>
+          </label>
+          <label>
+            新计划默认在哪执行
+            <select
+              disabled={busy}
+              value={value.defaultRunTarget || "cloud"}
+              onChange={(e) =>
+                setValue({
+                  ...value,
+                  defaultRunTarget: e.target.value as "cloud" | "local",
+                })
+              }
+            >
+              <option value="cloud">云端执行槽</option>
+              <option value="local">已登录的电脑</option>
+            </select>
+            <small>仅新计划。</small>
+          </label>
           <label>
             默认网络访问
             <select
@@ -85,10 +141,9 @@ export function CloudSettingsPanel() {
               <option value="review">写入与命令需审批</option>
               <option value="auto">沙箱内自动执行</option>
             </select>
-            <small>审批档逐次确认文件变更和所有命令；读取、搜索无需审批。自动档允许上述操作在沙箱内直接执行，网络规则保持独立。</small>
-            <small>适用于个人项目的新任务与新建自动化。协同项目忽略自动档，写入和命令仍要逐次审批。已有任务和计划保留已保存的策略。</small>
+            <small>个人项目默认沙箱内直接执行。协同项目始终逐次审批。联网规则单独算。</small>
           </label>
-          <label className="cloud-check">
+          <label className="cloud-check settings-span">
             <input
               disabled={busy}
               type="checkbox"
@@ -99,16 +154,18 @@ export function CloudSettingsPanel() {
             />
             新个人任务使用我的记忆
           </label>
-          <p className="muted">私人记忆不会注入项目协同任务。</p>
-          <div className="cloud-note">
-            执行环境：远端 Runner · 原生沙箱
+          <p className="muted settings-span">私人记忆不会注入项目协同任务。</p>
+          <div className="cloud-note settings-span">
+            执行环境：远端 Runner 的固定执行槽，操作系统沙箱打不开就拒绝。
             <br />
-            模型与执行资源由控制面管理员配置。
+            模型渠道、额度和 Worker 数量在管理后台配置，这里改不了。
+            <br />
+            协同项目的写入和命令始终逐次审批，不受上面的自动档影响。
           </div>
-          <button className="primary-button" disabled={busy}>
+          <button className="primary-button settings-span" disabled={busy}>
             {busy ? "保存中…" : "保存设置"}
           </button>
-          {saved && <p role="status">{saved}</p>}
+          {saved && <p className="settings-span" role="status">{saved}</p>}
         </form>
       )}
     </section>
@@ -144,7 +201,7 @@ export function CloudMemoryPanel() {
     <section className="cloud-page">
       <h2 className="jd-duplicate-title">记忆</h2>
       <p className="muted">
-        保存长期偏好和背景，帮助个人任务理解你。不会带入团队共享任务。
+        仅用于个人任务。
       </p>
       <form
         className="cloud-form"
@@ -242,7 +299,7 @@ export function CloudSearchPanel({
   return (
     <section className="cloud-page">
       <h2 className="jd-duplicate-title">搜索</h2>
-      <p className="muted">搜索你有权访问的任务和消息。</p>
+      <p className="muted">任务和消息。</p>
       <form
         className="cloud-search"
         onSubmit={async (e) => {
@@ -324,7 +381,7 @@ export function CloudRunsPanel({ onRun }: { onRun: (id: string) => void }) {
   return (
     <section className="cloud-page">
       <h2 className="jd-duplicate-title">远端记录</h2>
-      <p className="muted">查看远端执行记录，进入任务检查审批、日志和成果。</p>
+      <p className="muted">执行记录。</p>
       {error && <p role="alert">{error}</p>}
       {loading ? (
         <p>正在加载…</p>

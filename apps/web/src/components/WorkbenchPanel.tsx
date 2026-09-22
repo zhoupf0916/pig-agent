@@ -484,7 +484,7 @@ export function WorkbenchPanel({
                       setPolicy({ ...policy, review: e.target.checked })
                     }
                   />
-                  写文件及运行命令前审阅
+                  每次写入和命令都先询问
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -497,7 +497,7 @@ export function WorkbenchPanel({
                   允许沙箱访问网络
                 </label>
                 <p className="text-ink-500">
-                  文件和命令固定在操作系统沙箱里，不能改成直接用本机权限。命令名单只是额外拒绝，不是隔离边界。网络默认关闭；打开后 macOS 与 Linux 都只放行沙箱出站，文件系统隔离保持不变。
+                  默认与 Codex 相同：沙箱内的读写和命令直接执行，联网仍逐次确认。勾选「每次写入和命令都先询问」后，沙箱内的改动也会先停下来。命令名单只是额外拒绝，不是隔离边界。网络默认关闭。
                 </p>
                 <div className="flex items-center gap-2">
                     <button

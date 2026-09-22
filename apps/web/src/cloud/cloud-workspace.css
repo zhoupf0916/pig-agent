@@ -236,7 +236,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 32px max(24px, calc((100% - 800px) / 2));
+  padding: 16px max(16px, calc((100% - 800px) / 2));
   scroll-behavior: smooth;
 }
 .cw-welcome {
@@ -262,7 +262,7 @@
   color: var(--cw-muted);
 }
 .cw-message {
-  margin-bottom: 28px;
+  margin-bottom: 14px;
   overflow-wrap: anywhere;
 }
 .cw-message small {
@@ -287,8 +287,8 @@
 .cw-main.is-empty .cw-conversation {
   flex: none;
   overflow: visible;
-  padding-top: clamp(40px, 12vh, 120px);
-  padding-bottom: 20px;
+  padding-top: clamp(56px, 10vh, 96px);
+  padding-bottom: 8px;
 }
 .cw-main.is-empty .cw-composer {
   margin-top: 0;
@@ -314,15 +314,16 @@
   text-align: center;
 }
 .jd-home h1 {
-  font-size: 40px;
-  line-height: 1.15;
-  letter-spacing: -1px;
-  font-weight: 650;
+  font-size: 36px;
+  line-height: 1.1;
+  letter-spacing: -0.8px;
+  font-weight: 680;
+  margin: 0;
 }
 .jd-home > p {
-  margin: 10px 0 0;
-  color: #7b8798;
-  font-size: 15px;
+  margin: 8px 0 18px;
+  color: #667085;
+  font-size: 14px;
 }
 .jd-home h2 {
   margin-top: 22px;
@@ -350,50 +351,62 @@
 .jd-starters {
   width: calc(100% - 48px);
   max-width: 800px;
-  margin: 12px auto 0;
+  margin: 8px auto 0;
 }
 .jd-picks {
   display: flex;
-  gap: 12px;
+  gap: 4px;
 }
 .jd-picks label {
-  flex: 1;
   margin: 0;
-  color: #7b8798;
-  font-size: 12px;
-  text-align: left;
+  font-size: 13px;
+  font-weight: 400;
+  color: #667085;
 }
 .jd-picks select {
-  margin-top: 6px;
-  background: #fff;
+  width: auto;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: #667085;
+  font-size: 13px;
+  padding: 4px 6px;
 }
 .jd-starters {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 22px;
+  gap: 6px;
+  margin-top: 12px;
 }
 .jd-starters button {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: flex-start;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid #e6ebf2;
-  border-radius: 12px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e7eaf0;
+  border-radius: 10px;
   background: #fff;
   text-align: left;
-  color: #243044;
+  color: #1f2937;
+}
+.jd-starter-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .jd-starters button:hover,
 .jd-starters button:focus {
   background: #f7f9fc;
 }
-.jd-starters strong {
+.jd-starter-copy strong {
+  color: #1f2937;
   font-size: 14px;
   font-weight: 600;
 }
-.jd-starters span {
+.jd-starter-copy > span {
   color: #7b8798;
   font-size: 12px;
 }
@@ -446,7 +459,7 @@
 }
 @media (max-width: 760px) {
   .jd-home h1 {
-    font-size: 32px;
+    font-size: 24px;
   }
   .jd-picks,
   .jd-starters {
@@ -471,10 +484,10 @@
 }
 .cw-composer textarea {
   resize: vertical;
-  min-height: 76px;
-  max-height: 180px;
+  min-height: 58px;
+  max-height: 160px;
   width: 100%;
-  padding: 17px;
+  padding: 12px 14px;
   border: 0;
   outline: 0;
   border-radius: 14px;
@@ -649,10 +662,25 @@
   margin-top: 20px;
   padding-top: 16px;
 }
-.cw-space-dialog li {
+.cw-space-dialog li,
+.jd-members li {
   display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: space-between;
-  margin: 8px 0;
+  margin: 6px 0;
+  font-size: 13px;
+}
+.jd-members {
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.jd-members select,
+.jd-members button {
+  width: auto;
+  font-size: 12px;
+  padding: 4px 8px;
 }
 .cw-space-dialog li span {
   color: var(--cw-muted);

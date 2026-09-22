@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Clock3, X } from "lucide-react";
 import "./cloud-automations.css";
 import { cloudRequest } from "./cloud-api";
+type Plan =
+  | { kind: "manual" }
+  | { kind: "hourly" }
+  | { kind: "daily"; time: string }
+  | { kind: "weekdays"; time: string; days: number[] }
+  | { kind: "custom"; cron: string };
 type Automation = {
   id: string;
   name: string;
@@ -10,22 +16,36 @@ type Automation = {
   requireApproval: boolean;
   networkPolicy: "ask" | "blocked";
   schedule: string | null;
+  plan?: Plan;
+  scheduleLabel?: string;
+  executionTarget?: "cloud" | "local";
   timezone: string;
   misfirePolicy: "skip" | "once";
   nextFireAt?: string;
   lastError?: string;
 };
 type Run = { id: string; state: string; created_at: string; error?: string };
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 const fresh = () => ({
   name: "",
   prompt: "",
-  schedule: "0 9 * * *",
+  planKind: "daily" as Plan["kind"],
+  time: "09:00",
+  days: [1, 2, 3, 4, 5] as number[],
+  executionTarget: "cloud" as "cloud" | "local",
   timezone: "Asia/Shanghai",
   misfirePolicy: "skip" as "skip" | "once",
   enabled: true,
   requireApproval: "default" as "default" | "review" | "auto",
   networkPolicy: "default" as "default" | "ask" | "blocked",
 });
+function planFromDraft(draft: ReturnType<typeof fresh>): Plan {
+  if (draft.planKind === "manual") return { kind: "manual" };
+  if (draft.planKind === "hourly") return { kind: "hourly" };
+  if (draft.planKind === "weekdays") return { kind: "weekdays", time: draft.time, days: draft.days };
+  if (draft.planKind === "custom") return { kind: "daily", time: draft.time };
+  return { kind: "daily", time: draft.time };
+}
 async function request(
   path: string,
   method = "GET",
@@ -121,7 +141,10 @@ export function CloudAutomationsPanel({
         ? {
             name: row.name,
             prompt: row.prompt,
-            schedule: row.schedule || "",
+            planKind: row.plan?.kind === "custom" ? "daily" : row.plan?.kind || (row.schedule ? "daily" : "manual"),
+            time: row.plan && "time" in row.plan ? row.plan.time : "09:00",
+            days: row.plan?.kind === "weekdays" ? row.plan.days : [1, 2, 3, 4, 5],
+            executionTarget: row.executionTarget === "local" ? "local" : "cloud",
             timezone: row.timezone,
             misfirePolicy: row.misfirePolicy,
             enabled: row.enabled,
@@ -147,7 +170,7 @@ export function CloudAutomationsPanel({
       <header>
         <div>
           <h2 className="jd-duplicate-title">自动化</h2>
-          <p>让 Agent 按计划在云端执行，离开工作台也能继续。</p>
+          <p>按计划执行。同一时刻只有一台设备领取本机任务。</p>
         </div>
         <button className="primary-button" onClick={() => edit()}>
           <Plus size={16} />
@@ -165,8 +188,8 @@ export function CloudAutomationsPanel({
       ) : !rows.length ? (
         <div className="ca-empty">
           <Clock3 size={32} />
-          <h3>把重复工作交给 Agent</h3>
-          <p>创建一个计划，例如每天整理信息，或保存一个手动执行的任务。</p>
+          <h3>还没有计划</h3>
+          <p>可设为每天、每周，或仅手动执行。</p>
           <button onClick={() => edit()}>创建第一个自动化</button>
         </div>
       ) : (
@@ -185,7 +208,7 @@ export function CloudAutomationsPanel({
               </div>
               <p className="ca-prompt">{row.prompt}</p>
               <small>
-                {row.schedule || "仅手动触发"} · {row.timezone}
+                {row.scheduleLabel || row.schedule || "仅手动触发"} · {row.executionTarget === "local" ? "已登录的电脑" : "云端"} · {row.timezone}
                 {row.nextFireAt
                   ? ` · 下次 ${new Date(row.nextFireAt).toLocaleString()}`
                   : ""}
@@ -208,7 +231,7 @@ export function CloudAutomationsPanel({
                       );
                       manualKeys.current.delete(row.id);
                       if (intent !== generation.current) return;
-                      setFeedback("任务已提交到云端");
+                      setFeedback(row.executionTarget === "local" ? "已交给已登录的设备，同一时刻只有一台会执行" : "任务已提交到云端");
                       onRun(d.remoteRunId);
                     });
                   }}
@@ -265,7 +288,7 @@ export function CloudAutomationsPanel({
                 await request(
                   editing ? `/v1/schedules/${editing}` : "/v1/schedules",
                   editing ? "PATCH" : "POST",
-                  { ...draft, requireApproval:draft.requireApproval === "default" ? undefined : draft.requireApproval === "review", networkPolicy:draft.networkPolicy === "default" ? undefined : draft.networkPolicy, schedule: draft.schedule.trim() || null },
+                  { name: draft.name, prompt: draft.prompt, timezone: draft.timezone, misfirePolicy: draft.misfirePolicy, enabled: draft.enabled, executionTarget: draft.executionTarget, plan: planFromDraft(draft), requireApproval:draft.requireApproval === "default" ? undefined : draft.requireApproval === "review", networkPolicy:draft.networkPolicy === "default" ? undefined : draft.networkPolicy },
                   requestKey.current,
                 );
                 await refresh();
@@ -305,18 +328,40 @@ export function CloudAutomationsPanel({
               />
             </label>
             <label>
-              执行计划（Cron）
-              <input
-                aria-describedby="cron-help"
-                value={draft.schedule}
-                onChange={(e) =>
-                  setDraft({ ...draft, schedule: e.target.value })
-                }
-              />
+              计划
+              <select aria-label="执行频率" value={draft.planKind === "custom" ? "daily" : draft.planKind} onChange={(e) => setDraft({ ...draft, planKind: e.target.value as Plan["kind"] })}>
+                <option value="manual">手动</option>
+                <option value="hourly">每小时</option>
+                <option value="daily">每天</option>
+                <option value="weekdays">每周</option>
+              </select>
             </label>
-            <small id="cron-help">
-              例如 0 9 * * * 表示每天9点；留空则仅手动执行。
-            </small>
+            {(draft.planKind === "daily" || draft.planKind === "weekdays") && (
+              <label>
+                时间
+                <input aria-label="执行时间" type="time" required value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} />
+              </label>
+            )}
+            {draft.planKind === "weekdays" && (
+              <fieldset>
+                <legend>星期</legend>
+                <div className="ca-days">
+                  {WEEKDAYS.map((label, day) => (
+                    <label key={label}>
+                      <input type="checkbox" checked={draft.days.includes(day)} onChange={(e) => setDraft({ ...draft, days: e.target.checked ? [...draft.days, day].sort() : draft.days.filter((item) => item !== day) })} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            <label>
+              执行位置
+              <select aria-label="执行位置" value={draft.executionTarget} onChange={(e) => setDraft({ ...draft, executionTarget: e.target.value as "cloud" | "local" })}>
+                <option value="cloud">云端执行槽</option>
+                <option value="local">已登录的电脑</option>
+              </select>
+            </label>
             <label>
               时区
               <input

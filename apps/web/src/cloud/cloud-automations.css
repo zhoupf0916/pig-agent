@@ -41,6 +41,7 @@
   color: white;
   border-color: #2563eb;
 }
+.ca-days { display: flex; flex-wrap: wrap; gap: 8px; }
 .ca-list {
   display: grid;
   gap: 16px;

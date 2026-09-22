@@ -88,7 +88,7 @@ try {
     "username/password application awaits approval; pending account cannot log in; approved login succeeds",
   );
   await a.getByRole("button", { name: "新建项目", exact: true }).click();
-  const pd = a.getByRole("dialog", { name: "新建普通项目" });
+  const pd = a.getByRole("dialog", { name: "新建项目" });
   await pd.getByLabel("项目名称", { exact: true }).fill("内容准备");
   await pd.getByLabel("项目背景").fill("所有输出以实际文件为依据");
   await pd.getByLabel("工作区名称").fill("内容工作区");
@@ -122,7 +122,7 @@ try {
   await login(b, accounts[1]);
   await a.getByRole("button", { name: "项目协同", exact: true }).click();
   await a.getByRole("button", { name: "协作成员与项目", exact: true }).click();
-  const d = a.getByRole("dialog", { name: "项目协同" });
+  const d = a.getByRole("dialog", { name: "共享项目" });
   await d.getByText("创建组织", { exact: true }).first().click();
   await d.getByLabel("组织名称", { exact: true }).fill("内容团队" + stamp);
   await d.getByRole("button", { name: "创建组织", exact: true }).click();
@@ -133,7 +133,7 @@ try {
   const invitation = await d.getByLabel("24 小时有效").inputValue();
   await b.getByRole("button", { name: "项目协同", exact: true }).click();
   await b.getByRole("button", { name: "协作成员与项目", exact: true }).click();
-  const bd = b.getByRole("dialog", { name: "项目协同" });
+  const bd = b.getByRole("dialog", { name: "共享项目" });
   await bd.getByText("使用组织邀请码加入", { exact: true }).click();
   await bd.getByLabel("组织邀请码", { exact: true }).fill(invitation);
   await bd.getByRole("button", { name: "加入组织", exact: true }).click();

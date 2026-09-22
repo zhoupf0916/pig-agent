@@ -357,7 +357,7 @@ export function ChatPanel({
             <div className="new-task-heading">
               <span className="eyebrow">新对话</span>
               <h2>Pig Agent</h2>
-              <p>交代一个任务，在这台电脑或云端沙箱里做完，你来批准和核对。</p>
+              <p>沙箱或本机执行，结果由你核对。</p>
             </div>
             <div className="new-task-workspace">
               <FolderOpen size={16} />

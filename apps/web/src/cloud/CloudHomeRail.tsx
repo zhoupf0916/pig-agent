@@ -25,10 +25,7 @@ function dayDiff(iso: string | undefined, now = new Date()) {
 }
 
 function bucket(iso?: string) {
-  const diff = dayDiff(iso);
-  if (diff <= 0) return "今天";
-  if (diff === 1) return "昨天";
-  return "更早";
+  return dayDiff(iso) < 7 ? "最近 7 天" : "更早";
 }
 
 function relativeTime(iso?: string) {
@@ -36,7 +33,7 @@ function relativeTime(iso?: string) {
   if (!Number.isFinite(diff)) return "";
   if (diff <= 0) return "今天";
   if (diff === 1) return "昨天";
-  if (diff < 7) return `${diff} 天前`;
+  if (diff < 7) return `${diff} 天`;
   const date = new Date(iso!);
   return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -107,7 +104,7 @@ export function CloudHomeRail({
   const matches = (item: Conversation) =>
     !needle || conversationTitle(item.title).toLowerCase().includes(needle);
   const loose = conversations.filter((item) => !item.project_id && matches(item));
-  const groups = ["今天", "昨天", "更早"].map((label) => ({
+  const groups = ["最近 7 天", "更早"].map((label) => ({
     label,
     items: loose.filter((item) => bucket(item.updated_at) === label),
   }));

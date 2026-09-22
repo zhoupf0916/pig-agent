@@ -32,7 +32,7 @@
 .cloud-page {
   max-width: 1160px;
   margin: 0 auto;
-  padding: 32px;
+  padding: 16px 20px 24px;
 }
 .cloud-page h2 {
   font-size: 24px;
@@ -78,15 +78,24 @@
 .cloud-form {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   max-width: 720px;
-  margin: 24px 0;
+  margin: 12px 0;
+}
+.cloud-form.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  max-width: 880px;
 }
 .cloud-form label {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   font-weight: 500;
+}
+.settings-span {
+  grid-column: 1 / -1;
 }
 .cloud-form small {
   font-weight: 400;
@@ -187,6 +196,9 @@
   border-radius: 8px;
 }
 @media (max-width: 760px) {
+  .cloud-form.settings-grid {
+    grid-template-columns: 1fr;
+  }
   .cloud-page {
     padding: 20px 16px;
   }

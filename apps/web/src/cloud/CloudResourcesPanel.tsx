@@ -86,7 +86,7 @@ export function CloudResourcesPanel({
         <div>
           <h2 className="jd-duplicate-title">专家与技能</h2>
           <p className="muted">
-            专家定义角色与方法，技能保存可复用的操作指引。
+            角色与可复用步骤。
           </p>
         </div>
         <button
@@ -129,7 +129,7 @@ export function CloudResourcesPanel({
           {[
             ["all", "全部"],
             ["mine", "我创建的"],
-            ["bundled", "内置精选"],
+            ["bundled", "内置"],
           ].map(([id, label]) => (
             <button
               key={id}

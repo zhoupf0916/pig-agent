@@ -235,13 +235,14 @@ export function CloudAppShell() {
             </span>
           </span>
           <button
+            aria-label="设置"
             onClick={() => go("/settings")}
             className={route === "settings" ? "selected" : ""}
           >
-            <Settings size={17} />
-            设置
+            <Settings size={16} />
           </button>
           <button
+            aria-label="退出登录"
             onClick={async () => {
               try {
                 await api("/auth/web/logout", "POST");
@@ -252,8 +253,7 @@ export function CloudAppShell() {
               }
             }}
           >
-            <LogOut size={17} />
-            退出登录
+            <LogOut size={16} />
           </button>
         </div>
       </aside>
