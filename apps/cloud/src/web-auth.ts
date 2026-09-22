@@ -2,6 +2,7 @@ import {
   usernameSchema,
   passwordSchema,
   loginWithPassword,
+  loginFailure,
   allowPasswordAttempt,
   registerPasswordApplicationRoute,
 } from "./password-accounts.ts";
@@ -113,12 +114,15 @@ export function registerWebAuthRoutes(app: Hono<CloudEnv>) {
     if ("username" in parsed.data) {
       if (!(await allowPasswordAttempt(parsed.data.username)))
         return c.json({ error: "该账号请求过于频繁，请一分钟后重试" }, 429);
-      passwordAccount = await loginWithPassword(
+      const attempt = await loginWithPassword(
         parsed.data.username,
         parsed.data.password,
       );
-      if (!passwordAccount)
-        return c.json({ error: "账号密码错误，或账号尚未获批" }, 401);
+      if (!attempt.ok) {
+        const failure = loginFailure(attempt.reason);
+        return c.json({ error: failure.error }, failure.status);
+      }
+      passwordAccount = attempt;
     }
     const client = await db.connect();
     try {

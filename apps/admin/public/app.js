@@ -1020,6 +1020,10 @@ function renderRegistrationRequests() {
   );
   if (!rows.length)
     $("registration-requests").append(empty("暂时没有账号申请。"));
+  const pending = rows.filter((request) => request.state === "pending").length;
+  const link = document.querySelector("[data-page='accounts']");
+  if (link)
+    link.textContent = pending ? `账号与配额 · ${pending}` : "账号与配额";
 }
 $("password-login-form").onsubmit = async (event) => {
   event.preventDefault();

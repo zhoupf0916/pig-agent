@@ -40,10 +40,43 @@ export async function verifyPassword(password: string, encoded: string) {
 }
 const dummyHash =
   "scrypt$16384$8$1$00000000000000000000000000000000$" + "0".repeat(128);
-export async function loginWithPassword(username: string, password: string) {
+export type PasswordLogin =
+  | {
+      ok: true;
+      id: string;
+      role: string;
+      name: string;
+      credentialHash: string;
+    }
+  | { ok: false; reason: "pending" | "rejected" | "disabled" | "invalid" };
+export function loginFailure(
+  reason: Exclude<PasswordLogin, { ok: true }>["reason"],
+): { status: 401 | 403; error: string } {
+  if (reason === "pending")
+    return { status: 403, error: "申请正在审核，通过后即可登录" };
+  if (reason === "rejected")
+    return { status: 403, error: "申请未通过，可以重新提交申请" };
+  if (reason === "disabled")
+    return { status: 403, error: "账号已停用，请联系管理员" };
+  return { status: 401, error: "账号或密码不正确" };
+}
+/** Existing password accounts and approved requests stay taken. A rejection can be replaced by a new application. */
+export function registrationAction(
+  hasAccount: boolean,
+  state: string | null,
+): "taken" | "pending" | "reapply" | "create" {
+  if (hasAccount || state === "approved") return "taken";
+  if (state === "pending") return "pending";
+  if (state === "rejected") return "reapply";
+  return "create";
+}
+export async function loginWithPassword(
+  username: string,
+  password: string,
+): Promise<PasswordLogin> {
   const result = (
     await db.query(
-      "SELECT p.id,p.role,p.name,a.password_hash FROM password_accounts a JOIN principals p ON p.id=a.owner_id WHERE a.username=$1 AND p.enabled",
+      "SELECT p.id,p.role,p.name,p.enabled,a.password_hash FROM password_accounts a JOIN principals p ON p.id=a.owner_id WHERE a.username=$1",
       [username],
     )
   ).rows[0];
@@ -51,14 +84,26 @@ export async function loginWithPassword(username: string, password: string) {
     password,
     result?.password_hash || dummyHash,
   );
-  return valid && result
-    ? {
-        id: result.id,
-        role: result.role,
-        name: result.name,
-        credentialHash: result.password_hash,
-      }
-    : null;
+  if (result && valid)
+    return result.enabled
+      ? {
+          ok: true,
+          id: result.id,
+          role: result.role,
+          name: result.name,
+          credentialHash: result.password_hash,
+        }
+      : { ok: false, reason: "disabled" };
+  if (result) return { ok: false, reason: "invalid" };
+  const registration = (
+    await db.query(
+      "SELECT state FROM registration_requests WHERE username=$1",
+      [username],
+    )
+  ).rows[0];
+  if (registration?.state === "pending" || registration?.state === "rejected")
+    return { ok: false, reason: registration.state };
+  return { ok: false, reason: "invalid" };
 }
 // Shared account bucket supplements the global auth budget and protects expensive password hashes.
 export async function allowPasswordAttempt(username: string) {
@@ -92,39 +137,67 @@ export function registerPasswordApplicationRoute(app: Hono<CloudEnv>) {
     if (!(await allowPasswordAttempt(parsed.data.username)))
       return c.json({ error: "该账号请求过于频繁，请一分钟后重试" }, 429);
     const data = parsed.data;
-    if (
-      (
-        await db.query(
-          "SELECT username FROM password_accounts WHERE username=$1 UNION SELECT username FROM registration_requests WHERE username=$1",
+    const encoded = await hashPassword(data.password);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const hasAccount = !!(
+        await client.query(
+          "SELECT username FROM password_accounts WHERE username=$1",
           [data.username],
         )
-      ).rowCount
-    )
+      ).rowCount;
+      const existing = (
+        await client.query(
+          "SELECT id,state FROM registration_requests WHERE username=$1 FOR UPDATE",
+          [data.username],
+        )
+      ).rows[0];
+      const action = registrationAction(hasAccount, existing?.state || null);
+      if (action === "taken" || action === "pending") {
+        await client.query("ROLLBACK");
+        return c.json(
+          {
+            error:
+              action === "pending"
+                ? "申请正在审核，通过后即可登录"
+                : "该账号已被使用",
+          },
+          409,
+        );
+      }
+      if (action === "reapply")
+        await client.query(
+          "UPDATE registration_requests SET name=$2,reason=$3,password_hash=$4,state='pending',owner_id=NULL,reviewed_by=NULL,review_note='',reviewed_at=NULL,created_at=now() WHERE id=$1",
+          [existing.id, data.name, data.reason, encoded],
+        );
+      else
+        await client.query(
+          "INSERT INTO registration_requests(id,username,name,reason,password_hash) VALUES($1,$2,$3,$4,$5)",
+          [
+            "reg_" + randomUUID().replaceAll("-", ""),
+            data.username,
+            data.name,
+            data.reason,
+            encoded,
+          ],
+        );
+      await client.query("COMMIT");
       return c.json(
-        { error: "该账号已申请或已被使用，请等待审核或联系管理员" },
-        409,
-      );
-    const encoded = await hashPassword(data.password);
-    try {
-      await db.query(
-        "INSERT INTO registration_requests(id,username,name,reason,password_hash) VALUES($1,$2,$3,$4,$5)",
-        [
-          "reg_" + randomUUID().replaceAll("-", ""),
-          data.username,
-          data.name,
-          data.reason,
-          encoded,
-        ],
+        {
+          status: "pending",
+          message: "申请已提交，管理员审核通过后即可登录",
+        },
+        201,
       );
     } catch (error) {
+      await client.query("ROLLBACK");
       if ((error as { code?: string }).code === "23505")
         return c.json({ error: "该账号已申请或已被使用" }, 409);
       throw error;
+    } finally {
+      client.release();
     }
-    return c.json(
-      { status: "pending", message: "申请已提交，管理员审核通过后即可登录" },
-      201,
-    );
   });
 }
 export function registerPasswordAdminRoutes(app: Hono<CloudEnv>) {
