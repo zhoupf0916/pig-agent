@@ -542,12 +542,15 @@ export function CloudWorkspace({
       }
     }
     void poll();
-    const timer = setInterval(() => void poll(), 2000);
+    const timer = active ? setInterval(() => { if (!document.hidden) void poll(); }, 2000) : null;
+    const visible = () => { if (!document.hidden) void poll(); };
+    document.addEventListener("visibilitychange", visible);
     return () => {
       valid = false;
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
     };
-  }, [last?.id, apiBase]);
+  }, [last?.id, active, apiBase]);
   useEffect(() => {
     const apply = () => {
       if (!workspaceHash()) return;

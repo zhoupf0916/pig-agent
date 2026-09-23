@@ -1,0 +1,67 @@
+# Overlay for a four-GB single-host deployment. Database and API stay private.
+services:
+  postgres:
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: &logs
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  cloud:
+    # Only image construction uses host networking; running services stay bridged.
+    build:
+      network: host
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logs
+    networks: [control, egress]
+  gateway:
+    build:
+      network: host
+    restart: unless-stopped
+    environment:
+      # Tencent system DNS is reachable; fixed Cloudflare DoH is not.
+      # The gateway still validates and pins public IPv4 before connecting.
+      NETWORK_DNS_MODE: system
+    mem_limit: 256m
+    logging: *logs
+  worker:
+    build:
+      network: host
+    restart: unless-stopped
+    hostname: pig-tencent-runner
+    environment:
+      WORKER_CAPACITY: "1"
+      WORKER_PROFILES: "compact,standard"
+    mem_limit: 768m
+    cpus: 1.0
+    stop_grace_period: 40s
+    logging: *logs
+  runner-b: &additional-runner
+    extends:
+      file: ../cloud/compose.yml
+      service: worker
+    build:
+      network: host
+    hostname: pig-tencent-runner-b
+    restart: unless-stopped
+    environment:
+      WORKER_CAPACITY: "1"
+      WORKER_PROFILES: "compact,standard"
+    mem_limit: 768m
+    cpus: 1.0
+    stop_grace_period: 40s
+    logging: *logs
+  runner-c:
+    <<: *additional-runner
+    hostname: pig-tencent-runner-c
+  runner-d:
+    <<: *additional-runner
+    hostname: pig-tencent-runner-d
+networks:
+  control:
+    name: pig-agent-public-control
+    internal: true
+    driver_opts: { com.docker.network.driver.mtu: "1450" }
+  egress:
+    name: pig-agent-public-egress
+    driver_opts: { com.docker.network.driver.mtu: "1450" }

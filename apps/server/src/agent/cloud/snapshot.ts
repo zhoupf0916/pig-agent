@@ -81,7 +81,7 @@ export function collectWorkspaceHandoff(options: {
   return handoff;
 }
 
-export function packWorkspaceSnapshot(root: string, excludedPaths: readonly string[] = []): CloudWorkspaceSnapshot {
+export function packWorkspaceSnapshot(root: string, excludedPaths: readonly string[] = [], mode: "local-handoff" | "cloud-result" = "local-handoff"): CloudWorkspaceSnapshot {
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new Error("工作区路径不是可读目录");
   }
@@ -100,7 +100,7 @@ export function packWorkspaceSnapshot(root: string, excludedPaths: readonly stri
     for (const ent of entries) {
       const childRel = rel ? `${rel}/${ent.name}` : ent.name;
       if (excludedPaths.includes(childRel)) continue;
-      if (shouldSkipCloudHandoffName(ent.name)) {
+      if (shouldSkipCloudHandoffName(ent.name) && !(mode === "cloud-result" && ent.name === "data")) {
         skipped.push(childRel);
         continue;
       }
@@ -165,7 +165,7 @@ export function packWorkspaceSnapshot(root: string, excludedPaths: readonly stri
 }
 
 /** Unpack a snapshot into destRoot. Path escapes and skip-rule names are refused. */
-export function extractWorkspaceSnapshot(snapshot: CloudWorkspaceSnapshot, destRoot: string): string[] {
+export function extractWorkspaceSnapshot(snapshot: CloudWorkspaceSnapshot, destRoot: string, mode: "local-handoff" | "cloud-result" = "local-handoff"): string[] {
   const tar = gunzipSync(Buffer.from(snapshot.data, "base64"), { maxOutputLength: MAX_SNAPSHOT_BYTES + MAX_SNAPSHOT_FILES * 1024 + 1024 });
   const files: string[] = [];
   let offset = 0;
@@ -186,7 +186,7 @@ export function extractWorkspaceSnapshot(snapshot: CloudWorkspaceSnapshot, destR
     if (name.includes("..") || name.startsWith("/") || name.includes("\\")) {
       throw new Error("Snapshot path escape refused");
     }
-    if (name.split("/").some(shouldSkipCloudHandoffName)) {
+    if (name.split("/").some(part => shouldSkipCloudHandoffName(part) && !(mode === "cloud-result" && part === "data"))) {
       throw new Error(`Snapshot contained a skipped path: ${name}`);
     }
     if (typeflag !== "0" && typeflag !== "\0") continue;

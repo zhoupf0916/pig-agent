@@ -976,3 +976,19 @@ dialog::backdrop {
 #login details {
   margin-top: 20px;
 }
+
+/* Small displays: keep controls reachable without widening the document. */
+html,body { max-width: 100%; }
+main,.panel,.row-heading,.account-quota { min-width:0; }
+.account-quota { display:flex;flex-wrap:wrap;align-items:end;gap:12px; }
+.account-quota label { flex:1 1 180px;min-width:0; }
+.account-quota input { width:100%;max-width:100%;box-sizing:border-box; }
+@media(max-width:700px) {
+ body { min-width:0; }
+ input,select,textarea { font-size:16px;max-width:100%; }
+ .row-heading,.actions { flex-wrap:wrap; }
+ .panel { overflow-wrap:anywhere; }
+ button { min-height:40px; }
+ .account-quota label { flex-basis:100%; }
+ dialog { max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto; }
+}

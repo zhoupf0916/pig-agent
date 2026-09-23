@@ -188,3 +188,14 @@ export type CloudProjectWorkspace = {
   seed?: { fileCount: number; byteSize: number; files: string[] };
   conversations: Array<{ id: string; title: string; versions: Array<{ run_id: string; created_at: string; manifest: { files?: string[] } }> }>;
 };
+
+/** Platform CNY tariff; amounts use integer millionths of one yuan. */
+export interface ModelTariff { input: number; cached: number; output: number }
+export interface ModelTokenUsage { input: number; cached: number; output: number }
+export interface AccountBudget {
+  budget_micros: string | number;
+  spent_micros: string | number;
+  reserved_micros: string | number;
+  daily_call_limit: number;
+  calls_today: string | number;
+}

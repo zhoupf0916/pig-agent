@@ -1,0 +1,204 @@
+/* Responsive overrides shared by every cloud route, loaded after page styles. */
+.cloud-app {
+  height: 100dvh;
+  min-height: 0;
+}
+.cloud-app .app-main {
+  min-width: 0;
+  min-height: 0;
+}
+.cloud-app .cw-main {
+  min-height: 0;
+}
+.cloud-app .cw-topbar h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cloud-app
+  :is(
+    .cloud-page,
+    .cloud-form,
+    .settings-grid,
+    .cloud-resource-grid,
+    .resource-dialog,
+    .cw-message
+  ) {
+  min-width: 0;
+}
+.cloud-app :is(input, select, textarea) {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.cloud-app :is(.cw-message, .cloud-page p, .resource-dialog p) {
+  overflow-wrap: anywhere;
+}
+.cloud-app .cw-message pre {
+  max-width: 100%;
+  overflow: auto;
+}
+.cloud-budget {
+  padding: 18px;
+  border: 1px solid #dce5f4;
+  border-radius: 12px;
+  background: #f5f8ff;
+  margin: 18px 0;
+}
+.cloud-budget h3 {
+  margin-top: 0;
+}
+.cloud-budget strong {
+  font-size: 22px;
+  color: #2457d7;
+}
+.cloud-budget small {
+  display: block;
+  line-height: 1.7;
+  color: #52647e;
+}
+@media (max-width: 760px) {
+  .cloud-app .cw-topbar.is-home {
+    position: static;
+    height: 52px;
+    min-height: 52px;
+    background: transparent;
+    border: 0;
+  }
+  .cloud-app .cw-main.is-empty .cw-conversation {
+    padding: 20px 16px 8px;
+  }
+  .cloud-app .cw-main.is-empty .jd-home h1 {
+    font-size: 28px;
+    line-height: 1.25;
+  }
+  .cloud-app .cw-topbar {
+    height: auto;
+    min-height: 56px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .cloud-app .cw-topbar h1 {
+    font-size: 14px;
+  }
+  .cloud-app .cw-composer {
+    margin: 0 12px max(12px, env(safe-area-inset-bottom));
+    width: auto;
+  }
+  .cloud-app .cw-composer-controls {
+    padding: 8px 8px 8px 40px;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+  .cloud-app .cw-composer-controls > footer {
+    flex: 1;
+    min-width: 96px;
+    justify-content: flex-end;
+  }
+  .cloud-app .cw-composer-controls summary {
+    min-height: 36px;
+  }
+  .cloud-app :is(input, textarea, select) {
+    font-size: 16px;
+  }
+  .cloud-app .cw-composer textarea {
+    min-height: 80px;
+    max-height: 28dvh;
+  }
+  .cloud-app .cw-main.is-empty .jd-compose-stack {
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  .cloud-app .resource-toolbar {
+    margin: 16px 0;
+  }
+  .cloud-app .resource-library .cloud-page-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+  .cloud-app .cloud-resource-grid {
+    gap: 12px;
+  }
+  .cloud-app .resource-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+  .cloud-app .cw-capsule-popover {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    top: auto;
+    width: auto;
+    max-height: 65dvh;
+    z-index: 80;
+  }
+  .cloud-app .cw-main.is-empty .cw-capsule-popover {
+    top: auto;
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .cloud-app .cw-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+  .cloud-app .cw-options-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cloud-app .jd-picks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .cloud-app .jd-picks select {
+    flex: 1;
+    min-width: 110px;
+  }
+  .cloud-app .global-sidebar.is-open {
+    width: min(300px, calc(100vw - 40px));
+  }
+}
+@media (max-width: 380px) {
+  .cloud-app .cw-composer-controls {
+    padding-left: 8px;
+  }
+  .cloud-app .cw-composer-controls > footer {
+    flex-basis: 100%;
+  }
+  .cloud-app .resource-filters {
+    flex-wrap: wrap;
+  }
+}
+@media (max-height: 560px) and (max-width: 1000px) {
+  .cloud-app .cw-main.is-empty .cw-conversation {
+    padding-top: 12px;
+  }
+  .cloud-app .jd-starters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cloud-app .cw-composer textarea {
+    min-height: 54px;
+  }
+}
+.cloud-app .cw-composer-controls footer label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  width: auto;
+  margin: 0;
+}
+.cloud-app .cw-composer-controls footer label input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+}
+@media (max-width: 380px) {
+  .cloud-app .cw-composer-controls > footer {
+    padding-left: 32px;
+  }
+}
+.cloud-app .ca-templates { grid-template-columns: repeat(auto-fit,minmax(min(100%,190px),1fr)); }
+.cloud-app .ca-empty > svg { margin-inline: auto; display: block; }
+.cloud-app .cloud-resource-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); }

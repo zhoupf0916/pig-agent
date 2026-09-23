@@ -1,11 +1,32 @@
+import {
+  defaultTariff,
+  reserveCost,
+  priceUsage,
+  parseUsage,
+} from "./billing.ts";
 import { registerEcosystemPluginRoutes } from "./ecosystem-plugins.ts";
 import { registerMcpRoutes } from "./mcp-servers.ts";
-import { registerAttachmentRoutes, resolveAttachments, bindAttachments } from "./attachments.ts";
+import {
+  registerAttachmentRoutes,
+  resolveAttachments,
+  bindAttachments,
+} from "./attachments.ts";
 import { loadProjectFiles } from "./project-files.ts";
 import { executionPolicy } from "./execution-policy.ts";
-import { registerCapabilityRoutes, resolveCapabilityContext } from "./capabilities.ts";
-import { registerUserDataRoutes, loadUserSettings, buildUserContext } from "./user-data.ts";
-import { registerWebAuthRoutes, authenticateWebOrBearer, getRequestCredential } from "./web-auth.ts";
+import {
+  registerCapabilityRoutes,
+  resolveCapabilityContext,
+} from "./capabilities.ts";
+import {
+  registerUserDataRoutes,
+  loadUserSettings,
+  buildUserContext,
+} from "./user-data.ts";
+import {
+  registerWebAuthRoutes,
+  authenticateWebOrBearer,
+  getRequestCredential,
+} from "./web-auth.ts";
 import { sharedProjectContext } from "./conversation-state.ts";
 import { registerClusterRoutes, sweepRuns } from "./cluster.ts";
 import { Hono } from "hono";
@@ -21,7 +42,11 @@ import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
 import { registerConversationRoutes } from "./conversations.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
-import { presentDebugTrace, closeTerminalDebugTrace, type DebugTraceView } from "@pig-agent/contracts";
+import {
+  presentDebugTrace,
+  closeTerminalDebugTrace,
+  type DebugTraceView,
+} from "@pig-agent/contracts";
 import { inputSchema } from "./input.ts";
 import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
 import type { CloudEnv } from "./types.ts";
@@ -113,7 +138,7 @@ app.get("/v1/runs", async (c) =>
   }),
 );
 app.post("/v1/runs", async (c) => {
-  const rawInput = await c.req.json().catch(()=>null);
+  const rawInput = await c.req.json().catch(() => null);
   const parsed = inputSchema.safeParse(rawInput);
   if (!parsed.success)
     return c.json({ error: "任务参数无效或超出大小限制" }, 400);
@@ -148,8 +173,19 @@ app.post("/v1/runs", async (c) => {
       );
       if (old.rowCount) {
         await client.query("COMMIT");
-        const { projectContext: _context, capabilityContext: _capabilities, privateMemoryContext: _memory, requestInput, ...originalInput } = old.rows[0].input;
-        if (!isDeepStrictEqual(requestInput || { networkPolicy: "ask", ...originalInput }, parsed.data))
+        const {
+          projectContext: _context,
+          capabilityContext: _capabilities,
+          privateMemoryContext: _memory,
+          requestInput,
+          ...originalInput
+        } = old.rows[0].input;
+        if (
+          !isDeepStrictEqual(
+            requestInput || { networkPolicy: "ask", ...originalInput },
+            parsed.data,
+          )
+        )
           return c.json({ error: "请求标识已用于其他任务" }, 409);
         return c.json({ id: old.rows[0].id, status: old.rows[0].state });
       }
@@ -162,15 +198,49 @@ app.post("/v1/runs", async (c) => {
       await client.query("ROLLBACK");
       return c.json({ error: "最多保留 5 个待执行或运行中的任务" }, 429);
     }
-    const defaults = await loadUserSettings(p.id,client);
-    const sharedProject = parsed.data.projectId ? Boolean((await client.query("SELECT space_id FROM shared_projects WHERE id=$1",[parsed.data.projectId])).rows[0]?.space_id) : false;
-    const effectiveInput = {...parsed.data,...executionPolicy(rawInput,defaults,{sharedProject})};
-    let capabilityContext:string;
-    try { capabilityContext=await resolveCapabilityContext(p.id,effectiveInput,client); }
-    catch(e) {await client.query("ROLLBACK");return c.json({error:(e as Error).message},400);}
-    const privateMemoryContext=await buildUserContext(p.id,effectiveInput.projectId,client);
+    const defaults = await loadUserSettings(p.id, client);
+    const sharedProject = parsed.data.projectId
+      ? Boolean(
+          (
+            await client.query(
+              "SELECT space_id FROM shared_projects WHERE id=$1",
+              [parsed.data.projectId],
+            )
+          ).rows[0]?.space_id,
+        )
+      : false;
+    const effectiveInput = {
+      ...parsed.data,
+      ...executionPolicy(rawInput, defaults, { sharedProject }),
+    };
+    let capabilityContext: string;
+    try {
+      capabilityContext = await resolveCapabilityContext(
+        p.id,
+        effectiveInput,
+        client,
+      );
+    } catch (e) {
+      await client.query("ROLLBACK");
+      return c.json({ error: (e as Error).message }, 400);
+    }
+    const privateMemoryContext = await buildUserContext(
+      p.id,
+      effectiveInput.projectId,
+      client,
+    );
     const id = "run_" + randomUUID().replaceAll("-", "");
-    let attachments;try { attachments=await resolveAttachments(p.id,parsed.data.attachmentIds,client); } catch(error) {await client.query("ROLLBACK");return c.json({error:(error as Error).message},400);}
+    let attachments;
+    try {
+      attachments = await resolveAttachments(
+        p.id,
+        parsed.data.attachmentIds,
+        client,
+      );
+    } catch (error) {
+      await client.query("ROLLBACK");
+      return c.json({ error: (error as Error).message }, 400);
+    }
     const conversationId = "conv_" + randomUUID().replaceAll("-", "");
     await client.query(
       "INSERT INTO conversations(id,owner_id,title,project_id) VALUES($1,$2,$3,$4)",
@@ -183,13 +253,33 @@ app.post("/v1/runs", async (c) => {
     );
     await client.query(
       "INSERT INTO runs(id,owner_id,input,request_key,conversation_id) VALUES($1,$2,$3,$4,$5)",
-      [id, p.id, { ...effectiveInput, attachments, projectFiles: effectiveInput.workspace?.snapshot ? [] : await loadProjectFiles(effectiveInput.projectId,p.id,client), requestInput: parsed.data, capabilityContext, privateMemoryContext, projectContext: await sharedProjectContext(parsed.data.projectId, p.id, client) }, key, conversationId],
+      [
+        id,
+        p.id,
+        {
+          ...effectiveInput,
+          attachments,
+          projectFiles: effectiveInput.workspace?.snapshot
+            ? []
+            : await loadProjectFiles(effectiveInput.projectId, p.id, client),
+          requestInput: parsed.data,
+          capabilityContext,
+          privateMemoryContext,
+          projectContext: await sharedProjectContext(
+            parsed.data.projectId,
+            p.id,
+            client,
+          ),
+        },
+        key,
+        conversationId,
+      ],
     );
     await client.query(
       "INSERT INTO audit(actor,action,run_id) VALUES($1,$2,$3)",
       [p.id, "create", id],
     );
-    await bindAttachments(id,parsed.data.attachmentIds,client);
+    await bindAttachments(id, parsed.data.attachmentIds, client);
     await client.query("COMMIT");
     return c.json({ id, status: "queued", conversationId }, 201);
   } catch (e) {
@@ -240,22 +330,41 @@ app.get("/v1/runs/:id/debug", async (c) => {
       [id],
     )
   ).rows[0] as { trace?: unknown } | undefined;
-  const allowed = (
-    await db.query(
-      "SELECT coalesce((input->>'debugContent')::boolean, false) AS debug_content FROM runs WHERE id=$1",
-      [id],
-    )
-  ).rows[0]?.debug_content === true;
-  const empty: DebugTraceView = { sessionId: id, contentEnabled: false, spans: [], dropped: 0 };
+  const allowed =
+    (
+      await db.query(
+        "SELECT coalesce((input->>'debugContent')::boolean, false) AS debug_content FROM runs WHERE id=$1",
+        [id],
+      )
+    ).rows[0]?.debug_content === true;
+  const empty: DebugTraceView = {
+    sessionId: id,
+    contentEnabled: false,
+    spans: [],
+    dropped: 0,
+  };
   const trace = row?.trace;
-  if (!trace || typeof trace !== "object" || !Array.isArray((trace as DebugTraceView).spans)) return c.json(empty);
+  if (
+    !trace ||
+    typeof trace !== "object" ||
+    !Array.isArray((trace as DebugTraceView).spans)
+  )
+    return c.json(empty);
   const view = trace as DebugTraceView;
-  return c.json(presentDebugTrace(closeTerminalDebugTrace({
-    sessionId: view.sessionId || id,
-    contentEnabled: view.contentEnabled === true,
-    spans: view.spans,
-    dropped: view.dropped ?? 0,
-  }, String(run.state)), allowed));
+  return c.json(
+    presentDebugTrace(
+      closeTerminalDebugTrace(
+        {
+          sessionId: view.sessionId || id,
+          contentEnabled: view.contentEnabled === true,
+          spans: view.spans,
+          dropped: view.dropped ?? 0,
+        },
+        String(run.state),
+      ),
+      allowed,
+    ),
+  );
 });
 app.get("/v1/runs/:id/events", async (c) => {
   const id = c.req.param("id");
@@ -271,12 +380,14 @@ app.get("/v1/runs/:id/events", async (c) => {
     let lastHeartbeat = 0;
     while (!stream.aborted) {
       const credential = getRequestCredential(c);
-      const fresh = (await db.query(
-        credential.source === "cookie"
-          ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
-          : "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
-        [c.get("principal").id, hash(credential.token)],
-      )).rows[0];
+      const fresh = (
+        await db.query(
+          credential.source === "cookie"
+            ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
+            : "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
+          [c.get("principal").id, hash(credential.token)],
+        )
+      ).rows[0];
       if (!fresh || !(await runFor(id, fresh))) break;
       const rows = await db.query(
         "SELECT seq,event FROM events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 200",
@@ -427,7 +538,10 @@ app.post("/internal/runs/:id/heartbeat", async (c) => {
     "UPDATE runs SET lease_until=least(now()+interval '20 seconds',coalesce(deadline_at,now()+interval '20 seconds')),updated_at=now() WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running','cancelling') RETURNING state,deadline_at",
     [c.req.param("id"), hash(String(token))],
   );
-  return c.json({ state: r.rows[0]?.state || "expired", deadlineAt: r.rows[0]?.deadline_at ?? null });
+  return c.json({
+    state: r.rows[0]?.state || "expired",
+    deadlineAt: r.rows[0]?.deadline_at ?? null,
+  });
 });
 app.post("/internal/runs/:id/start", async (c) => {
   const parsed = credentialSchema
@@ -577,11 +691,14 @@ app.post("/internal/runs/:id/event", async (c) => {
 });
 app.post("/internal/authorize", async (c) => {
   const parsed = credentialSchema
-    .extend({ reserve: z.boolean().optional() })
+    .extend({
+      reserve: z.boolean().optional(),
+      modelRequest: z.record(z.unknown()).optional(),
+    })
     .strict()
     .safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "Invalid authorization" }, 400);
-  const { token, reserve } = parsed.data;
+  const { token, reserve, modelRequest } = parsed.data;
   const r = await db.query(
     "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
     [hash(String(token))],
@@ -620,13 +737,30 @@ app.post("/internal/authorize", async (c) => {
         await client.query("ROLLBACK");
         return c.json({ error: "模型调用次数已达上限或运行已结束" }, 429);
       }
-      await client.query(
-        "INSERT INTO model_usage(owner_id,run_id) VALUES($1,$2)",
-        [run.owner_id, r.rows[0].id],
-      );
       const channel = (
         await client.query("SELECT * FROM model_channels WHERE enabled")
       ).rows[0];
+      const tariff = channel?.tariff || defaultTariff;
+      const amount =
+        channel || process.env.MODEL_MODE === "provider"
+          ? reserveCost(modelRequest || {}, 4096, tariff)
+          : 0;
+      let billingId;
+      try {
+        billingId = (
+          await client.query("SELECT reserve_model_budget($1,$2,$3,$4) AS id", [
+            run.owner_id,
+            r.rows[0].id,
+            amount,
+            tariff,
+          ])
+        ).rows[0].id;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        if (String(error).includes("额度不足"))
+          return c.json({ error: "模型额度不足，请联系管理员增加预算" }, 429);
+        throw error;
+      }
       const provider = channel
         ? {
             baseUrl: channel.base_url,
@@ -635,7 +769,7 @@ app.post("/internal/authorize", async (c) => {
           }
         : undefined;
       await client.query("COMMIT");
-      return c.json({ id: r.rows[0].id, provider });
+      return c.json({ id: r.rows[0].id, provider, billingId });
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -644,6 +778,26 @@ app.post("/internal/authorize", async (c) => {
     }
   }
   return c.json({ id: r.rows[0].id, input: r.rows[0].input });
+});
+// Trusted gateway only: settlement is idempotent, independent of run lease expiry.
+app.post("/internal/model-settle", async (c) => {
+  const body = await c.req.json();
+  if (!/^\d+$/.test(String(body.billingId)))
+    return c.json({ error: "Invalid billing id" }, 400);
+  const usage = parseUsage(body.usage);
+  if (!usage)
+    return c.json({ error: "Missing usage; reservation retained" }, 400);
+  const row = (
+    await db.query("SELECT tariff FROM model_usage WHERE id=$1", [
+      body.billingId,
+    ])
+  ).rows[0];
+  if (!row?.tariff) return c.json({ error: "Unknown billing call" }, 404);
+  await db.query(
+    "UPDATE model_usage SET charged_micros=$2,token_usage=$3,settled_at=now() WHERE id=$1 AND settled_at IS NULL",
+    [body.billingId, priceUsage(usage, row.tariff), usage],
+  );
+  return c.json({ ok: true });
 });
 app.get(
   "/admin/*",
@@ -655,9 +809,9 @@ app.get(
 app.get("/assets/*", serveStatic({ root: "/app/web" }));
 app.get("/debug/runs", serveStatic({ path: "/app/web/index.html" }));
 app.get("/cloud", (c) => c.redirect("/debug/runs"));
-app.get("/api/deployment", c => c.json({ surface: "cloud" }));
+app.get("/api/deployment", (c) => c.json({ surface: "cloud" }));
 // The public browser surface has no local filesystem or local execution APIs.
-app.all("/api/*", c => c.json({ error: "云端 Web 不提供本机执行接口" }, 404));
+app.all("/api/*", (c) => c.json({ error: "云端 Web 不提供本机执行接口" }, 404));
 app.get("/", serveStatic({ path: "/app/web/index.html" }));
 await migrate();
 let scheduling = false;

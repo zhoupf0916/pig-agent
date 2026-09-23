@@ -519,7 +519,7 @@ function renderAccounts() {
         heading,
         node(
           "p",
-          `今日调用 ${a.calls_today} / ${a.daily_call_limit} · ${a.id}`,
+          `余额 ¥${Math.max(0, (Number(a.budget_micros) - Number(a.spent_micros) - Number(a.reserved_micros)) / 1e6).toFixed(4)} · 已用 ¥${(Number(a.spent_micros) / 1e6).toFixed(4)} · 预留 ¥${(Number(a.reserved_micros) / 1e6).toFixed(4)} · 今日调用 ${a.calls_today} / ${a.daily_call_limit}`,
           "hint",
         ),
       );
@@ -535,12 +535,26 @@ function renderAccounts() {
       input.setAttribute("aria-label", `${a.name}每日调用限额`);
       input.oninput = () => accountDrafts.set(a.id, input.value);
       label.append(input);
+      const budgetLabel = node("label", "总预算（元，一次性，不按日重置）"),
+        budget = node("input");
+      budget.type = "number";
+      budget.min = "0";
+      budget.max = "100000";
+      budget.step = "0.01";
+      budget.required = true;
+      budget.value =
+        accountDrafts.get(a.id + ":budget") ?? Number(a.budget_micros) / 1e6;
+      budget.setAttribute("aria-label", `${a.name}总预算（元）`);
+      budget.oninput = () => accountDrafts.set(a.id + ":budget", budget.value);
+      budgetLabel.append(budget);
+      quota.append(budgetLabel);
       const save = node("button", "保存限额");
       quota.append(
         label,
         save,
         button("还原", () => {
           accountDrafts.delete(a.id);
+          accountDrafts.delete(a.id + ":budget");
           renderAccounts();
           renderRegistrationRequests();
         }),
@@ -550,13 +564,17 @@ function renderAccounts() {
         if (
           await action(
             `/v1/admin/accounts/${a.id}`,
-            { dailyCallLimit: Number(input.value) },
+            {
+              dailyCallLimit: Number(input.value),
+              budgetYuan: Number(budget.value),
+            },
             "PATCH",
             "账号每日调用限额已保存",
             save,
           )
         ) {
           accountDrafts.delete(a.id);
+          accountDrafts.delete(a.id + ":budget");
           input.blur();
           await refresh();
         }

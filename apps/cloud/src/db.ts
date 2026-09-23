@@ -1,3 +1,4 @@
+import {billingSchema} from "./billing.ts";
 import { ecosystemPluginSchema } from "./ecosystem-plugins.ts";
 import { mcpServerSchema } from "./mcp-schema.ts";
 import { attachmentSchema } from "./attachments.ts";
@@ -27,6 +28,7 @@ export async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS one_active_channel ON model_channels(enabled) WHERE enabled;
     CREATE TABLE IF NOT EXISTS model_usage(id bigserial PRIMARY KEY,owner_id text NOT NULL REFERENCES principals(id),run_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
     CREATE INDEX IF NOT EXISTS usage_owner_time ON model_usage(owner_id,created_at);
+    ${billingSchema}
     CREATE TABLE IF NOT EXISTS runs (id text PRIMARY KEY, owner_id text NOT NULL REFERENCES principals(id), request_key text, input jsonb NOT NULL, state text NOT NULL DEFAULT 'queued', worker_id text, lease_until timestamptz, attempt_token text, model_calls int NOT NULL DEFAULT 0, error text, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(owner_id,request_key));
     CREATE TABLE IF NOT EXISTS platform_settings(key text PRIMARY KEY,value jsonb NOT NULL);
     ALTER TABLE runs ADD COLUMN IF NOT EXISTS execution_profile text NOT NULL DEFAULT 'standard';

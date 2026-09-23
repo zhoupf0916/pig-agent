@@ -54,14 +54,18 @@ app.post("/approvals/:id/poll", async (c) => {
     headers: { "Content-Type": "application/json" },
   });
 });
-async function authorize(token: string, reserve = false) {
+async function authorize(
+  token: string,
+  reserve = false,
+  modelRequest?: Record<string, unknown>,
+) {
   return fetch(control + "/internal/authorize", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
     },
-    body: JSON.stringify({ token, reserve }),
+    body: JSON.stringify({ token, reserve, modelRequest }),
     signal: AbortSignal.timeout(5000),
   });
 }
@@ -125,56 +129,123 @@ app.get("/task", async (c) => {
   });
 });
 app.post("/v1/chat/completions", async (c) => {
+  const body = await c.req.json();
   const auth = await authorize(
     c.req.header("Authorization")?.replace(/^Bearer /, "") || "",
     true,
+    body,
   );
   if (!auth.ok)
-    return c.json({ error: "运行令牌失效或调用预算不足" }, auth.status as 401);
-  const { provider } = (await auth.json()) as {
+    return new Response(await auth.text(), {
+      status: auth.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  const { provider, billingId } = (await auth.json()) as {
+    billingId: string;
     provider?: { baseUrl: string; model: string; apiKey: string };
   };
-  const body = await c.req.json();
   if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
     await new Promise((resolve) => setTimeout(resolve, 250));
     const tools = (body.messages || []).filter(
       (m: { role: string }) => m.role === "tool",
     );
-    const networkTarget = [...(body.messages || [])].reverse().find((m: {role:string;content?:string})=>m.role === "user" && m.content?.includes("[NETWORK_ACCEPTANCE:"))?.content?.match(/\[NETWORK_ACCEPTANCE:(https:\/\/[^\]]+)\]/)?.[1];
+    const networkTarget = [...(body.messages || [])]
+      .reverse()
+      .find(
+        (m: { role: string; content?: string }) =>
+          m.role === "user" && m.content?.includes("[NETWORK_ACCEPTANCE:"),
+      )
+      ?.content?.match(/\[NETWORK_ACCEPTANCE:(https:\/\/[^\]]+)\]/)?.[1];
     // Deterministic MCP probe for the existing local mock-model mode only.
-    const mcpTarget = [...(body.messages || [])].reverse().find((m: {role:string;content?:string}) => m.role === "user" && m.content?.includes("[MCP_ACCEPTANCE:"))?.content?.match(/\[MCP_ACCEPTANCE:(echo|write_marker|slow)\]/)?.[1];
-    const mcpTool = mcpTarget ? (body.tools || []).find((t: {function?:{name?:string}}) => t.function?.name?.endsWith("__" + mcpTarget)) : undefined;
-    const call = mcpTarget ? (tools.length === 0 && mcpTool ? {id:"mcp-proof",type:"function",function:{name:mcpTool.function.name,arguments:JSON.stringify(mcpTarget === "write_marker" ? {marker:"MCP_RUNTIME_PROOF",path:"acceptance.txt"} : mcpTarget === "slow" ? {delayMs:15000} : {text:"MCP_RUNTIME_PROOF"})}} : null) : networkTarget ? (tools.length === 0 ? {
-      id: "network-shell-probe", type: "function", function: {name:"run_shell",arguments:JSON.stringify({command:`node -e 'const https=require("https");const r=https.get("https://example.com/",()=>{console.log("UNEXPECTED_NETWORK");process.exit(0)});r.on("error",()=>{console.error("NETWORK_RESTRICTED");process.exit(1)});setTimeout(()=>{r.destroy();console.error("NETWORK_RESTRICTED");process.exit(1)},1500)'`,timeout_ms:3000})}
-    } : tools.length === 1 ? {id:"network-read-proof",type:"function",function:{name:"http_fetch",arguments:JSON.stringify({url:networkTarget,timeout_ms:10000,max_bytes:200000})}} : null) :
-      tools.length === 0
+    const mcpTarget = [...(body.messages || [])]
+      .reverse()
+      .find(
+        (m: { role: string; content?: string }) =>
+          m.role === "user" && m.content?.includes("[MCP_ACCEPTANCE:"),
+      )
+      ?.content?.match(/\[MCP_ACCEPTANCE:(echo|write_marker|slow)\]/)?.[1];
+    const mcpTool = mcpTarget
+      ? (body.tools || []).find((t: { function?: { name?: string } }) =>
+          t.function?.name?.endsWith("__" + mcpTarget),
+        )
+      : undefined;
+    const call = mcpTarget
+      ? tools.length === 0 && mcpTool
         ? {
-            id: "write-proof",
+            id: "mcp-proof",
             type: "function",
             function: {
-              name: "write_file",
-              arguments: JSON.stringify({
-                path: "cloud-proof.txt",
-                content: "PIG_CLOUD_CONTAINER_OK\n",
-              }),
+              name: mcpTool.function.name,
+              arguments: JSON.stringify(
+                mcpTarget === "write_marker"
+                  ? { marker: "MCP_RUNTIME_PROOF", path: "acceptance.txt" }
+                  : mcpTarget === "slow"
+                    ? { delayMs: 15000 }
+                    : { text: "MCP_RUNTIME_PROOF" },
+              ),
             },
           }
-        : tools.length === 1
+        : null
+      : networkTarget
+        ? tools.length === 0
           ? {
-              id: "read-proof",
+              id: "network-shell-probe",
               type: "function",
               function: {
-                name: "read_file",
-                arguments: JSON.stringify({ path: "cloud-proof.txt" }),
+                name: "run_shell",
+                arguments: JSON.stringify({
+                  command: `node -e 'const https=require("https");const r=https.get("https://example.com/",()=>{console.log("UNEXPECTED_NETWORK");process.exit(0)});r.on("error",()=>{console.error("NETWORK_RESTRICTED");process.exit(1)});setTimeout(()=>{r.destroy();console.error("NETWORK_RESTRICTED");process.exit(1)},1500)'`,
+                  timeout_ms: 3000,
+                }),
               },
             }
-          : null;
+          : tools.length === 1
+            ? {
+                id: "network-read-proof",
+                type: "function",
+                function: {
+                  name: "http_fetch",
+                  arguments: JSON.stringify({
+                    url: networkTarget,
+                    timeout_ms: 10000,
+                    max_bytes: 200000,
+                  }),
+                },
+              }
+            : null
+        : tools.length === 0
+          ? {
+              id: "write-proof",
+              type: "function",
+              function: {
+                name: "write_file",
+                arguments: JSON.stringify({
+                  path: "cloud-proof.txt",
+                  content: "PIG_CLOUD_CONTAINER_OK\n",
+                }),
+              },
+            }
+          : tools.length === 1
+            ? {
+                id: "read-proof",
+                type: "function",
+                function: {
+                  name: "read_file",
+                  arguments: JSON.stringify({ path: "cloud-proof.txt" }),
+                },
+              }
+            : null;
     const message = call
       ? { role: "assistant", content: null, tool_calls: [call] }
       : {
           role: "assistant",
-          content: mcpTarget ? (mcpTool ? "MCP 模拟模型流程结束，请以实际工具结果核验。" : "MCP 工具不可用，本次未调用。") : networkTarget ? "单次网络访问验收：工具结果已返回（模拟模型），请以实际工具结果核验。" :
-            "沙箱执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。",
+          content: mcpTarget
+            ? mcpTool
+              ? "MCP 模拟模型流程结束，请以实际工具结果核验。"
+              : "MCP 工具不可用，本次未调用。"
+            : networkTarget
+              ? "单次网络访问验收：工具结果已返回（模拟模型），请以实际工具结果核验。"
+              : "沙箱执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。",
         };
     if (body.stream && !call) {
       // Deliberately paced mock output exercises the real streaming path.
@@ -218,8 +289,10 @@ app.post("/v1/chat/completions", async (c) => {
       choices: [{ message, finish_reason: call ? "tool_calls" : "stop" }],
     });
   }
-  if (!provider?.apiKey && !process.env.MODEL_API_KEY)
+  if (!provider?.apiKey && !process.env.MODEL_API_KEY) {
+    await settle({prompt_tokens:0,completion_tokens:0});
     return c.json({ error: "平台尚未配置模型 Key" }, 503);
+  }
   const response = await fetch(
     (
       provider?.baseUrl ||
@@ -235,37 +308,104 @@ app.post("/v1/chat/completions", async (c) => {
       },
       body: JSON.stringify({
         ...body,
+        n: 1,
+        max_completion_tokens: undefined,
         model: provider?.model || process.env.MODEL_NAME || "deepseek-chat",
-        max_tokens: Math.min(Number(body.max_tokens) || 4096, 4096),
+        max_tokens: Math.max(
+          1,
+          Math.min(Number(body.max_tokens) || 4096, 4096),
+        ),
+        ...(body.stream ? { stream_options: { include_usage: true } } : {}),
       }),
       signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90000)]),
     },
   );
-  if (!response.ok)
+  if (!response.ok) {
+    await settle({prompt_tokens:0,completion_tokens:0});
     return c.json({ error: `模型服务 HTTP ${response.status}` }, 502);
-  return new Response(response.body, {
-    headers: {
-      "Content-Type":
-        response.headers.get("Content-Type") || "application/json",
+  }
+  async function settle(usage: unknown) {
+    if (!usage) return; // Unknown cost stays reserved, including cancellation/crash.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await fetch(control + "/internal/model-settle", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+          },
+          body: JSON.stringify({ billingId, usage }),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (r.ok) return;
+      } catch {}
+    }
+    console.error("Model billing settlement pending", billingId);
+  }
+  if (!body.stream) {
+    const result = (await response.json()) as { usage?: unknown };
+    await settle(result.usage);
+    return c.json(result);
+  }
+  const decoder = new TextDecoder();
+  let pending = "",
+    usage: unknown,
+    settlementSent = false;
+  const meter = new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      pending += decoder.decode(chunk, { stream: true });
+      let end: number;
+      while ((end = pending.indexOf("\n")) >= 0) {
+        const line = pending.slice(0, end).trim();
+        pending = pending.slice(end + 1);
+        if (line.startsWith("data:")) {
+          try {
+            const data = JSON.parse(line.slice(5));
+            if (data.usage) usage = data.usage;
+          } catch {}
+        }
+      }
+      if (pending.length > 2 * 1024 * 1024)
+        throw Error("Provider SSE frame too large");
+      if (usage && !settlementSent) {
+        await settle(usage);
+        settlementSent = true;
+      }
+      controller.enqueue(chunk);
     },
+    async flush() {
+      if (!settlementSent) await settle(usage);
+    },
+  });
+  return new Response(response.body?.pipeThrough(meter), {
+    headers: { "Content-Type": "text/event-stream" },
   });
 });
 app.post("/mcp/tools", async (c) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
   const response = await fetch(control + "/internal/mcp/tools", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+    },
     body: JSON.stringify({ token }),
-    signal: AbortSignal.any([c.req.raw.signal,AbortSignal.timeout(120000)]),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(120000)]),
   });
-  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+  return new Response(response.body, {
+    status: response.status,
+    headers: { "Content-Type": "application/json" },
+  });
 });
 app.post("/mcp/invoke", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
   const response = await fetch(control + "/internal/mcp/invoke", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+    },
     body: JSON.stringify({
       token,
       callId: body.callId,
@@ -274,9 +414,12 @@ app.post("/mcp/invoke", async (c) => {
       url: body.url,
       credentialVersion: body.credentialVersion,
     }),
-    signal: AbortSignal.any([c.req.raw.signal,AbortSignal.timeout(125000)]),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(125000)]),
   });
-  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+  return new Response(response.body, {
+    status: response.status,
+    headers: { "Content-Type": "application/json" },
+  });
 });
 app.onError((_e, c) => c.json({ error: "模型网关暂时不可用" }, 502));
 serve({ fetch: app.fetch, port: 8891 });

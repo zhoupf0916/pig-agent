@@ -2,7 +2,7 @@
 
 ## 当前交付范围
 
-macOS 内测客户端，复用 Web 工作台与本地服务。安装后不需要 Node.js / pnpm。首次选择工作目录并填写模型参数，可测试模型连接；Docker 和 Codex CLI 仍需用户自行安装。
+macOS 内测客户端，复用 Web 工作台与本地服务。安装后不需要 Node.js / pnpm。首次选择工作目录并填写模型参数，可测试模型连接。本机 Pig 使用操作系统沙箱，无需 Docker；连接自建云平台时，Docker 运行在部署平台的一侧。
 
 0.1.1 支持 Pig 与 Codex 的独立凭据配置和真实连接测试。Codex 调用本机 CLI，需单独安装；在设置中填写 Responses 地址、模型与密钥，同一提供商可显式复用已保存的 Pig 密钥。详见 [Codex 运行时文档](codex-runtime.md)。桌面程序不会继承终端中的模型密钥。
 
@@ -33,7 +33,7 @@ pnpm desktop:dist  # 生成 DMG 与 ZIP
 - 使用 Electron safeStorage 加密 Pig、Codex 模型密钥与 Cloud token，保存在 `credentials.bin`；普通 `settings.json` 不包含这些凭据的明文。读取设置时只向 UI 返回「已配置」标志；输入框留空保留原值，填写新值可替换。
 - 系统加密不可用时不降级成明文。备份凭据后换机器可能无法解密，需重新配置自己的密钥。
 
-Electron renderer 沙箱保护的是界面，不代表 Agent 命令自动运行在 Docker 中。Agent 仍可按任务设置使用本机或 Docker；应用和同用户进程不是彼此隔离的安全租户。
+Electron renderer 沙箱保护的是界面，不代表 Agent 命令自动运行在 Docker 中。本机 Pig 固定使用操作系统沙箱与任务审批；远端任务由控制面调度 Runner。应用和同用户进程不是彼此隔离的安全租户。
 
 ## 数据与诊断
 

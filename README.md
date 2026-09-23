@@ -10,44 +10,123 @@
 - **先看再写**：写入和命令可以在执行前审批。拒绝或取消后，后续操作不会继续。
 - **沙箱执行**：云端任务跑在 Runner 的原生进程里，不为每个任务另起 Docker 容器。本机任务默认使用操作系统沙箱。
 - **协作**：申请账号后由管理员批准。项目可以仅自己可见，或与组织成员共享。私人记忆不会带进共享任务。
+- **账号预算**：新账号默认一次性 2 元平台模型预算，按 token 用量结算，调用前预留并拦截超额；管理员可修改总预算与每日调用上限。
 - **离开也能跑**：定时任务由控制面调度。关闭网页后，云端任务仍会继续，回来可以接着看。
 - **扩展与 MCP**：内置编码质量、文档写作、数据分析、资料研究、故障排查五个专家与技能包；可连接 Streamable HTTP MCP 工具，每次外部调用单独审批。
 
-## 启动
+## 选择使用方式
 
-需要 Node.js **22.13+**（建议 24）、pnpm **11.19.0**。云端预览还需要 Docker Desktop。命令都在仓库根目录执行。
+| 方式 | 执行位置 | 适合场景 |
+| --- | --- | --- |
+| Web 工作台 | 控制面调度远端 Runner | 浏览器使用、项目协同、持续运行的自动化 |
+| Electron 客户端 | 本机工作区，也可连接远端 | 本地代码与文件任务、原生目录选择、桌面操作 |
+| 本机 Web 开发模式 | 当前电脑的本机沙箱 | 调试桌面工作台与本机 API；仅供本地开发 |
+
+### 准备开发环境
+
+需要 Node.js **22.13+**（建议 24）、pnpm **11.19.0**。以下命令均在仓库根目录执行。构建本机文件助手需要 C 编译器；macOS 桌面构建需要 Xcode Command Line Tools（`xcode-select --install`）。Linux 本机沙箱需要 Bubblewrap。当前桌面发行目标为 macOS。
 
 ```bash
+npm install -g pnpm@11.19.0
 pnpm install --frozen-lockfile
+```
 
-# 控制面、执行服务和 Web。先打开 Docker Desktop
+### 本地启动 Web 与管理后台
+
+先启动 Docker Desktop（Linux 可使用 Docker Engine 与 Compose），然后运行：
+
+```bash
 pnpm cloud:up
 
-# 首次生成管理员密码，写在 data/cloud-local/accounts.txt，已有账号不会被重置
+# 首次生成管理员密码；写入 data/cloud-local/accounts.txt，不重置已有账号
 node scripts/setup-admin-password.mjs
 ```
 
 | 入口 | 地址 |
 | --- | --- |
-| 工作台 | http://127.0.0.1:8890/ |
+| Web 工作台 | http://127.0.0.1:8890/ |
 | 管理后台 | http://127.0.0.1:8890/admin/ |
 
-首次使用在工作台选择「申请账号」，管理员在后台批准后再登录。默认是模拟模型；管理员启用真实渠道后才会调用真实模型。
+这会在本地启动 PostgreSQL、控制面、模型网关和 Runner。浏览器本身不执行主机命令。首次使用在工作台申请账号，由管理员批准后登录。默认使用模拟模型；管理员配置并启用真实模型渠道后，任务才会调用真实模型。
 
 ```bash
-pnpm cloud:status    # 查看服务
-pnpm cloud:logs      # 查看日志
+pnpm cloud:status    # 查看服务状态
+pnpm cloud:logs      # 查看服务日志
 pnpm cloud:down      # 停止服务，保留数据库
 
-# 改界面时另开 Vite，接口仍走上面的云平台
-pnpm dev             # http://127.0.0.1:5173/
-
-# 桌面客户端
-pnpm desktop:dev
-pnpm desktop:dist    # macOS 安装包，输出 release/
+# 开发 Web 界面：保持上述平台运行，再在另一个终端启动
+pnpm dev             # http://127.0.0.1:5173/，云接口代理到 8890
 ```
 
-只做本机界面开发时，用 `PIG_LOCAL_WORKBENCH=1 pnpm dev`（5173 / 8787）。构建原生文件助手需要 C 编译器；Linux 本机沙箱还需要 Bubblewrap。
+### 本地启动 Electron 客户端
+
+```bash
+pnpm desktop:dev     # 构建并打开桌面应用，自动启动内置本机服务
+```
+
+不需要先运行 `pnpm dev` 或 `pnpm cloud:up`。进入设置后：
+
+1. 在模型设置填写接口地址、模型名称和自己的 API Key，保存并测试连接。
+2. 将默认执行环境设为「本机 Pig」。
+3. 在工作区设置选择本机文件夹，或为项目配置自己的工作区。
+4. 创建任务，按需要逐项批准文件写入、命令或网络请求，再查看成果。
+
+**本机执行会操作所选工作区中的真实文件**，使用操作系统沙箱与审批机制；不需要为每个任务启动 Docker。桌面密钥使用系统加密存储，应用不会自动读取仓库 `.env` 或继承终端里的模型密钥。需要远端执行时，再配置控制面连接。关闭应用会停止本机服务和本机自动化，远端任务由控制面继续管理。
+
+```bash
+pnpm desktop:build  # 仅构建桌面运行资源
+pnpm desktop:pack   # 生成可直接打开的 macOS .app
+pnpm desktop:dist   # 生成 macOS DMG / ZIP
+```
+
+打包产物位于 `release/`。安装包自带运行时，使用者无需安装 Node.js 或 pnpm；当前包未签名、未公证。原生目录选择、Computer Use 的系统授权、数据位置与诊断见 [桌面客户端说明](docs/desktop.md)。
+
+### 只在浏览器调试本机执行
+
+```bash
+pnpm build
+PIG_LOCAL_WORKBENCH=1 pnpm dev
+# 浏览器 http://127.0.0.1:5173/，本机 API http://127.0.0.1:8787/
+```
+
+这是显式启用的本机开发入口，与默认 Web 云工作台不同。浏览器没有 Electron 原生目录选择器，工作区路径在设置中填写。不要将这个本机开发服务暴露到公网。
+
+## 项目结构
+
+```text
+apps/
+  web/          React 工作台；Web 与桌面复用界面
+  desktop/      Electron 主进程、原生目录选择、系统凭据与打包图标
+  server/       本机 API、Agent 执行循环、工具、沙箱及远端适配
+  cloud/        控制面、账号权限、任务调度、模型网关与预算
+  worker/       Runner 注册、心跳、任务领取与执行资源管理
+  admin/        管理后台：账号审批、模型渠道、Runner 与配额
+packages/
+  contracts/    各应用共享的 API、事件与云协议类型
+  design/       共享设计样式与基础资源
+infra/
+  cloud/        本地 Docker 平台配置
+  tencent/      腾讯云单机部署、HTTPS、限流与备份配置
+scripts/        构建、启动、冒烟验证与运维脚本
+skills/         内置技能
+docs/          架构、部署、验收与排障文档
+```
+
+`data/` 为本机开发数据，`desktop-dist/`、`cloud-dist/` 和 `release/` 为生成物，不提交 Git。Web、server、cloud 通过 `packages/contracts` 共享协议，不互相导入应用源码。
+
+## 开发验证
+
+```bash
+pnpm check:architecture
+pnpm typecheck
+pnpm test
+pnpm build
+
+# 已启动本地 Docker 平台后，使用模拟模型检查云端流程
+pnpm cloud:smoke
+```
+
+多控制面、多 Runner 的本地验证使用 `pnpm cluster:up` 和 `pnpm cluster:smoke`；详细环境与限制见 [本地云平台](docs/local-cloud.md)。
 
 ## 注意事项
 
@@ -57,7 +136,7 @@ pnpm desktop:dist    # macOS 安装包，输出 release/
 - 审批最多等待 30 分钟，等待期间仍占用执行名额。
 - 附件支持文本、PDF、DOCX。图片只保存原件，不做识别。Web 单文件 4 MiB，单次最多 10 个，每条消息合计 8 MiB。
 - 桌面安装包未签名、未公证，目前只有 macOS。执行固定走 Pig 的沙箱和审批，不能改成直接在主机上跑命令。
-- 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测，没有账号计费和公网生产部署方案。
+- 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测，没有账号计费；公网内测可参考 [腾讯云单机部署](docs/tencent-deployment.md)，不代表高可用生产方案。
 
 架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。运行时选型见 [运行时选型](docs/runtime-selection.md)。改代码的顺序和测试要求见 [AGENTS.md](AGENTS.md)。
 

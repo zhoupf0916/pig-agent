@@ -128,7 +128,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
     c.json(
       (
         await db.query(
-          "SELECT daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p WHERE id=$1",
+          "SELECT budget_micros,(SELECT COALESCE(sum(charged_micros),0) FROM model_usage WHERE owner_id=p.id) AS spent_micros,(SELECT COALESCE(sum(reserved_micros),0) FROM model_usage WHERE owner_id=p.id AND charged_micros IS NULL) AS reserved_micros,daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p WHERE id=$1",
           [c.get("principal").id],
         )
       ).rows[0],
@@ -144,7 +144,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
     c.json({
       accounts: (
         await db.query(
-          "SELECT id,name,role,enabled,daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p ORDER BY id",
+          "SELECT id,name,role,enabled,budget_micros,(SELECT COALESCE(sum(charged_micros),0) FROM model_usage WHERE owner_id=p.id) AS spent_micros,(SELECT COALESCE(sum(reserved_micros),0) FROM model_usage WHERE owner_id=p.id AND charged_micros IS NULL) AS reserved_micros,daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p ORDER BY id",
         )
       ).rows,
     }),
@@ -185,6 +185,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
       .object({
         enabled: z.boolean().optional(),
         dailyCallLimit: z.number().int().min(0).max(100000).optional(),
+        budgetYuan: z.number().min(0).max(100000).multipleOf(0.01).optional(),
         revokeSessions: z.boolean().optional(),
       })
       .strict()
@@ -199,11 +200,14 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
     try {
       await client.query("BEGIN");
       const r = await client.query(
-        "UPDATE principals SET enabled=coalesce($2,enabled),daily_call_limit=coalesce($3,daily_call_limit) WHERE id=$1 RETURNING id",
+        "UPDATE principals SET enabled=coalesce($2,enabled),daily_call_limit=coalesce($3,daily_call_limit),budget_micros=coalesce($4,budget_micros) WHERE id=$1 RETURNING id",
         [
           c.req.param("id"),
           body.data.enabled ?? null,
           body.data.dailyCallLimit ?? null,
+          body.data.budgetYuan === undefined
+            ? null
+            : Math.round(body.data.budgetYuan * 1000000),
         ],
       );
       if (!r.rowCount) {

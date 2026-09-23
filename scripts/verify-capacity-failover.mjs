@@ -1,0 +1,20 @@
+// Only touches the isolated pig-capacity deployment created by benchmark-capacity.mjs.
+import {execFileSync} from 'node:child_process';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {parseEnv} from 'node:util';
+import assert from 'node:assert/strict';
+const root='data/capacity-review';const env=parseEnv(readFileSync(root+'/stack.env','utf8'));
+const docker=(...a)=>execFileSync('docker',a,{encoding:'utf8',timeout:120000}).trim();
+const dc=(...a)=>docker('compose','--env-file',root+'/stack.env','-f',root+'/compose.json',...a);
+const info=id=>JSON.parse(docker('inspect',id))[0];const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const evidence={checks:[],started:new Date().toISOString()};let bases=[],rr=0;
+const req=async(path,body,method=body?'POST':'GET',key=crypto.randomUUID())=>{const r=await fetch(bases[rr++%bases.length]+path,{method,headers:{Authorization:`Bearer ${env.ADMIN_TOKEN}`,'Content-Type':'application/json','Idempotency-Key':key},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(10000)});assert(r.ok,`${path}: ${r.status}`);return r.json();};
+async function until(fn,ms=45000){const end=Date.now()+ms;while(Date.now()<end){const v=await fn();if(v)return v;await sleep(400);}throw Error('Wait timed out');}
+async function pending(id){return until(async()=>(await req(`/v1/runs/${id}/approvals`)).approvals.find(a=>a.state==='pending'));}
+try{dc('up','-d','--no-build','--scale','cloud=2','--scale','worker=2','--wait');const controls=dc('ps','-q','cloud').split('\n');bases=controls.map(id=>'http://127.0.0.1:'+info(id).NetworkSettings.Ports['8890/tcp'][0].HostPort);await req('/v1/admin/execution-policy',{globalConcurrency:2,userConcurrency:2,projectConcurrency:2,queueLimit:100,queueTimeoutSeconds:300},'PUT');
+const body={prompt:'Failover fixture: write and read proof',requireApproval:true};const key=crypto.randomUUID();const duplicate=await Promise.all(Array.from({length:12},()=>req('/v1/runs',body,'POST',key)));assert.equal(new Set(duplicate.map(r=>r.id)).size,1);evidence.checks.push({name:'12 simultaneous submissions across 2 controls produce one run',run:duplicate[0].id});
+const id=duplicate[0].id;const approval=await pending(id);docker('kill',controls[0]);bases=bases.slice(1);await req(`/v1/runs/${id}/approvals/${approval.id}/decision`,{decision:'approve'});const completed=await until(async()=>{const r=await req('/v1/runs/'+id);return ['succeeded','failed'].includes(r.state)&&r;});assert.equal(completed.state,'succeeded');evidence.checks.push({name:'in-flight task completes after abrupt control loss',run:id});
+const victim=await req('/v1/runs',body);await pending(victim.id);const running=await req('/v1/runs/'+victim.id);const workers=dc('ps','-q','worker').split('\n');const killed=workers.find(w=>info(w).Config.Hostname===running.worker_id);assert(killed);docker('kill',killed);const failed=await until(async()=>{const r=await req('/v1/runs/'+victim.id);return r.state==='failed'&&r;});evidence.checks.push({name:'killed Runner lease expires to failed without automatic replay',run:victim.id,error:failed.error});
+const next=await req('/v1/runs',body);const ap=await pending(next.id);await req(`/v1/runs/${next.id}/abort`,{});await until(async()=>(await req('/v1/runs/'+next.id)).state==='cancelled');const stale=await fetch(bases[0]+`/v1/runs/${next.id}/approvals/${ap.id}/decision`,{method:'POST',headers:{Authorization:`Bearer ${env.ADMIN_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({decision:'approve'})});assert.equal(stale.status,409);evidence.checks.push({name:'surviving Runner handles next task; cancel blocks stale approval',run:next.id});
+const recovery=await req('/v1/runs',{...body,requireApproval:false});assert.equal((await until(async()=>{const r=await req('/v1/runs/'+recovery.id);return ['succeeded','failed'].includes(r.state)&&r;})).state,'succeeded');evidence.checks.push({name:'surviving cluster finishes new task',run:recovery.id});console.log(JSON.stringify(evidence));
+}catch(e){evidence.error=String(e);console.error(e);process.exitCode=1;}finally{writeFileSync(root+'/failover.json',JSON.stringify(evidence,null,2));dc('down');}

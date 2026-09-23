@@ -25,6 +25,7 @@ import {
 import { cloudRequest as api, advanceCloudIdentity } from "./cloud-api";
 import "./cloud-app.css";
 import "./joydesk-workbench.css";
+import "./responsive.css";
 import { useDialog } from "../lib/use-dialog";
 type Account = { id: string; name: string };
 export function CloudAppShell() {

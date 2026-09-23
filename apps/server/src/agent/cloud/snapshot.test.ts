@@ -109,3 +109,14 @@ describe("untrusted cloud snapshot limits", () => {
     expect(existsSync(join(dest, ".ssh"))).toBe(false);
   });
 });
+
+it('keeps cloud-generated data files across turns without uploading local data or secrets',()=>{
+ const source=mkdtempSync(join(tmpdir(),'pig-cloud-result-'));mkdirSync(join(source,'data'));
+ writeFileSync(join(source,'data','result.md'),'deliverable');writeFileSync(join(source,'data','.env'),'synthetic-secret');
+ expect(packWorkspaceSnapshot(source).files).not.toContain('data/result.md');
+ const snapshot=packWorkspaceSnapshot(source,[],'cloud-result');
+ expect(snapshot.files).toContain('data/result.md');expect(snapshot.files).not.toContain('data/.env');
+ const dest=mkdtempSync(join(tmpdir(),'pig-cloud-restore-'));extractWorkspaceSnapshot(snapshot,dest,'cloud-result');
+ expect(readFileSync(join(dest,'data/result.md'),'utf8')).toBe('deliverable');
+ expect(()=>extractWorkspaceSnapshot(snapshot,mkdtempSync(join(tmpdir(),'pig-local-restore-')))).toThrow('skipped path');
+});

@@ -1,0 +1,9 @@
+[Unit]
+Description=Pig Agent PostgreSQL and encrypted-channel configuration backup
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+User=ubuntu
+UMask=0077
+ExecStart=/home/ubuntu/pig-agent/current/infra/tencent/backup.sh

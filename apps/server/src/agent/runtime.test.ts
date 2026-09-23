@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AgentEvent, Session, Settings } from "../types.ts";
 import { dropDebugSession, readDebugTrace, setDebugContent } from "./debug-trace.ts";
 import { MAX_HISTORY_CHARS, deliverableSummary, runAgent, ToolAuthorizationDenied } from "./runtime.ts";
@@ -105,6 +105,26 @@ function toolDelta(
 }
 
 describe("runAgent harness", () => {
+  it("keeps an oversized approved web result in the next model request without losing its tool call", async () => {
+    let nextMessages: Array<{role: string; content: string; tool_call_id?: string; tool_calls?: unknown[]}> = [];
+    const fetchPage = vi.fn(async () => '<title>联网结果已取得</title>' + 'x'.repeat(200000) + 'PAGE_END');
+    const llm = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [{id: "large-web", name: "http_fetch", args: {url: "https://example.com/"}}]),
+      (raw, res) => { nextMessages = JSON.parse(raw).messages; sse(res, {choices: [{delta: {content: "网页标题是联网结果已取得。"}}]}); },
+    ]);
+    try {
+      const result = await runAgent({session: emptySession(), settings: pigSettings(mkdtempSync(join(tmpdir(), "pig-large-page-")), {llmBaseUrl: llm.url}), signal: new AbortController().signal, emit: () => {}, networkFetch: fetchPage});
+      const tool = nextMessages.find(m => m.role === "tool");
+      expect(tool?.content).toContain('<title>联网结果已取得</title>');
+      expect(tool?.content).toContain('PAGE_END');
+      expect(tool?.content).toContain('已截断');
+      expect(tool?.tool_call_id).toBe('large-web');
+      expect(nextMessages.some(m => m.role === "assistant" && m.tool_calls?.length)).toBe(true);
+      expect(nextMessages.filter(m => m.role !== 'system').reduce((n, m) => n + (m.content?.length ?? 0), 0)).toBeLessThan(MAX_HISTORY_CHARS);
+      expect(result.messages.find(m => m.role === 'tool')?.content.length).toBeGreaterThan(200000);
+      expect(fetchPage).toHaveBeenCalledTimes(1);
+    } finally { await llm.close(); }
+  });
   it.each([true,false])("local file policy review=%s actually gates filesystem mutation", async (review)=>{
     const root=mkdtempSync(join(tmpdir(),"pig-policy-"));
     const session=emptySession({id:"ses_policy_"+Date.now()+String(review),deliveryMode:true});
@@ -680,6 +700,20 @@ describe("deliverableSummary", () => {
 });
 
 describe("settings type smoke", () => {
+  it("sends an explicit Chinese default to the model while preserving requested translations and raw logs", async () => {
+    let sent = "";
+    const llm = await startScriptedLlm([(raw, res) => {
+      sent = JSON.parse(raw).messages.find((m: {role: string}) => m.role === "system").content;
+      sse(res, {choices: [{delta: {content: "你好，我可以帮你处理任务。"}}]});
+    }]);
+    try {
+      const result = await runAgent({session: emptySession(), settings: pigSettings(mkdtempSync(join(tmpdir(), "pig-language-")), {llmBaseUrl: llm.url}), signal: new AbortController().signal, emit: () => {}});
+      expect(sent).toContain("默认使用简体中文");
+      expect(sent).toContain("明确要求其他语言");
+      expect(sent).toContain("代码、命令、路径和原始日志保留原文");
+      expect(result.messages.at(-1)?.content).toContain("你好");
+    } finally { await llm.close(); }
+  });
   it("accepts DeepSeek-shaped settings", () => {
     const settings: Settings = pigSettings("/tmp", {
       llmBaseUrl: "https://api.deepseek.com/v1",

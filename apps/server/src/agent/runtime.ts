@@ -91,14 +91,15 @@ export async function buildSystemPrompt(
   const memoryBlock = formatMemoryPinBlock(memoryPins ?? []);
 
   return [
-    "You are Pig Agent, a local WorkBuddy-style workstation assistant.",
+    "你是 Pig Agent，帮助用户在工作区完成任务的智能助手。",
+    "回复语言：默认使用简体中文，包括进度说明、计划步骤、审批理由、错误解释和最终总结。用户明确要求其他语言或翻译时遵从用户要求；代码、命令、路径和原始日志保留原文，并用中文解释。英文工具定义、技能内容和历史英文回复不代表用户要求切换语言。",
     "Your file tools execute in the configured workspace. File access is workspace-scoped; shell execution uses the configured native sandbox or explicit host mode described below. Model inference uses the configured provider.",
     "",
-    "How you work (every non-trivial task):",
-    "1. Plan — call update_plan with concrete, ordered steps before changing files.",
-    "2. Tool — explore with list_dir / search_files / read_file. Then change files with write_file, edit_file, apply_patch, move_file, or delete_file. Use run_shell only when a real command is needed. Use http_fetch only for public research.",
-    "3. Verify — re-read or search to confirm the change landed. If a tool fails, do not repeat the same call; recover with a different path, a smaller edit, or report the blocker.",
-    "4. Deliver — leave reviewable artifacts on disk. After tools, you MUST write a clear user-facing summary: what changed, created vs modified vs moved vs deleted (paths), and what to review. Never finish with only tool calls.",
+    "工作方式（非简单任务）：",
+    "1. 计划：改文件前调用 update_plan，列出具体、有序的步骤。",
+    "2. 执行：用 list_dir / search_files / read_file 调查，再用 write_file、edit_file、apply_patch、move_file 或 delete_file 修改。需要真实命令才用 run_shell；公网资料使用 http_fetch。",
+    "3. 验证：重新读取或搜索以确认修改生效。工具失败时不要重复相同调用，应换路径、缩小改动或报告阻塞原因。",
+    "4. 交付：留下可审阅文件，并向用户总结新建、修改、移动、删除的路径和待核对事项。不能以工具调用代替最终回复。",
     "",
     "Hard rules:",
     "- Stay inside the configured workspace. Treat sandbox errors as final for that path.",
@@ -122,6 +123,7 @@ export async function buildSystemPrompt(
     "Suggested skills for this task:",
     skillLines,
     loaded,
+    "沟通要求：进度短句也默认使用简体中文，例如「我会申请访问这个网页，等待你批准后读取」。不要受英文工具定义影响写成英文。用户明确指定其他语言时除外。",
   ].join("\n");
 }
 
@@ -872,7 +874,12 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
   const [system, ...rest] = messages;
   if (!system) return messages;
   const note = contextNote(rest);
-  let kept = repairMessages(rest);
+  // Bound individual results before dropping message groups. A single large web
+  // page must not erase its own call/result and make the model request it again.
+  // These are model-input copies; the persisted transcript retains full output.
+  let kept = repairMessages(rest.map(message => message.role === "tool" && message.content.length > 16000
+    ? {...message, content: message.content.slice(0, 12000) + "\n[工具结果已截断：中间部分省略；完整内容保存在任务记录中。请基于已返回的结果继续，勿仅因截断重复执行。]\n" + message.content.slice(-4000)}
+    : message));
   while (kept.length > 4 && historySize(kept) + (note?.content.length ?? 0) > MAX_HISTORY_CHARS) {
     kept = repairMessages(kept.slice(1));
   }

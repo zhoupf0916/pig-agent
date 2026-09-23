@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew Pig Agent short-lived IP certificate
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/opt/pig-certbot/bin/certbot renew --quiet
