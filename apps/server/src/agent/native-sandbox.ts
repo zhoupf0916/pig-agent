@@ -69,7 +69,7 @@ export function nativeCommand(workspace: string, command: string, network = fals
     if (process.platform === "darwin") {
       env.TMPDIR = temporary;
       const child = spawn("/usr/bin/sandbox-exec", ["-p",seatbeltProfile(root,temporary,network,options.trustedReadPaths),"/bin/sh","-c",command], { cwd:root, env, detached:true, stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe"] });
-      return {child,cleanup};
+      return {child,cleanup,backend:"seatbelt" as const};
     }
     if (process.platform !== "linux") throw new Error("当前系统尚未配置原生沙箱；请使用 macOS 或 Linux。不会自动切换到主机执行。");
     const filterPath = join(temporary,"seccomp.bpf");
@@ -77,7 +77,7 @@ export function nativeCommand(workspace: string, command: string, network = fals
     const args = linuxSandboxArgs(root, command, network, env, options.trustedReadPaths || []);
     const child = spawn("bwrap",args,{cwd:root,env,detached:true,stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe",descriptor]});
     closeSync(descriptor); descriptor=undefined;
-    return {child,cleanup};
+    return {child,cleanup,backend:"bubblewrap" as const};
   } catch (error) { if(descriptor !== undefined) closeSync(descriptor); cleanup(); throw error; }
 }
 export async function nativeSandboxStatus() {

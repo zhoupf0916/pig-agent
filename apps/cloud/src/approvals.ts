@@ -1,3 +1,5 @@
+import { parseMcpToolName } from "@pig-agent/contracts";
+import type { McpApprovalTarget } from "@pig-agent/contracts/cloud";
 import { networkRequestSchema } from "./network-fetch.ts";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -14,7 +16,7 @@ const schema = z
   .object({
     token: z.string().max(200),
     callId: z.string().min(1).max(200),
-    tool: z.enum([
+    tool: z.union([z.string().max(64).regex(/^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$/), z.enum([
       "write_file",
       "edit_file",
       "apply_patch",
@@ -22,7 +24,7 @@ const schema = z
       "move_file",
       "run_shell",
       "http_fetch",
-    ]),
+    ])]),
     args: z
       .record(z.unknown())
       .refine((v) => JSON.stringify(v).length <= 64000),
@@ -35,7 +37,7 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
     return c.json({
       approvals: (
         await db.query(
-          "SELECT a.id,a.call_id,a.tool,a.args,CASE WHEN a.state='pending' AND (r.state NOT IN ('running','preparing') OR r.lease_until<=now() OR r.deadline_at<=now()) THEN 'expired' ELSE a.state END AS state,a.created_at,a.decided_at,a.decided_by FROM approvals a JOIN runs r ON r.id=a.run_id WHERE a.run_id=$1 ORDER BY a.created_at",
+          "SELECT a.id,a.call_id,a.tool,a.args,a.mcp_target,CASE WHEN a.state='pending' AND (r.state NOT IN ('running','preparing') OR r.lease_until<=now() OR r.deadline_at<=now()) THEN 'expired' ELSE a.state END AS state,a.created_at,a.decided_at,a.decided_by FROM approvals a JOIN runs r ON r.id=a.run_id WHERE a.run_id=$1 ORDER BY a.created_at",
           [c.req.param("id")],
         )
       ).rows,
@@ -114,18 +116,29 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       await client.query("BEGIN");
       const run = (
         await client.query(
-          "SELECT id,input FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true)) FOR UPDATE",
+          "SELECT id,owner_id,input FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true)) FOR UPDATE",
           [hash(body.data.token)],
         )
       ).rows[0];
       if (
         !run ||
-        (body.data.tool === "http_fetch"
+        ((body.data.tool === "http_fetch" || parseMcpToolName(body.data.tool))
           ? run.input.networkPolicy === "blocked"
           : !run.input.requireApproval)
       ) {
         await client.query("ROLLBACK");
         return c.json({ error: "运行未获审批权限或已失效" }, 401);
+      }
+      let mcpTarget: McpApprovalTarget | null = null;
+      const external = parseMcpToolName(body.data.tool);
+      if (external) {
+        if (run.input.projectId) {
+          const project = (await client.query("SELECT space_id FROM projects WHERE id=$1", [run.input.projectId])).rows[0];
+          if (!project || project.space_id) { await client.query("ROLLBACK"); return c.json({error:"项目协同不能使用私人 MCP 连接"},403); }
+        }
+        const server = (await client.query("SELECT id,name,url,credential_version FROM mcp_servers WHERE id=$1 AND owner_id=$2 AND enabled", [external.serverId,run.owner_id])).rows[0];
+        if (!server) { await client.query("ROLLBACK"); return c.json({error:"MCP 连接已停用或不属于当前账号"},403); }
+        mcpTarget = {serverId:server.id,serverName:server.name,url:server.url,credentialVersion:server.credential_version};
       }
       const old = (
         await client.query(
@@ -137,7 +150,8 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
         await client.query("ROLLBACK");
         if (
           old.tool !== body.data.tool ||
-          !isDeepStrictEqual(old.args, body.data.args)
+          !isDeepStrictEqual(old.args, body.data.args) ||
+          !isDeepStrictEqual(old.mcp_target ?? null, mcpTarget)
         )
           return c.json({ error: "同一工具调用的参数已改变" }, 409);
         return c.json({ id: old.id, state: old.state });
@@ -149,8 +163,8 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       }
       const id = "approval_" + randomUUID().replaceAll("-", "");
       await client.query(
-        "INSERT INTO approvals(id,run_id,call_id,tool,args) VALUES($1,$2,$3,$4,$5)",
-        [id, run.id, body.data.callId, body.data.tool, body.data.args],
+        "INSERT INTO approvals(id,run_id,call_id,tool,args,mcp_target) VALUES($1,$2,$3,$4,$5,$6)",
+        [id, run.id, body.data.callId, body.data.tool, body.data.args, mcpTarget],
       );
       await client.query(
         "UPDATE approvals SET execution_remaining_ms=(SELECT greatest(1,ceil(extract(epoch FROM(deadline_at-now()))*1000))::bigint FROM runs WHERE id=$2) WHERE id=$1",

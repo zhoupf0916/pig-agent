@@ -1,0 +1,116 @@
+{
+  "at": "2026-09-23T08:02:44.634Z",
+  "environment": "isolated two-control two-runner cluster :8892",
+  "serverId": "m_4824e78ee19032ff",
+  "checks": [
+    {
+      "name": "authentication required",
+      "passed": true
+    },
+    {
+      "name": "five useful built-in packs",
+      "passed": true
+    },
+    {
+      "name": "competing installs preserve one copy",
+      "passed": true
+    },
+    {
+      "name": "plugins are private to account",
+      "passed": true
+    },
+    {
+      "name": "foreign enable rejected",
+      "passed": true
+    },
+    {
+      "name": "installed pack defaults disabled",
+      "passed": true
+    },
+    {
+      "name": "enabled expert references actual namespaced skill",
+      "passed": true
+    },
+    {
+      "name": "plugin expert accepted by actual Runner",
+      "passed": true,
+      "runId": "run_9915cbc63275481aa6a697a04dfd9506"
+    },
+    {
+      "name": "member cannot connect private MCP",
+      "passed": true
+    },
+    {
+      "name": "saved credential is not returned",
+      "passed": true
+    },
+    {
+      "name": "other account cannot see MCP",
+      "passed": true
+    },
+    {
+      "name": "other account cannot test MCP",
+      "passed": true
+    },
+    {
+      "name": "real MCP handshake and discovery",
+      "passed": true
+    },
+    {
+      "name": "shared config visible through second control instance",
+      "passed": true
+    },
+    {
+      "name": "auto mode MCP still waits for one approval",
+      "passed": true,
+      "runId": "run_5d95feca5a8a4b8392a0542dbbb8078c"
+    },
+    {
+      "name": "approval shows pinned external target",
+      "passed": true
+    },
+    {
+      "name": "first approval succeeds",
+      "passed": true
+    },
+    {
+      "name": "duplicate approval rejected",
+      "passed": true
+    },
+    {
+      "name": "real Runner invokes exactly once after approval",
+      "passed": true,
+      "runId": "run_5d95feca5a8a4b8392a0542dbbb8078c",
+      "workerId": "pig-cluster-runner-a"
+    },
+    {
+      "name": "rejected approval produces no external side effect",
+      "passed": true,
+      "runId": "run_3596f9bd03da4deb86b8f9630fc3841e"
+    },
+    {
+      "name": "cancel while waiting never invokes",
+      "passed": true,
+      "runId": "run_121911b40c1a4de5a9108c2ee49817db"
+    },
+    {
+      "name": "configuration edit invalidates old approval",
+      "passed": true,
+      "runId": "run_5217bb10d8f641a289974cb1aca2b8fd"
+    },
+    {
+      "name": "cancel reaches in-flight external request",
+      "passed": true,
+      "runId": "run_02e78b74d7764d4ebb240f502f99c858"
+    },
+    {
+      "name": "slow external call has a bounded timeout",
+      "passed": true,
+      "runId": "run_c13100550a9b4fde900d1a4db6645252"
+    },
+    {
+      "name": "credential absent from run events and debugger",
+      "passed": true
+    }
+  ]
+}

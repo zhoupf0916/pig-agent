@@ -14,6 +14,8 @@ export type AgentRunOptions = {
   expertInstruction?: string;
   /** Extra local skill names to preload (from the pinned expert). */
   preferredSkillIds?: string[];
+  mcpTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
+  mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
 };
 
 export const LOCAL_USER_ID = "user_local";

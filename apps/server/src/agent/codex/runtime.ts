@@ -24,6 +24,9 @@ export async function runCodexAgent(options: {
   environment?: NodeJS.ProcessEnv;
   projectInstruction?: string;
   expertInstruction?: string;
+  preferredSkillIds?: string[];
+  mcpTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
+  mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
 }): Promise<Session> {
   const { settings, signal, emit, hooks, projectInstruction, expertInstruction } = options;
   const session: Session = {

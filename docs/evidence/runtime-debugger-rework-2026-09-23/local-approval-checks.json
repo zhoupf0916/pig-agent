@@ -1,0 +1,15 @@
+{
+  "checks": {
+    "approve-http-ok": true,
+    "approve-closed": true,
+    "approve-wait-measured": true,
+    "approved-file-content": true,
+    "approved-real-output": true,
+    "reject-http-ok": true,
+    "reject-closed": true,
+    "reject-wait-measured": true,
+    "rejected-no-file": true
+  },
+  "passed": 9,
+  "total": 9
+}

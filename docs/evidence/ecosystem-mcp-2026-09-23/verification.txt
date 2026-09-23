@@ -1,0 +1,16 @@
+2026-09-23 · macOS arm64 / Node 24 / Docker Desktop
+
+pnpm test: 141 files, 822 tests passed
+pnpm check:architecture: passed (via pnpm cloud:build)
+pnpm typecheck: passed (contracts/server/web, via pnpm cloud:build)
+cloud + worker TypeScript: passed
+Web production build: passed; existing >500 kB main chunk warning retained
+Desktop bundle: passed
+Cloud/gateway/worker Docker builds: passed
+Focused acceptance regressions: 8 files / 42 tests passed
+scripts/smoke-ecosystem.mjs: 25/25 checks passed, real local two-control/two-runner cluster
+No real model charges, no Git commit or push.
+
+Observed Runner assignment for final smoke runs:
+pig-cluster-runner-a|2
+pig-cluster-runner-b|5

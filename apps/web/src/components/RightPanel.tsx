@@ -1,13 +1,14 @@
 import { ChevronRight, FileCode, FileText, Folder } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { artifactLabel, formatBytes, isMarkdown } from "../lib/format";
 import type { Artifact, ArtifactAction, WorkspaceNode } from "../types";
 import { DiffView } from "./DiffView";
 import { MarkdownView } from "./MarkdownView";
 import { RemoteArtifactPanel } from "./RemoteArtifactPanel";
+import { DeveloperPanel } from "./DeveloperPanel";
 
-type Tab = "artifacts" | "workspace";
+type Tab = "artifacts" | "workspace" | "debug";
 type PreviewMode = "file" | "diff";
 
 const GROUPS: ArtifactAction[] = ["created", "modified", "moved", "deleted"];
@@ -16,10 +17,13 @@ export function RightPanel(props: Parameters<typeof LocalRightPanel>[0] & {
   executionTarget?: "local" | "remote";
   remoteRunId?: string;
   remoteState?: string;
+  remoteDebugContent?: boolean;
+  onRemoteDebugContent?: (enabled: boolean) => void;
+  onDeveloperActive?: (active: boolean) => void;
   onOpenSession?: (id: string) => void;
 }) {
   return props.executionTarget === "remote" || Boolean(props.remoteRunId)
-    ? <RemoteArtifactPanel key={`${props.sessionId}:${props.remoteRunId}`} runId={props.remoteRunId} runState={props.remoteState} sessionId={props.sessionId} onOpenSession={props.onOpenSession} />
+    ? <RemoteArtifactPanel key={`${props.sessionId}:${props.remoteRunId}`} runId={props.remoteRunId} runState={props.remoteState} sessionId={props.sessionId} onOpenSession={props.onOpenSession} debugContent={props.remoteDebugContent} onDebugContent={props.onRemoteDebugContent} onDeveloperActive={props.onDeveloperActive} />
     : <LocalRightPanel {...props} />;
 }
 
@@ -34,6 +38,7 @@ function LocalRightPanel({
   projectId,
   projectName,
   onOpenProject,
+  onDeveloperActive,
 }: {
   artifacts: Artifact[];
   tree: WorkspaceNode | null;
@@ -45,8 +50,12 @@ function LocalRightPanel({
   projectId?: string;
   projectName?: string;
   onOpenProject?: (projectId: string) => void;
+  onDeveloperActive?: (active: boolean) => void;
 }) {
   const [tab, setTab] = useState<Tab>("artifacts");
+  useEffect(() => {
+    onDeveloperActive?.(tab === "debug");
+  }, [tab, onDeveloperActive]);
   const [mode, setMode] = useState<PreviewMode>("file");
   const [saving, setSaving] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; projectId?: string } | null>(null);
@@ -118,9 +127,19 @@ function LocalRightPanel({
         <TabButton active={tab === "workspace"} onClick={() => setTab("workspace")}>
           本机工作区
         </TabButton>
+        <TabButton active={tab === "debug"} onClick={() => setTab("debug")}>
+          开发者
+        </TabButton>
       </div>
 
-      <div className={previewPath ? "max-h-[35%] shrink-0 overflow-y-auto" : "min-h-0 flex-1 overflow-y-auto"}>
+      <div className={tab === "debug" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : !previewPath ? "min-h-0 flex-1 overflow-y-auto" : "max-h-[35%] shrink-0 overflow-y-auto"}>
+        {tab === "debug" && (
+          <DeveloperPanel
+            sessionKey={sessionId || "local"}
+            url={sessionId ? `/api/sessions/${sessionId}/debug` : ""}
+            writable
+          />
+        )}
         {tab === "artifacts" && (
           <div className="p-3">
             {bound && artifacts.length > 0 && (
@@ -219,7 +238,7 @@ function LocalRightPanel({
         )}
       </div>
 
-      {(previewPath || selected) && <div className="min-h-0 flex-1 overflow-auto border-t border-ink-400 bg-panel">
+      {(tab !== "debug" && (previewPath || selected)) && <div className="min-h-0 flex-1 overflow-auto border-t border-ink-400 bg-panel">
         <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-600">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">

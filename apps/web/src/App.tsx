@@ -1,3 +1,4 @@
+import { createTokenBatch } from "./lib/token-batch";
 import { useDialog } from "./lib/use-dialog";
 import { useRemoteActivity, remoteStateLabels } from "./lib/remote-activity";
 import { ExecutionPicker } from "./components/ExecutionPicker";
@@ -145,6 +146,7 @@ export function App() {
     string | undefined
   >();
   const [filesOpen, setFilesOpen] = useState(false);
+  const [developerWide, setDeveloperWide] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [configurationOpen, setConfigurationOpen] = useState(false);
   const navigationDialog = useDialog<HTMLElement>(navigationOpen, () =>
@@ -194,6 +196,24 @@ export function App() {
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
   const sessionRef = useRef<Session | null>(null);
+  const tokenBatchRef = useRef(createTokenBatch((text) => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const msgs = [...prev.messages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.role === "assistant" && !last.toolCalls && last.id.startsWith("stream_")) {
+        msgs[msgs.length - 1] = { ...last, content: last.content + text };
+      } else {
+        msgs.push({
+          id: "stream_live",
+          role: "assistant",
+          content: text,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return { ...prev, messages: msgs };
+    });
+  }));
   sessionRef.current = session;
   const fileRequestRef = useRef(0);
   const sessionRequestRef = useRef(0);
@@ -642,32 +662,10 @@ export function App() {
         lastSeqRef.current = rememberEventSeq(lastSeqRef.current, seq);
       }
       if (event.type === "token") {
-        setSession((prev) => {
-          if (!prev) return prev;
-          const msgs = [...prev.messages];
-          const last = msgs[msgs.length - 1];
-          if (
-            last &&
-            last.role === "assistant" &&
-            !last.toolCalls &&
-            last.id.startsWith("stream_")
-          ) {
-            msgs[msgs.length - 1] = {
-              ...last,
-              content: last.content + event.text,
-            };
-          } else {
-            msgs.push({
-              id: "stream_live",
-              role: "assistant",
-              content: event.text,
-              createdAt: new Date().toISOString(),
-            });
-          }
-          return { ...prev, messages: msgs };
-        });
+        tokenBatchRef.current.push(event.text);
         return;
       }
+      tokenBatchRef.current.flushNow();
       if (event.type === "message") {
         setSession((prev) => {
           if (!prev) return prev;
@@ -761,6 +759,11 @@ export function App() {
       }
       if (event.type === "done") {
         setSession(event.session);
+        if (event.session.executionTarget === "remote") {
+          void api.session(event.session.id).then((fresh) => {
+            if (activeIdRef.current === fresh.id) setSession(fresh);
+          }).catch(() => undefined);
+        }
         void refreshSessions();
         void refreshTree();
       }
@@ -1679,12 +1682,27 @@ export function App() {
                 onOpenMemory={(id) => goMemory(id)}
               />
               {filesOpen && (
-                <InspectorFrame onClose={() => setFilesOpen(false)}>
+                <InspectorFrame wide={developerWide} onClose={() => { setDeveloperWide(false); setFilesOpen(false); }}>
                   <RightPanel
                     key={session?.id || "workspace"}
                     executionTarget={session?.executionTarget}
                     remoteRunId={session?.remoteRunId}
                     remoteState={session?.remoteState}
+                    remoteDebugContent={session?.remoteDebugContent === true}
+                    onDeveloperActive={setDeveloperWide}
+                    onRemoteDebugContent={(enabled) => {
+                      const targetId = session?.id;
+                      if (!targetId) return;
+                      void api.patchSession(targetId, { remoteDebugContent: enabled }).then((next) => {
+                        if (activeIdRef.current === targetId) {
+                          setSession((previous) => previous?.id === targetId ? next : previous);
+                        }
+                      }).catch((error: unknown) => {
+                        if (activeIdRef.current === targetId) {
+                          setTaskActionError(redactSecretsForDisplay(error instanceof Error ? error.message : String(error)));
+                        }
+                      });
+                    }}
                     onOpenSession={(id) => {
                       goWorkstation(id);
                       void loadSession(id);

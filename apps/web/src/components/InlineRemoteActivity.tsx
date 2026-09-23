@@ -127,10 +127,11 @@ export function InlineRemoteActivity({
                       ? "授权已提交，执行结果将在会话中更新。"
                       : rejected
                         ? "本轮将结束，未授权此操作。"
-                        : "批准后将在远端工作区执行以下操作。"}
+                        : a.mcp_target ? "批准后由外部 MCP 服务执行，不受本机沙箱约束。" : "批准后将在远端工作区执行以下操作。"}
                   </p>
                 </div>
               </header>
+              {a.mcp_target && <p className="approval-mcp-target"><strong>{a.mcp_target.serverName}</strong> · <code>{a.mcp_target.url}</code></p>}
               <div className="operation-target">
                 {command ? <Terminal size={17} /> : <FileText size={17} />}
                 <strong>{path || a.tool}</strong>
@@ -154,7 +155,7 @@ export function InlineRemoteActivity({
               )}
               <p className="approval-scope">
                 影响范围：远端容器{path ? ` / ${path}` : "内的命令或工具操作"}
-                。等待审批计入本轮运行时限。
+                。执行计时已暂停，审批最多等待 30 分钟。
               </p>
               <details>
                 <summary>高级：完整操作参数</summary>

@@ -1,0 +1,58 @@
+{
+  "local": {
+    "checks": {
+      "redacts-cookie": true,
+      "redacts-apiKey": true,
+      "redacts-password": true,
+      "redacts-userinfo": true,
+      "model-visible-while-pending": true,
+      "actual-prompt-visible": true,
+      "actual-response-visible": true,
+      "usage-counts-visible": true,
+      "wire-tool-call-id-visible": true,
+      "wire-generation-parameters-visible": true,
+      "finish-reason-visible": true,
+      "tool-output-redacted": true,
+      "file-tool-not-mislabeled-seatbelt": true,
+      "no-running-span-after-completion": true,
+      "cancel-terminal-span": true,
+      "cancel-no-running-span": true,
+      "rejection-no-running-span": true,
+      "rejection-has-terminal-tool": true,
+      "rejection-did-not-write": true
+    },
+    "passed": 19,
+    "total": 19
+  },
+  "remote": {
+    "checks": {
+      "live-trace-before-approval": true,
+      "opt-in-content-enabled": true,
+      "other-user-debug-denied": true,
+      "no-write-before-approval": true,
+      "approved-run-succeeded": true,
+      "approved-file-produced": true,
+      "final-no-running-span": true,
+      "actual-bubblewrap-fact": true,
+      "actual-model-request": true,
+      "default-content-disabled": true,
+      "default-no-prompt-body": true,
+      "rejected-no-running-span": true,
+      "rejected-no-artifact": true,
+      "cancelled-stale-approval-rejected": true,
+      "cancelled-no-artifact": true,
+      "cancelled-no-running-span": true
+    },
+    "passed": 16,
+    "total": 16
+  },
+  "regression": {
+    "files": 130,
+    "tests": 789,
+    "failed": 0,
+    "typecheck": "passed",
+    "architecture": "passed",
+    "desktopBuild": "passed",
+    "note": "Full regression before final layout-only polish; final UI build will be verified separately."
+  }
+}

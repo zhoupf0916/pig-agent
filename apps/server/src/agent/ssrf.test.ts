@@ -17,6 +17,12 @@ describe("SSRF guards", () => {
     expect(isPrivateIp("172.16.0.2")).toBe(true);
     expect(isPrivateIp("169.254.169.254")).toBe(true);
     expect(isPrivateIp("::1")).toBe(true);
+    expect(isPrivateIp("::ffff:a9fe:a9fe")).toBe(true);
+    expect(isPrivateIp("::ffff:7f00:1")).toBe(true);
+    expect(isPrivateIp("fe90::1")).toBe(true);
+    expect(isPrivateIp("224.0.0.1")).toBe(true);
+    expect(isPrivateIp("255.255.255.255")).toBe(true);
+    expect(isPrivateIp("64:ff9b::a9fe:a9fe")).toBe(true);
     expect(isPrivateIp("8.8.8.8")).toBe(false);
     expect(isPrivateIp("1.1.1.1")).toBe(false);
   });
@@ -37,6 +43,7 @@ describe("SSRF guards", () => {
     await expect(resolvePublicIps("ok.example", async () => ["1.1.1.1"])).resolves.toEqual([
       "1.1.1.1",
     ]);
+    await expect(resolvePublicIps("meta.example", async () => ["::ffff:a9fe:a9fe"])).rejects.toThrow(/private|loopback|link-local|blocked/i);
   });
 
   it("honors an allowlist of host suffixes", () => {

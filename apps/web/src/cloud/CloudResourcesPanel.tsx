@@ -371,6 +371,7 @@ export function CloudResourcesPanel({
           </div>
         </div>
       )}
+      <a className="ecosystem-library-link" href="#/settings/extensions">浏览内置扩展 · 添加更多专家与技能 →</a>
       {loading ? (
         <p>正在加载…</p>
       ) : !items.length ? (

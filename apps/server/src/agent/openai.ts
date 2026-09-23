@@ -16,6 +16,24 @@ export type CompletionDelta = {
   finishReason?: string | null;
 };
 
+/** The body actually posted, after message conversion and the attempt that succeeded or failed last. */
+export type ModelRequestSnapshot = {
+  method: "POST";
+  url: string;
+  httpStatus: number | null;
+  stream: boolean;
+  parallelTools: boolean;
+  body: Record<string, unknown>;
+};
+
+export type ModelCompletion = {
+  content: string;
+  toolCalls: ToolCall[];
+  reasoningContent?: string;
+  finishReason: string | null;
+  request: ModelRequestSnapshot;
+};
+
 export class LlmError extends Error {
   constructor(
     message: string,
@@ -69,7 +87,7 @@ export async function complete(
   settings: LlmSettings,
   messages: ChatMessage[],
   options: CompletionOptions = {},
-): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
+): Promise<ModelCompletion> {
   const attempts: Attempt[] = [
     { stream: true, parallelTools: true },
     { stream: true, parallelTools: false },
@@ -98,7 +116,7 @@ async function completeOnce(
   messages: ChatMessage[],
   options: CompletionOptions,
   attempt: Attempt,
-): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
+): Promise<ModelCompletion> {
   const url = `${normalizeBaseUrl(settings.llmBaseUrl)}/chat/completions`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -126,6 +144,7 @@ async function completeOnce(
   if (attempt.parallelTools && options.allowTools !== false) {
     body.parallel_tool_calls = true;
   }
+  const request = modelRequestSnapshot(attempt, body, url);
 
   let response: Response;
   try {
@@ -137,27 +156,29 @@ async function completeOnce(
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (options.signal?.aborted) throw new Error("Aborted");
-    throw new LlmError(
+    if (options.signal?.aborted) throw Object.assign(new Error("Aborted"), { request });
+    throw Object.assign(new LlmError(
       `Cannot reach LLM at ${url}. Check Settings or .env.local (DeepSeek / OpenAI-compatible). (${msg})`,
-    );
+    ), { request });
   }
+
+  request.httpStatus = response.status;
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     const retryable = shouldRetryLlm(response.status, text, attempt);
-    throw new LlmError(
+    throw Object.assign(new LlmError(
       `LLM HTTP ${response.status}: ${text.slice(0, 800) || response.statusText}`,
       response.status,
       retryable,
-    );
+    ), { request });
   }
 
   if (attempt.stream) {
     if (!response.body) {
-      throw new LlmError("LLM returned an empty body", response.status, true);
+      throw Object.assign(new LlmError("LLM returned an empty body", response.status, true), { request });
     }
-    return consumeStream(response.body, options.onDelta, options.onUsage);
+    return { ...await consumeStream(response.body, options.onDelta, options.onUsage), request };
   }
 
   const json = (await response.json()) as {
@@ -174,7 +195,30 @@ async function completeOnce(
   };
   const usage = (json as { usage?: TokenUsage }).usage;
   if (usage) options.onUsage?.(usage);
-  return fromMessage(json.choices?.[0]?.message, options.onDelta);
+  const choice = json.choices?.[0] as { finish_reason?: string | null; message?: Parameters<typeof fromMessage>[0] } | undefined;
+  return { ...fromMessage(choice?.message, options.onDelta), finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : null, request };
+}
+
+function modelRequestSnapshot(attempt: Attempt, body: Record<string, unknown>, url: string): ModelRequestSnapshot {
+  return {
+    method: "POST",
+    url,
+    httpStatus: null,
+    stream: attempt.stream,
+    parallelTools: attempt.parallelTools,
+    body: {
+      model: body.model,
+      messages: body.messages,
+      tools: body.tools ?? null,
+      tool_choice: body.tool_choice ?? null,
+      stream: body.stream,
+      temperature: body.temperature,
+      max_tokens: body.max_tokens ?? null,
+      parallel_tool_calls: body.parallel_tool_calls ?? null,
+      stream_options: body.stream_options ?? null,
+      thinking: body.thinking ?? null,
+    },
+  };
 }
 
 function shouldRetryLlm(status: number, body: string, attempt: Attempt): boolean {
@@ -221,12 +265,13 @@ async function consumeStream(
   body: ReadableStream<Uint8Array>,
   onDelta?: (text: string) => void,
   onUsage?: (usage: TokenUsage) => void,
-): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string }> {
+): Promise<{ content: string; toolCalls: ToolCall[]; reasoningContent?: string; finishReason: string | null }> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
   let reasoningContent = "";
+  let finishReason: string | null = null;
   const toolAcc = new Map<number, { id: string; name: string; arguments: string }>();
 
   const flushLine = (line: string) => {
@@ -245,6 +290,7 @@ async function consumeStream(
     if (usage) onUsage?.(usage);
     const choice = (parsed as { choices?: Array<Record<string, unknown>> }).choices?.[0];
     if (!choice) return;
+    if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
     const delta = (choice.delta ?? choice.message ?? {}) as {
       content?: string | null;
       reasoning_content?: string;
@@ -295,5 +341,5 @@ async function consumeStream(
     }))
     .filter((tc) => tc.name);
 
-  return { content, toolCalls, ...(reasoningContent ? { reasoningContent } : {}) };
+  return { content, toolCalls, finishReason, ...(reasoningContent ? { reasoningContent } : {}) };
 }

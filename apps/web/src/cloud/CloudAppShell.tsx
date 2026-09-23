@@ -10,6 +10,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { CloudProjectHome } from "./CloudProjectHome";
 import { CloudHomeRail } from "./CloudHomeRail";
 import { CloudWorkspace } from "./CloudWorkspace";
 import { CloudRunPanel } from "./CloudRunPanel";
@@ -85,8 +86,12 @@ export function CloudAppShell() {
     runs: "远端记录",
     settings: "设置",
   };
-  const showTask =
-    route === "workstation" || route === "projects";
+  const projectHomeId = path.match(/^#\/projects\/(project_[a-z0-9]+)\/overview$/)?.[1];
+  const showTask = !projectHomeId && (route === "workstation" || route === "projects");
+  function projectAction(id: string, panel?: string) {
+    window.dispatchEvent(new CustomEvent("pig-cloud-intent", { detail: { projectId:id, panel } }));
+    go("/conversations");
+  }
   function go(path: string) {
     const next = path.startsWith("#") ? path : "#" + path;
     location.hash = next;
@@ -199,24 +204,33 @@ export function CloudAppShell() {
         <CloudHomeRail
           hash={hash}
           onOpenConversation={(id) => go("/conversations/" + id)}
-          onOpenProject={(id) => {
-            window.dispatchEvent(
-              new CustomEvent("pig-cloud-intent", {
-                detail: { projectId: id },
-              }),
-            );
-            go("/conversations");
-          }}
+          onOpenProject={(id) => go(`/projects/${id}/overview`)}
           onCreateProject={() => {
             window.dispatchEvent(
               new CustomEvent("pig-cloud-intent", {
-                detail: { create: "choose" },
+                detail: { create: "personal" },
               }),
             );
             go("/conversations");
           }}
           onSearch={(q) => go("/search?q=" + encodeURIComponent(q))}
           onOpenRuns={() => go("/runs")}
+          onShareProject={(id) => {
+            window.dispatchEvent(
+              new CustomEvent("pig-cloud-intent", {
+                detail: { projectId: id, panel: "share" },
+              }),
+            );
+            go("/conversations");
+          }}
+          onOpenMembers={(id) => {
+            window.dispatchEvent(
+              new CustomEvent("pig-cloud-intent", {
+                detail: { projectId: id, panel: "members" },
+              }),
+            );
+            go("/conversations");
+          }}
           onOpenWorkspace={(id) => {
             window.dispatchEvent(
               new CustomEvent("pig-cloud-intent", {
@@ -289,6 +303,7 @@ export function CloudAppShell() {
             embedded
             hashSync={showTask}
             onOpenNavigation={() => setNavigation(true)}
+            onProjectCreated={(id) => go(`/projects/${id}/overview`)}
             initialBranch="personal"
             routePrefix="#/conversations"
             taskOptions={options}
@@ -296,7 +311,9 @@ export function CloudAppShell() {
         </div>
         {!showTask && (
           <div className="cloud-shell-content">
-            {route === "experts" ? (
+            {projectHomeId ? (
+              <CloudProjectHome key={projectHomeId} projectId={projectHomeId} onConversation={conversation} onStart={() => projectAction(projectHomeId)} onWorkspace={() => projectAction(projectHomeId,"workspace")} onManage={() => projectAction(projectHomeId,"manage")} onRun={run} />
+            ) : route === "experts" ? (
               <CloudResourcesPanel
                 initialKind={path === "#/experts/skills" ? "skill" : "expert"}
                 onNewTask={newTask}

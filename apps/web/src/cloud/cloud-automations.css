@@ -41,7 +41,11 @@
   color: white;
   border-color: #2563eb;
 }
-.ca-days { display: flex; flex-wrap: wrap; gap: 8px; }
+.ca-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .ca-list {
   display: grid;
   gap: 16px;
@@ -134,5 +138,257 @@
   .ca-actions button {
     flex-grow: 1;
     justify-content: center;
+  }
+}
+
+/* Task-first automation workspace: plans and execution history are separate views. */
+.cloud-automations {
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 30px 36px;
+}
+.cloud-automations > header {
+  margin-bottom: 20px;
+}
+.cloud-automations > header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.ca-notice {
+  background: var(--accent-soft, #eff6ff);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ca-toolbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 22px 0;
+  flex-wrap: wrap;
+}
+.ca-tabs {
+  display: flex;
+  gap: 4px;
+}
+.ca-tabs button {
+  border: 0;
+  background: transparent;
+  border-radius: 24px;
+}
+.ca-tabs button[aria-pressed="true"] {
+  background: var(--bg-hover, #eef2f7);
+  font-weight: 600;
+}
+.ca-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ca-filters input,
+.ca-filters select,
+.ca-toolbar > select {
+  min-width: 0;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+.ca-list {
+  gap: 12px;
+  margin-top: 0;
+}
+.ca-list article {
+  padding: 20px 22px;
+}
+.ca-row h3 {
+  font-size: 16px;
+  margin: 0;
+}
+.ca-row > span {
+  font-size: 12px;
+  padding: 4px 9px;
+  border-radius: 16px;
+  background: var(--bg-hover, #f1f5f9);
+  white-space: nowrap;
+}
+.ca-prompt {
+  color: var(--text-secondary);
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ca-list small {
+  color: var(--text-secondary);
+}
+.ca-actions {
+  border-top: 1px solid var(--border-default);
+  padding-top: 12px;
+}
+.ca-actions button {
+  font-size: 13px;
+  padding: 6px 11px;
+}
+.ca-actions button:first-child {
+  color: var(--accent, #2563eb);
+}
+.ca-templates {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 32px;
+  text-align: left;
+}
+.ca-templates button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px;
+  line-height: 1.6;
+  gap: 12px;
+}
+.ca-templates span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ca-templates em {
+  font-size: 12px;
+  color: var(--accent, #2563eb);
+  font-style: normal;
+  margin-top: auto;
+}
+.ca-overlay > form {
+  width: min(680px, 100%);
+  padding: 0 26px 22px;
+}
+.ca-overlay form > header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  padding: 22px 0 16px;
+  z-index: 1;
+  border-bottom: 1px solid var(--border-default);
+}
+.ca-overlay .ca-subtitle {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.ca-location {
+  background: var(--bg-hover, #f8fafc);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 20px 0 14px;
+}
+.ca-location p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ca-advanced {
+  padding: 14px 0;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+.ca-advanced summary {
+  cursor: pointer;
+  font-size: 14px;
+}
+.ca-advanced p,
+.ca-overlay form > p {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.ca-overlay footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+}
+.ca-days input {
+  width: auto;
+}
+.ca-days label {
+  display: flex;
+  align-items: center;
+}
+.ca-history-panel {
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 22px;
+}
+.ca-history-panel h3 {
+  font-size: 16px;
+}
+@media (max-width: 720px) {
+  .cloud-automations {
+    padding: 18px 16px;
+  }
+  .ca-templates {
+    grid-template-columns: 1fr;
+  }
+  .ca-toolbar,
+  .ca-filters {
+    align-items: stretch;
+  }
+  .ca-filters input {
+    width: 100%;
+  }
+  .ca-empty {
+    padding: 32px 8px;
+  }
+  .ca-row {
+    align-items: flex-start;
+  }
+  .ca-overlay > form {
+    padding: 0 18px 18px;
+    max-height: calc(100dvh - 24px);
+  }
+}
+.ca-overlay > form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 16px;
+}
+.ca-overlay > form > * {
+  grid-column: 1/-1;
+  min-width: 0;
+}
+.ca-overlay > form > .ca-half {
+  grid-column: auto;
+}
+.ca-overlay form > footer {
+  position: sticky;
+  bottom: -22px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-default);
+  padding: 14px 0;
+  margin-top: 12px;
+  z-index: 1;
+}
+.ca-overlay form > label {
+  margin-top: 12px;
+}
+.ca-overlay form textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+@media (max-width: 480px) {
+  .ca-overlay form > footer {
+    bottom: -18px;
+  }
+  .ca-overlay > form > .ca-half {
+    grid-column: 1/-1;
   }
 }

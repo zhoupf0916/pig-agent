@@ -68,7 +68,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
     if (!settings) return;
     // A background status poll must never erase an unsaved non-secret draft either.
     if (!primed.current || (!dirtyRef.current && !saving)) {
-      const next = { ...emptyForm, ...settings, ...(settings.runtime === "codex" ? { runtime: "pig" as const } : {}) };
+      const next = { ...emptyForm, ...settings };
       setForm(next); setBaseline(draftKey(next));
     }
     if (!primed.current) {
@@ -147,7 +147,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
           </button>)}
         </nav>
         <div className="settings-content" key={section}>
-          <div className="settings-section-heading"><h3>{currentSection.title}</h3><p>{currentSection.hint}</p></div>
+          {section !== "extensions" && <div className="settings-section-heading"><h3>{currentSection.title}</h3><p>{currentSection.hint}</p></div>}
           <fieldset disabled={saving} className="settings-fields">
           {section === "model" && <>
             <div className="settings-scope">本机模型由这里配置；远端任务使用控制面管理员分配的模型。</div>
@@ -157,13 +157,14 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
             {form.runtime !== "cloud" ? <div className="settings-action-row"><button type="button" className="btn-secondary" onClick={() => void test(false)}>保存并测试连接</button><p>会发起一次简短模型请求。</p></div> : <p className="settings-note">当前默认远端执行，请在「远端连接」检查控制面。本机模型可保存供本地任务使用。</p>}
           </>}
           {section === "execution" && <>
-            <div className="settings-scope">仅作为新会话默认值。已有会话可在任务配置中单独选择执行位置和审批。执行引擎固定为 Pig。</div>
+            <div className="settings-scope">仅作为新会话默认值。已有会话可在任务配置中单独选择执行位置和审批。界面不提供新的 Codex 选项；已经保存为 Codex 的配置会按 Codex 执行。</div>
             <div className="settings-choice-list" role="group" aria-label="新会话默认执行配置">
-              <Choice active={form.runtime !== "cloud"} title="本机 Pig" hint="在当前工作区执行，使用上面配置的模型。" onClick={() => patch({ runtime: "pig" })} />
+              <Choice active={form.runtime === "pig"} title="本机 Pig" hint="在当前工作区执行，使用上面配置的模型。" onClick={() => patch({ runtime: "pig" })} />
               <Choice active={form.runtime === "cloud"} title="远端执行" hint="交给已连接控制面调度，退出工作台后继续运行。" onClick={() => patch({ runtime: "cloud", cloudMode: "remote" })} />
             </div>
             <p className="settings-note">保存后的默认值：{surface.summary}</p>
-            {form.runtime !== "cloud" && <p className="settings-note">本机 Pig 固定使用操作系统沙箱，不能改成直接在主机上执行。可在任务执行配置中调整审批和网络权限。</p>}
+            {form.runtime === "codex" && <p className="settings-note">当前保存的是本机 Codex。选择「本机 Pig」或「远端执行」并保存后才会切换，执行时不会悄悄换成 Pig。</p>}
+            {form.runtime === "pig" && <p className="settings-note">本机 Pig 固定使用操作系统沙箱，不能改成直接在主机上执行。可在任务执行配置中调整审批和网络权限。</p>}
             {form.runtime === "cloud" && <button type="button" className="btn-quiet" onClick={() => setSection("remote")}>配置远端连接 →</button>}
           </>}
           {section === "workspace" && <>
@@ -216,8 +217,8 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
         </div>
       </div>
       <footer className="settings-footer">
-        <div className="settings-feedback">{error ? <p role="alert" className="text-danger">{error}</p> : feedback ? <p role="status" className="text-success">{feedback}</p> : <p>{dirty ? "有尚未保存的修改" : "设置已同步"}</p>}</div>
-        <div className="settings-footer-actions"><button type="button" onClick={requestClose} disabled={saving} className="btn-quiet">取消</button><button type="button" onClick={() => void save()} disabled={saving || !settings} className="btn-primary">{saving ? "保存中…" : "保存"}</button></div>
+        <div className="settings-feedback">{error ? <p role="alert" className="text-danger">{error}</p> : feedback ? <p role="status" className="text-success">{feedback}</p> : <p>{dirty ? "有尚未保存的修改" : section === "extensions" ? "扩展操作立即保存" : "设置已同步"}</p>}</div>
+        <div className="settings-footer-actions">{section === "extensions" && !dirty ? <button type="button" onClick={requestClose} className="btn-primary">完成</button> : <><button type="button" onClick={requestClose} disabled={saving} className="btn-quiet">取消</button><button type="button" onClick={() => void save()} disabled={saving || !settings} className="btn-primary">{saving ? "保存中…" : "保存"}</button></>}</div>
       </footer>
       {discardOpen && <div ref={discardDialog} tabIndex={-1} className="settings-discard" role="alertdialog" aria-labelledby="discard-title" aria-describedby="discard-description"><h3 id="discard-title">放弃未保存的修改？</h3><p id="discard-description">关闭后，这次编辑的连接与执行配置不会保存。</p><div><button type="button" className="btn-quiet" onClick={() => setDiscardOpen(false)}>继续编辑</button><button type="button" className="btn-primary" onClick={() => { setDiscardOpen(false); onClose(); }}>放弃修改并关闭</button></div></div>}
     </div>

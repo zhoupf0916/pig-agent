@@ -15,7 +15,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
 
-app.setName("Pig Agent");
+app.setName(process.env.PIG_DESKTOP_INSTANCE || (process.env.PIG_DESKTOP_USER_DATA ? "Pig Agent Isolated" : "Pig Agent"));
 if (process.env.PIG_DESKTOP_USER_DATA)
   app.setPath("userData", path.resolve(process.env.PIG_DESKTOP_USER_DATA));
 protocol.registerSchemesAsPrivileged([
@@ -246,6 +246,17 @@ else {
         },
         { role: "editMenu" },
         { role: "viewMenu" },
+        {
+          label: "开发",
+          submenu: [
+            {
+              label: "打开页面开发工具",
+              click: () => {
+                if (win) win.webContents.openDevTools({ mode: "detach" });
+              },
+            },
+          ],
+        },
         { role: "windowMenu" },
         {
           label: "帮助",

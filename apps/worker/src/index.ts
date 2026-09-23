@@ -5,6 +5,7 @@ import { CompletionOutbox } from "./completion-outbox.ts";
 import { join } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdir, rm, readdir } from "node:fs/promises";
+import { runnerProcessEnv } from "./runner-env.ts";
 import { SlotPool } from "./slot-pool.ts";
 import { createInterface } from "node:readline";
 import { hostname } from "node:os";
@@ -156,18 +157,12 @@ async function execute(job: {
     child = spawn(process.execPath, ["/app/runner.mjs"], {
       detached: true,
       cwd: workspace,
-      env: {
+      env: runnerProcessEnv(workspace, {
         PATH: process.env.PATH,
-        HOME: workspace,
         RUN_TOKEN: job.token,
         RUN_TIMEOUT_SECONDS: String(Math.max(30, resource.timeoutSeconds - 15)),
-        GATEWAY_URL: process.env.GATEWAY_URL || "http://gateway:8891",
-        PIG_DESKTOP: "1",
-        PIG_APP_ROOT: "/app",
-        DATA_DIR: join(workspace, "data"),
-        WORKSPACE_ROOT: workspace,
-        PIG_AGENT_FORCE_NATIVE_SANDBOX: "1",
-      },
+        GATEWAY_URL: process.env.GATEWAY_URL,
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     });
     let total = 0;

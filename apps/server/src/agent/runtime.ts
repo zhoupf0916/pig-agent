@@ -20,8 +20,32 @@ import {
 } from "./local-errors.ts";
 import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
+import { nativeSandboxStatus } from "./native-sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
-import { executeTool, summarizeToolArgs, type ToolContext, TOOL_DEFINITIONS } from "./tools.ts";
+import { parseMcpToolName } from "@pig-agent/contracts";
+import { requireMcpTarget } from "../store/mcp-servers.ts";
+import { executeTool, sandboxFromError, summarizeToolArgs, type ToolContext, type ToolSandboxFact, TOOL_DEFINITIONS } from "./tools.ts";
+import { cancelRunningDebugSpans, debugDetail, recordDebugSpan } from "./debug-trace.ts";
+
+function providerHost(baseUrl: string): string {
+  try {
+    return baseUrl ? new URL(baseUrl).host : "未采集";
+  } catch {
+    return "未采集";
+  }
+}
+
+function requestFrom(error: unknown): unknown {
+  if (!error || typeof error !== "object" || !("request" in error)) return null;
+  return (error as { request?: unknown }).request ?? null;
+}
+
+let sandboxProbe: Promise<{ available: boolean; backend: string; error?: string }> | undefined;
+
+function measureSandbox() {
+  sandboxProbe ??= nativeSandboxStatus();
+  return sandboxProbe;
+}
 
 export class ToolAuthorizationDenied extends Error {}
 
@@ -115,6 +139,10 @@ export async function runAgent(options: {
   allowComputer?: boolean;
   networkFetch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
   authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
+  mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
+  /** When false, ordinary mutations skip authorizeTool. MCP tools still use it. */
+  authorizeMutations?: boolean;
+  mcpTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
 }): Promise<Session> {
   const { settings, signal, emit, projectInstruction, expertInstruction, preferredSkillIds } = options;
   const session: Session = {
@@ -125,6 +153,36 @@ export async function runAgent(options: {
     updatedAt: nowIso(),
   };
   emit({ type: "status", status: "running" });
+  const sandboxStarted = performance.now();
+  void measureSandbox().then((status) => {
+    recordDebugSpan({
+      id: `sandbox:${session.id}`,
+      sessionId: session.id,
+      kind: "sandbox",
+      name: "probe",
+      status: status.available ? "ok" : "error",
+      startedAtMs: 0,
+      durationMs: Math.max(0, Math.round(performance.now() - sandboxStarted)),
+      detail: {
+        sandboxRequested: "native",
+        sandboxEffective: "未采集",
+        probeBackend: status.available ? status.backend : "未采集",
+        available: status.available,
+        error: status.error,
+        note: "这是启动前的能力探测，不是某次工具的执行结果",
+      },
+    }, sandboxStarted);
+  }).catch((err: unknown) => {
+    recordDebugSpan({
+      id: `sandbox:${session.id}`,
+      sessionId: session.id,
+      kind: "sandbox",
+      name: "sandbox",
+      status: "error",
+      startedAtMs: 0,
+      detail: { sandboxEffective: "未采集", error: err instanceof Error ? err.message : String(err), measured: false },
+    }, sandboxStarted);
+  });
   const workbench = session.deliveryMode ? await loadWorkbench(session.id, settings.workspaceRoot) : undefined;
   if (workbench && workbench.root !== normalizeWorkspaceRoot(settings.workspaceRoot)) throw new Error("工作区已改变。请切回任务原工作区，或新建任务。原位置：" + workbench.root);
   if (workbench?.operations.some((op) => op.status === "pending" || op.status === "applying" || op.status === "error")) throw new Error("请先处理待批准的变更；执行中断的操作需要核对，不能自动重放。");
@@ -216,9 +274,9 @@ export async function runAgent(options: {
 
       const checkpoint = workbench?.checkpoint;
       const resuming = checkpoint && !checkpoint.stopped;
-      let response: Awaited<ReturnType<typeof complete>>;
+      let response: { content: string; toolCalls: Awaited<ReturnType<typeof complete>>["toolCalls"]; reasoningContent?: string; finishReason: string | null; request?: Awaited<ReturnType<typeof complete>>["request"] };
       if (resuming && checkpoint.calls.length) {
-        response = { content: "", toolCalls: checkpoint.calls };
+        response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
       const history = trimHistory([system, ...session.messages]);
@@ -243,12 +301,31 @@ export async function runAgent(options: {
       let reported: { prompt_tokens: number; completion_tokens: number } | undefined;
       const modelStarted = Date.now();
       if (workbench) { workbench.usage.calls++; await saveWorkbench(session.id, workbench); }
+      const modelStartedMono = performance.now();
+      const modelSpanId = newId("span");
+      let firstTokenAt: number | undefined;
+      recordDebugSpan({
+        id: modelSpanId,
+        sessionId: session.id,
+        turnId: String(turn),
+        kind: "model",
+        name: settings.llmModel || "model",
+        status: "running",
+        startedAtMs: 0,
+        wallStartedAt: new Date(modelStarted).toISOString(),
+        detail: { model: settings.llmModel, provider: providerHost(settings.llmBaseUrl), sandboxEffective: "未采集", usage: null, finishReason: null, ttftMs: null },
+      }, modelStartedMono);
       response = await complete(settings, history, {
         signal,
-        extraTools: allowComputer ? [computerToolDefinition] : undefined,
+        extraTools: allowComputer || options.mcpTools?.length
+          ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
+          : undefined,
         maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
-        onUsage: workbench ? (usage) => { reported = usage; } : undefined,
-        onDelta: (text) => emit({ type: "token", text }),
+        onUsage: (usage) => { reported = usage; },
+        onDelta: (text) => {
+          if (firstTokenAt === undefined) firstTokenAt = performance.now();
+          emit({ type: "token", text });
+        },
       }).catch(async (err) => {
         if (workbench) {
           const reservedOutput = Math.min(4096, remaining);
@@ -259,8 +336,52 @@ export async function runAgent(options: {
           workbench.usage.cost += (inputEstimate * workbench.policy.inputPrice + reservedOutput * workbench.policy.outputPrice) / 1000000;
           await saveWorkbench(session.id, workbench);
         }
+        recordDebugSpan({
+          id: modelSpanId,
+          sessionId: session.id,
+          turnId: String(turn),
+          kind: "model",
+          name: settings.llmModel || "model",
+          status: signal.aborted ? "cancelled" : "error",
+          startedAtMs: 0,
+          durationMs: Math.max(0, Math.round(performance.now() - modelStartedMono)),
+          wallStartedAt: new Date(modelStarted).toISOString(),
+          detail: debugDetail(session.id, {
+            error: err instanceof Error ? err.message : String(err),
+            sandboxEffective: "未采集",
+            usage: reported ?? null,
+            finishReason: null,
+            ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
+          }, {
+            request: requestFrom(err),
+          }),
+        }, modelStartedMono);
         throw err;
       });
+      recordDebugSpan({
+        id: modelSpanId,
+        sessionId: session.id,
+        turnId: String(turn),
+        kind: "model",
+        name: settings.llmModel || "model",
+        status: "ok",
+        startedAtMs: 0,
+        durationMs: Math.max(0, Math.round(performance.now() - modelStartedMono)),
+        wallStartedAt: new Date(modelStarted).toISOString(),
+        detail: debugDetail(session.id, {
+          model: settings.llmModel,
+          provider: providerHost(settings.llmBaseUrl),
+          sandboxRequested: workbench?.policy.shell ?? "未采集",
+          sandboxEffective: "未采集",
+          usage: reported ?? null,
+          finishReason: response.finishReason,
+          ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
+        }, {
+          request: response.request,
+          response: response.content,
+          toolCalls: response.toolCalls,
+        }),
+      }, modelStartedMono);
 
       const { content, toolCalls } = response;
       if (workbench) {
@@ -307,6 +428,10 @@ export async function runAgent(options: {
       let turnHadError = false;
       let awaitingReview = false;
       if (workbench) await saveSession(session);
+      const readonlyTools = new Set(["read_file", "list_dir", "search_files", "list_skills"]);
+      const readonlyWindow = !workbench && !options.authorizeTool && toolCalls.length > 1 && toolCalls.every((call) => readonlyTools.has(call.name))
+        ? createReadonlyWindow(toolCalls, ctx, signal)
+        : undefined;
       for (const [callIndex, call] of toolCalls.entries()) {
         if (signal.aborted) throw new Error("Aborted");
         if (forceSummary) break;
@@ -336,10 +461,57 @@ export async function runAgent(options: {
         }
         let output = "";
         let ok = true;
-        if (options.authorizeTool && MUTATIONS.has(call.name)) {
-          const approved = await options.authorizeTool({ callId: call.id, tool: call.name, args: parsed });
-          if (!approved) throw new Error("用户拒绝了远端操作，本次操作未执行");
-          if (signal.aborted) throw new Error("Aborted");
+        const prepared = readonlyWindow?.has(call.id) ? await readonlyWindow.take(call.id) : undefined;
+        if (readonlyWindow && !signal.aborted) readonlyWindow.fill();
+        const toolStarted = prepared?.startedAt ?? performance.now();
+        let sandboxFact: ToolSandboxFact = {
+          requested: workbench?.policy.shell ?? ctx.shellMode ?? "未采集",
+          effective: "尚未执行",
+          backend: "未采集",
+        };
+        if (options.authorizeTool && (parseMcpToolName(call.name) || (MUTATIONS.has(call.name) && options.authorizeMutations !== false))) {
+          const approvalId = `${call.id}:approval`;
+          const finishApproval = (status: "running" | "ok" | "cancelled" | "error", error?: string) => {
+            recordDebugSpan({
+              id: approvalId,
+              sessionId: session.id,
+              kind: "approval",
+              name: call.name,
+              status,
+              startedAtMs: 0,
+              durationMs: status === "running" ? undefined : Math.max(0, Math.round(performance.now() - toolStarted)),
+              detail: {
+                sandboxRequested: sandboxFact.requested,
+                sandboxEffective: "尚未执行",
+                sandboxBackend: "未采集",
+                ...(error ? { error } : {}),
+              },
+            }, toolStarted);
+          };
+          finishApproval("running");
+          let approvalFailure: Error | undefined;
+          try {
+            const approved = await options.authorizeTool({ callId: call.id, tool: call.name, args: parsed });
+            if (signal.aborted) throw new Error("Aborted");
+            if (!approved) throw new Error("用户拒绝了远端操作，本次操作未执行");
+          } catch (err) {
+            approvalFailure = err instanceof Error ? err : new Error(String(err));
+          }
+          const denied = approvalFailure?.message.includes("用户拒绝") === true;
+          const approvalStatus = !approvalFailure ? "ok" : signal.aborted || approvalFailure.message === "Aborted" || denied ? "cancelled" : "error";
+          finishApproval(approvalStatus, approvalFailure?.message);
+          if (approvalFailure) throw approvalFailure;
+        }
+        if (call.name !== "update_plan") {
+          recordDebugSpan({
+            id: call.id,
+            sessionId: session.id,
+            kind: "tool",
+            name: call.name,
+            status: "running",
+            startedAtMs: 0,
+            detail: { sandboxRequested: sandboxFact.requested, sandboxEffective: "尚未执行", sandboxBackend: "未采集" },
+          }, toolStarted);
         }
         try {
           if (call.name === "http_fetch" && options.networkFetch) {
@@ -360,23 +532,57 @@ export async function runAgent(options: {
               awaitingReview = true;
               output = `待批准，尚未执行。变更单 ${op.id}；目标工作区 ${op.root}；环境 ${op.environment}。请在执行与验收中审阅。`;
             } else {
-              await applyOperation(session.id, workbench, op, signal);
-              output = op.output ?? "已执行";
+              const applied = await applyOperation(session.id, workbench, op, signal);
+              output = applied.output ?? "已执行";
+              sandboxFact = (applied as { sandbox?: ToolSandboxFact }).sandbox ?? { requested: op.environment, effective: "未采集", backend: "未采集" };
               for (const artifact of op.artifacts ?? []) ctx.recordArtifact(artifact.path, artifact.action, artifact);
             }
           } else if (awaitingReview && call.name !== "update_plan") {
             output = "前序变更等待批准，本工具未执行。批准后继续任务。";
+          } else if (parseMcpToolName(call.name)) {
+            if (signal.aborted) throw new Error("Aborted");
+            if (!options.authorizeTool && !workbench) throw new Error("外部 MCP 工具必须经过审批，本次未调用");
+            if (!options.authorizeTool && workbench) {
+              const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
+              op.mcpTarget = await requireMcpTarget(call.name);
+              await saveWorkbench(session.id, workbench);
+              awaitingReview = true;
+              output = `外部 MCP 调用待批准，尚未连接服务器。变更单 ${op.id}。服务器 ${op.mcpTarget.url}，工具 ${call.name}，输入 ${JSON.stringify(parsed).slice(0, 500)}。远端服务不在本机沙箱内，批准后才会调用一次。`;
+            } else {
+              if (!options.mcpInvoke) throw new Error("外部 MCP 工具尚未配置，本次未调用");
+              output = await options.mcpInvoke({ name: call.name, args: parsed as Record<string, unknown>, signal, callId: call.id });
+              sandboxFact = { requested: "mcp", effective: "远端 MCP 服务", backend: "mcp-http" };
+            }
+          } else if (prepared) {
+            if (!prepared.ok) throw prepared.error;
+            output = prepared.value.output;
+            if (prepared.value.sandbox) sandboxFact = prepared.value.sandbox;
           } else {
             const result = await executeTool(call.name, parsed, ctx);
             output = result.output;
+            if (result.sandbox) sandboxFact = result.sandbox;
           }
           if (call.name !== "update_plan") {
             markToolStep(session, call.name, awaitingReview ? "pending" : "done", output.slice(0, 180));
             emit({ type: "steps", steps: session.steps });
           }
         } catch (err) {
-          if (err instanceof ToolAuthorizationDenied) throw err;
+          if (err instanceof ToolAuthorizationDenied) {
+            recordDebugSpan({
+              id: call.id,
+              sessionId: session.id,
+              kind: "approval",
+              name: call.name,
+              status: "cancelled",
+              startedAtMs: 0,
+              durationMs: Math.max(0, Math.round(performance.now() - toolStarted)),
+              detail: { error: err.message, sandboxRequested: sandboxFact.requested, sandboxEffective: "尚未执行", sandboxBackend: "未采集" },
+            }, toolStarted);
+            throw err;
+          }
           ok = false;
+          const failedOp = workbench?.operations.find((op) => op.callId === call.id) as { sandbox?: ToolSandboxFact } | undefined;
+          sandboxFact = failedOp?.sandbox ?? sandboxFromError(err) ?? sandboxFact;
           if (workbench?.operations.some((op) => op.callId === call.id && op.status === "error")) awaitingReview = true;
           turnHadError = true;
           output = err instanceof Error ? err.message : String(err);
@@ -385,6 +591,29 @@ export async function runAgent(options: {
           }
           markToolStep(session, call.name, "error", output);
           emit({ type: "steps", steps: session.steps });
+        }
+        const elapsedMs = prepared
+          ? Math.max(0, Math.round(prepared.finishedAt - prepared.startedAt))
+          : Math.max(0, Math.round(performance.now() - toolStarted));
+        if (call.name !== "update_plan") {
+          recordDebugSpan({
+            id: call.id,
+            sessionId: session.id,
+            kind: awaitingReview ? "approval" : "tool",
+            name: call.name,
+            status: signal.aborted ? "cancelled" : !ok ? "error" : awaitingReview ? "running" : "ok",
+            startedAtMs: 0,
+            durationMs: elapsedMs,
+            detail: debugDetail(session.id, {
+              sandboxRequested: sandboxFact.requested,
+              sandboxEffective: sandboxFact.effective,
+              sandboxBackend: sandboxFact.backend,
+              network: workbench?.policy.network ?? false,
+            }, {
+              arguments: parsed,
+              output,
+            }),
+          }, toolStarted);
         }
 
         if (awaitingReview && workbench?.operations.some((op) => op.callId === call.id && op.status === "pending")) {
@@ -397,7 +626,7 @@ export async function runAgent(options: {
           workbench.checkpoint = { calls: toolCalls.slice(callIndex + 1), userMessageId: lastUser?.id };
           await saveWorkbench(session.id, workbench);
         }
-        const durationMs = Date.now() - t0;
+        const durationMs = prepared ? elapsedMs : Date.now() - t0;
         const toolMsg: ChatMessage = {
           id: newId("msg"),
           role: "tool",
@@ -459,6 +688,11 @@ export async function runAgent(options: {
     const raw = err instanceof Error ? err.message : String(err);
     const aborted = raw === "Aborted" || signal.aborted;
     if (aborted) {
+      if (workbench) {
+        workbench.checkpoint = { calls: [], userMessageId: lastUser?.id, stopped: true };
+        await saveWorkbench(session.id, workbench);
+      }
+      cancelRunningDebugSpans(session.id, "已取消");
       const stop: ChatMessage = {
         id: newId("msg"),
         role: "assistant",
@@ -531,17 +765,133 @@ export function deliverableSummary(session: Session, lead: string): string {
   return lines.join("\n").trim();
 }
 
+const READONLY_PARALLEL = 3;
+const CONTEXT_NOTE_BUDGET = 4_000;
+
+function createReadonlyWindow(
+  calls: Array<{ id: string; name: string; arguments: string }>,
+  ctx: Parameters<typeof executeTool>[2],
+  signal: AbortSignal,
+) {
+  const slots = new Map<string, { startedAt: number; pending: Promise<{ ok: true; value: Awaited<ReturnType<typeof executeTool>>; finishedAt: number } | { ok: false; error: unknown; finishedAt: number }> }>();
+  let cursor = 0;
+  const launch = (call: { id: string; name: string; arguments: string }) => {
+    const startedAt = performance.now();
+    const pending = executeTool(call.name, safeJsonParse(call.arguments), ctx).then(
+      (value) => ({ ok: true as const, value, finishedAt: performance.now() }),
+      (error: unknown) => ({ ok: false as const, error, finishedAt: performance.now() }),
+    );
+    slots.set(call.id, { startedAt, pending });
+  };
+  const fill = () => {
+    while (!signal.aborted && slots.size < READONLY_PARALLEL && cursor < calls.length) {
+      const call = calls[cursor];
+      cursor += 1;
+      if (call) launch(call);
+    }
+  };
+  fill();
+  return {
+    has(id: string) { return slots.has(id); },
+    fill,
+    async take(id: string) {
+      const slot = slots.get(id);
+      if (!slot) return undefined;
+      const settled = await slot.pending;
+      slots.delete(id);
+      return { ...settled, startedAt: slot.startedAt };
+    },
+  };
+}
+
+function historySize(messages: ChatMessage[]): number {
+  return messages.reduce((sum, message) => sum + message.content.length + JSON.stringify(message.toolCalls ?? []).length, 0);
+}
+
+function repairMessages(messages: ChatMessage[]): ChatMessage[] {
+  const kept: ChatMessage[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      const ids = message.toolCalls.map((call) => call.id);
+      const results: ChatMessage[] = [];
+      let cursor = index + 1;
+      const pending = new Set(ids);
+      while (cursor < messages.length && messages[cursor]?.role === "tool" && messages[cursor]?.toolCallId && pending.has(messages[cursor]!.toolCallId!)) {
+        const result = messages[cursor];
+        if (!result?.toolCallId) break;
+        pending.delete(result.toolCallId);
+        results.push(result);
+        cursor += 1;
+      }
+      if (pending.size === 0) {
+        kept.push(message, ...results);
+        index = cursor - 1;
+      } else if (message.content.trim()) {
+        kept.push({ ...message, toolCalls: undefined });
+      }
+      continue;
+    }
+    if (message.role === "tool") continue;
+    kept.push({ ...message, toolCalls: undefined });
+  }
+  return kept;
+}
+
+function contextNote(rest: ChatMessage[]): ChatMessage | undefined {
+  const facts: string[] = [];
+  const goal = rest.find((message) => message.role === "user" && !message.content.startsWith("[harness]"));
+  if (goal?.content.trim()) facts.push(goal.content.slice(0, 1500));
+  const results = new Map(rest.filter((message) => message.role === "tool" && message.toolCallId).map((message) => [message.toolCallId, message]));
+  for (const message of rest) {
+    if (message.role !== "assistant" || !message.toolCalls?.length) continue;
+    for (const call of message.toolCalls) {
+      const result = results.get(call.id);
+      if (!result) continue;
+      if (call.name === "update_plan") facts.push(call.arguments.slice(0, 800));
+      if (/约束|待办|批准|已批准|applied:/.test(`${call.arguments}\n${result.content}`)) facts.push(result.content.slice(0, 800));
+    }
+  }
+  let body = "";
+  for (const fact of facts) {
+    const next = body ? `${body}\n${fact}` : fact;
+    if (next.length > CONTEXT_NOTE_BUDGET) break;
+    body = next;
+  }
+  if (!body) return undefined;
+  return {
+    id: "history-note",
+    role: "user",
+    content: `较早的工具输出已省略。保留的目标、约束、审批和待办：\n${body}`,
+    createdAt: goal?.createdAt ?? nowIso(),
+  };
+}
+
 function trimHistory(messages: ChatMessage[]): ChatMessage[] {
   const [system, ...rest] = messages;
   if (!system) return messages;
-  let kept = [...rest];
-  const size = () =>
-    kept.reduce((n, m) => n + m.content.length + (m.reasoningContent?.length ?? 0) + JSON.stringify(m.toolCalls ?? []).length, 0);
-  while (kept.length > 8 && size() > MAX_HISTORY_CHARS) {
-    kept = kept.slice(2);
+  const note = contextNote(rest);
+  let kept = repairMessages(rest);
+  while (kept.length > 4 && historySize(kept) + (note?.content.length ?? 0) > MAX_HISTORY_CHARS) {
+    kept = repairMessages(kept.slice(1));
   }
-  while (kept[0]?.role === "tool") kept = kept.slice(1);
-  return [system, ...kept];
+  while (kept.length > 1 && historySize(kept) + (note?.content.length ?? 0) > MAX_HISTORY_CHARS) {
+    kept = repairMessages(kept.slice(1));
+  }
+  const visible = `${kept.map((message) => `${message.content}\n${JSON.stringify(message.toolCalls ?? [])}`).join("\n")}`;
+  const needed = note && !note.content.split("\n").slice(1).every((line) => line.length < 12 || visible.includes(line.slice(0, 24)));
+  let combined = needed && note ? [note, ...kept] : kept;
+  while (combined.length > 1 && historySize(combined) > MAX_HISTORY_CHARS) {
+    combined = combined[0]?.id === "history-note"
+      ? [combined[0], ...repairMessages(combined.slice(2))]
+      : repairMessages(combined.slice(1));
+  }
+  if (combined[0]?.id === "history-note" && historySize(combined) > MAX_HISTORY_CHARS) {
+    const room = Math.max(0, MAX_HISTORY_CHARS - historySize(combined.slice(1)));
+    combined = [{ ...combined[0], content: combined[0].content.slice(0, room) }, ...combined.slice(1)];
+  }
+  return [system, ...combined];
 }
 
 function parsePlan(parsed: unknown): PlanStep[] {

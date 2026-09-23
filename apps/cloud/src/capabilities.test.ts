@@ -8,7 +8,7 @@ import type {CloudEnv} from "./types.ts";
 beforeEach(()=>{mocks.query.mockReset();mocks.connect.mockReset();});
 describe("cloud capability library",()=>{
  it("loads existing shipped content and resolves only caller-owned resources",async()=>{
-   mocks.query.mockImplementation(async(_sql,args)=>({rows:args[0]==="alice"?[{id:args[1]==="expert"?"exp_private":"skill_private",value:args[1]==="expert"?{name:"Private expert",description:"",instruction:"EXPERT_PROOF",skillIds:["skill_private"]}:{name:"Private skill",description:"",body:"SKILL_PROOF"}}]:[]}));
+   mocks.query.mockImplementation(async(_sql,args)=>({rows:_sql.includes("cloud_capabilities")&&args[0]==="alice"?[{id:args[1]==="expert"?"exp_private":"skill_private",value:args[1]==="expert"?{name:"Private expert",description:"",instruction:"EXPERT_PROOF",skillIds:["skill_private"]}:{name:"Private skill",description:"",body:"SKILL_PROOF"}}]:[]}));
    expect((await listCapabilities("bob","expert")).some(e=>e.id==="exp_scout")).toBe(true);
    expect((await listCapabilities("bob","skill")).some(e=>e.id==="coding-helper")).toBe(true);
    const context=await resolveCapabilityContext("alice",{expertId:"exp_private"});expect(context).toContain("EXPERT_PROOF");expect(context).toContain("SKILL_PROOF");expect(context).toContain("不扩大工具");

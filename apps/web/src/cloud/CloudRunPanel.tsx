@@ -287,10 +287,11 @@ export function CloudRunPanel({
             <section className="cloud-run-approval" key={approval.id}>
               <h2>需要你的批准</h2>
               <p>
-                {approval.tool === "http_fetch"
+                {approval.mcp_target ? `外部 MCP：${approval.mcp_target.serverName} · 实际在该服务执行，不受本机沙箱约束。` : approval.tool === "http_fetch"
                   ? "仅批准本次 GET 请求；不开放沙箱网络。"
                   : `待执行操作：${approval.tool}`}
               </p>
+              {approval.mcp_target && <p className="approval-mcp-target"><code>{approval.mcp_target.url}</code></p>}
               <ApprovalPreview tool={approval.tool} args={approval.args}/>
               {run.can_write ? (
                 <div>

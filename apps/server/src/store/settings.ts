@@ -1,4 +1,4 @@
-import { desktopSecrets } from "./desktop-secrets.ts";
+import { desktopSecrets, updateDesktopSecrets } from "./desktop-secrets.ts";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -143,11 +143,12 @@ export async function saveSettings(
     throw new Error("Codex model is required");
   }
   if (desktopSecrets) {
-    await desktopSecrets.write({
+    await updateDesktopSecrets((current) => ({
       llmApiKey: next.llmApiKey,
       cloudToken: next.cloudToken,
       codexApiKey: next.codexApiKey || "",
-    });
+      mcpSecrets: current.mcpSecrets ?? {},
+    }));
     await atomicWriteJson(FILE, { ...next, llmApiKey: "", cloudToken: "", codexApiKey: "" });
   } else {
     await atomicWriteJson(FILE, next);

@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-23",
+  "environment": "macOS, Docker Desktop isolated two-control/two-runner mock backend :8892; CUA in-app browser; UI preview :8896",
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      390,
+      844
+    ]
+  ],
+  "passed": [
+    "Custom cron create, edit name and preserve plan",
+    "Pause/enable with server next fire date, pause persisted after reload",
+    "Search filtering",
+    "Manual run waits for approval then produces cloud-proof.txt",
+    "History links to real run",
+    "Create project opens project homepage",
+    "Project homepage survives reload",
+    "Project conversation retains project selection",
+    "Project workspace lists real per-conversation versions",
+    "Invalid cron displays error and retains input",
+    "Mobile no horizontal overflow and save footer visible"
+  ],
+  "runId": "run_e623db64bfa84f7190b23e29ded93164",
+  "runState": "succeeded",
+  "screenshots": 17,
+  "unitTests": {
+    "passed": 753,
+    "failed": 1,
+    "existingFailure": "Codex recoverability retry test; reproduced in committed baseline; runSessionTurn normalizes codex to pig"
+  },
+  "limits": [
+    "No JoyDesk goals/comments/knowledge-library clone; no unsupported placeholders",
+    "Cloud project API currently returns at most 100 conversations",
+    "Desktop local execution and project folder binding preserved; packaged Electron not rebuilt in this iteration"
+  ]
+}

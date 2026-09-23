@@ -8,6 +8,7 @@ import { createApp } from "../app.ts";
 import { createSession, getSession, saveSession } from "../store/sessions.ts";
 import { saveSettings } from "../store/settings.ts";
 import { applyOperation, loadWorkbench, saveWorkbench, stageOperation, undoOperation, locked } from "../store/workbench.ts";
+import { dropDebugSession, readDebugTrace } from "../agent/debug-trace.ts";
 
 let root: string;
 let requests = 0;
@@ -58,6 +59,46 @@ describe("delivery review and recovery", () => {
     expect((await loadWorkbench(session.id, root)).usage.calls).toBe(2);
     const undo = await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/undo`);
     expect(undo.status).toBe(200); await expect(readFile(join(root, "delivery.txt"))).rejects.toThrow();
+  });
+  it("closes the waiting approval span after the queued write is approved", async () => {
+    const session = await createSession();
+    dropDebugSession(session.id);
+    const policy = await loadWorkbench(session.id, root);
+    policy.policy.review = true;
+    await saveWorkbench(session.id, policy);
+    nextBatch = [{ id: "span-approve", name: "write_file", args: { path: "span-approve.txt", content: "yes" } }];
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "approve span" })).text();
+    const staged = readDebugTrace(session.id).spans.find((span) => span.id === "span-approve");
+    expect(staged?.status).toBe("running");
+    const state = await loadWorkbench(session.id, root);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect((await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/approve`)).status).toBe(200);
+    const trace = readDebugTrace(session.id);
+    const closed = trace.spans.find((span) => span.id === "span-approve");
+    expect(closed?.status).toBe("ok");
+    expect(closed?.durationMs).toBeGreaterThan((staged?.durationMs ?? 0) + 50);
+    expect(String(closed?.detail?.output)).toContain("Created span-approve.txt");
+    expect(trace.spans.some((span) => span.status === "running")).toBe(false);
+    expect(await readFile(join(root, "span-approve.txt"), "utf8")).toBe("yes");
+  });
+  it("closes the waiting approval span when the queued write is rejected and does not write", async () => {
+    const session = await createSession();
+    dropDebugSession(session.id);
+    const policy = await loadWorkbench(session.id, root);
+    policy.policy.review = true;
+    await saveWorkbench(session.id, policy);
+    nextBatch = [
+      { id: "span-reject", name: "write_file", args: { path: "span-reject.txt", content: "no" } },
+      { id: "span-later", name: "write_file", args: { path: "span-later.txt", content: "no" } },
+    ];
+    await (await post(`/api/sessions/${session.id}/messages`, { content: "reject span" })).text();
+    const state = await loadWorkbench(session.id, root);
+    expect((await post(`/api/sessions/${session.id}/workbench/${state.operations[0]!.id}/reject`)).status).toBe(200);
+    const trace = readDebugTrace(session.id);
+    expect(trace.spans.find((span) => span.id === "span-reject")?.status).toBe("cancelled");
+    expect(trace.spans.some((span) => span.status === "running")).toBe(false);
+    await expect(readFile(join(root, "span-reject.txt"))).rejects.toThrow();
+    await expect(readFile(join(root, "span-later.txt"))).rejects.toThrow();
   });
   it("writes inside the sandbox without asking", async () => {
     const session = await createSession();

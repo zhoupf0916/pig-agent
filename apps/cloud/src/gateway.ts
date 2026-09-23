@@ -141,7 +141,10 @@ app.post("/v1/chat/completions", async (c) => {
       (m: { role: string }) => m.role === "tool",
     );
     const networkTarget = [...(body.messages || [])].reverse().find((m: {role:string;content?:string})=>m.role === "user" && m.content?.includes("[NETWORK_ACCEPTANCE:"))?.content?.match(/\[NETWORK_ACCEPTANCE:(https:\/\/[^\]]+)\]/)?.[1];
-    const call = networkTarget ? (tools.length === 0 ? {
+    // Deterministic MCP probe for the existing local mock-model mode only.
+    const mcpTarget = [...(body.messages || [])].reverse().find((m: {role:string;content?:string}) => m.role === "user" && m.content?.includes("[MCP_ACCEPTANCE:"))?.content?.match(/\[MCP_ACCEPTANCE:(echo|write_marker|slow)\]/)?.[1];
+    const mcpTool = mcpTarget ? (body.tools || []).find((t: {function?:{name?:string}}) => t.function?.name?.endsWith("__" + mcpTarget)) : undefined;
+    const call = mcpTarget ? (tools.length === 0 && mcpTool ? {id:"mcp-proof",type:"function",function:{name:mcpTool.function.name,arguments:JSON.stringify(mcpTarget === "write_marker" ? {marker:"MCP_RUNTIME_PROOF",path:"acceptance.txt"} : mcpTarget === "slow" ? {delayMs:15000} : {text:"MCP_RUNTIME_PROOF"})}} : null) : networkTarget ? (tools.length === 0 ? {
       id: "network-shell-probe", type: "function", function: {name:"run_shell",arguments:JSON.stringify({command:`node -e 'const https=require("https");const r=https.get("https://example.com/",()=>{console.log("UNEXPECTED_NETWORK");process.exit(0)});r.on("error",()=>{console.error("NETWORK_RESTRICTED");process.exit(1)});setTimeout(()=>{r.destroy();console.error("NETWORK_RESTRICTED");process.exit(1)},1500)'`,timeout_ms:3000})}
     } : tools.length === 1 ? {id:"network-read-proof",type:"function",function:{name:"http_fetch",arguments:JSON.stringify({url:networkTarget,timeout_ms:10000,max_bytes:200000})}} : null) :
       tools.length === 0
@@ -170,7 +173,7 @@ app.post("/v1/chat/completions", async (c) => {
       ? { role: "assistant", content: null, tool_calls: [call] }
       : {
           role: "assistant",
-          content: networkTarget ? "单次网络访问验收：工具结果已返回（模拟模型），请以实际工具结果核验。" :
+          content: mcpTarget ? (mcpTool ? "MCP 模拟模型流程结束，请以实际工具结果核验。" : "MCP 工具不可用，本次未调用。") : networkTarget ? "单次网络访问验收：工具结果已返回（模拟模型），请以实际工具结果核验。" :
             "沙箱执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。",
         };
     if (body.stream && !call) {
@@ -246,6 +249,34 @@ app.post("/v1/chat/completions", async (c) => {
         response.headers.get("Content-Type") || "application/json",
     },
   });
+});
+app.post("/mcp/tools", async (c) => {
+  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
+  const response = await fetch(control + "/internal/mcp/tools", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    body: JSON.stringify({ token }),
+    signal: AbortSignal.any([c.req.raw.signal,AbortSignal.timeout(120000)]),
+  });
+  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+});
+app.post("/mcp/invoke", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
+  const response = await fetch(control + "/internal/mcp/invoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    body: JSON.stringify({
+      token,
+      callId: body.callId,
+      tool: body.tool,
+      args: body.args,
+      url: body.url,
+      credentialVersion: body.credentialVersion,
+    }),
+    signal: AbortSignal.any([c.req.raw.signal,AbortSignal.timeout(125000)]),
+  });
+  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
 });
 app.onError((_e, c) => c.json({ error: "模型网关暂时不可用" }, 502));
 serve({ fetch: app.fetch, port: 8891 });

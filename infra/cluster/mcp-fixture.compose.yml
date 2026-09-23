@@ -1,0 +1,26 @@
+# Optional isolated acceptance overlay. Never use this fixture as a production MCP service.
+services:
+  cloud-a:
+    environment:
+      MCP_ENDPOINT_ALLOWLIST: http://mcp-fixture:9910/mcp
+  cloud-b:
+    environment:
+      MCP_ENDPOINT_ALLOWLIST: http://mcp-fixture:9910/mcp
+  mcp-fixture:
+    image: node:24-bookworm-slim
+    user: node
+    command: [node, /fixture/mock-mcp-server.mjs]
+    environment:
+      HOST: 0.0.0.0
+      PORT: 9910
+      MCP_FIXTURE_TOKEN: synthetic-local-fixture
+    volumes: ["../../scripts/mock-mcp-server.mjs:/fixture/mock-mcp-server.mjs:ro"]
+    ports: ["127.0.0.1:9910:9910"]
+    networks: [control, ingress]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:9910/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      retries: 10

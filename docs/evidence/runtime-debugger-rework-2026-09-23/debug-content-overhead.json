@@ -1,0 +1,306 @@
+{
+  "environment": {
+    "node": "v24.21.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "scope": "Warm same-process mock, alternating content off/on; 4 warmup requests then 20 samples each. Metadata remains enabled. No distributed or rendering cost included.",
+  "off": {
+    "n": 20,
+    "totalP50": 23.543458999999984,
+    "totalP95": 25.96195899999998,
+    "overheadP50": 2.910291000000143,
+    "overheadP95": 4.602125999999885,
+    "traceBytesP50": 841
+  },
+  "on": {
+    "n": 20,
+    "totalP50": 24.236125000000015,
+    "totalP95": 25.9201250000001,
+    "overheadP50": 3.34050000000002,
+    "overheadP95": 4.893207999999959,
+    "traceBytesP50": 13786
+  },
+  "samples": [
+    {
+      "enabled": false,
+      "totalMs": 23.72025000000002,
+      "measuredModelWaitMs": 21.179624999999987,
+      "overheadMs": 2.540625000000034,
+      "traceBytes": 837
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.908292000000017,
+      "measuredModelWaitMs": 21.136833000000024,
+      "overheadMs": 2.771458999999993,
+      "traceBytes": 13782
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.281749999999988,
+      "measuredModelWaitMs": 21.091875000000016,
+      "overheadMs": 3.1898749999999723,
+      "traceBytes": 837
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.31170800000001,
+      "measuredModelWaitMs": 21.115916000000027,
+      "overheadMs": 3.195791999999983,
+      "traceBytes": 13782
+    },
+    {
+      "enabled": false,
+      "totalMs": 26.647707999999966,
+      "measuredModelWaitMs": 21.148708999999997,
+      "overheadMs": 5.498998999999969,
+      "traceBytes": 837
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.83183299999996,
+      "measuredModelWaitMs": 21.08725000000004,
+      "overheadMs": 3.7445829999999205,
+      "traceBytes": 13782
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.726875000000007,
+      "measuredModelWaitMs": 21.09454199999999,
+      "overheadMs": 3.632333000000017,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 25.236833999999988,
+      "measuredModelWaitMs": 21.142333000000008,
+      "overheadMs": 4.09450099999998,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.114666999999997,
+      "measuredModelWaitMs": 20.990124999999978,
+      "overheadMs": 3.1245420000000195,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.680292000000065,
+      "measuredModelWaitMs": 20.920667000000037,
+      "overheadMs": 3.759625000000028,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 25.96195899999998,
+      "measuredModelWaitMs": 21.359833000000094,
+      "overheadMs": 4.602125999999885,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 26.98741700000005,
+      "measuredModelWaitMs": 20.85804200000007,
+      "overheadMs": 6.129374999999982,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.543458999999984,
+      "measuredModelWaitMs": 20.979332999999997,
+      "overheadMs": 2.5641259999999875,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.236125000000015,
+      "measuredModelWaitMs": 21.1757080000001,
+      "overheadMs": 3.060416999999916,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.381250000000023,
+      "measuredModelWaitMs": 21.079750000000104,
+      "overheadMs": 2.301499999999919,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.013124999999945,
+      "measuredModelWaitMs": 21.15841599999999,
+      "overheadMs": 2.854708999999957,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.392708000000084,
+      "measuredModelWaitMs": 20.920041999999967,
+      "overheadMs": 2.4726660000001175,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.39041700000007,
+      "measuredModelWaitMs": 20.968209,
+      "overheadMs": 2.4222080000000688,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.185041999999953,
+      "measuredModelWaitMs": 21.072667000000024,
+      "overheadMs": 2.112374999999929,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.08779100000004,
+      "measuredModelWaitMs": 21.107833000000028,
+      "overheadMs": 1.9799580000000105,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.215915999999993,
+      "measuredModelWaitMs": 21.135999999999967,
+      "overheadMs": 2.0799160000000256,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 22.768708999999944,
+      "measuredModelWaitMs": 20.445541999999932,
+      "overheadMs": 2.323167000000012,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.05220799999995,
+      "measuredModelWaitMs": 20.856250000000045,
+      "overheadMs": 3.195957999999905,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.954666999999972,
+      "measuredModelWaitMs": 21.07345799999996,
+      "overheadMs": 3.8812090000000126,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.49675000000002,
+      "measuredModelWaitMs": 21.078249999999912,
+      "overheadMs": 2.4185000000001082,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.672833999999966,
+      "measuredModelWaitMs": 21.091207999999938,
+      "overheadMs": 3.5816260000000284,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 22.854917,
+      "measuredModelWaitMs": 21.063916000000063,
+      "overheadMs": 1.7910009999999374,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.093500000000063,
+      "measuredModelWaitMs": 21.096457999999984,
+      "overheadMs": 1.9970420000000786,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.309540999999967,
+      "measuredModelWaitMs": 21.07299999999998,
+      "overheadMs": 3.2365409999999883,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 25.526749999999993,
+      "measuredModelWaitMs": 21.22291599999994,
+      "overheadMs": 4.303834000000052,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 25.629625000000033,
+      "measuredModelWaitMs": 21.141042000000084,
+      "overheadMs": 4.488582999999949,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 25.9201250000001,
+      "measuredModelWaitMs": 21.02691700000014,
+      "overheadMs": 4.893207999999959,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 24.859333000000106,
+      "measuredModelWaitMs": 21.082791999999927,
+      "overheadMs": 3.7765410000001793,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 22.484958000000006,
+      "measuredModelWaitMs": 20.313750000000027,
+      "overheadMs": 2.1712079999999787,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.00416599999994,
+      "measuredModelWaitMs": 20.093874999999798,
+      "overheadMs": 2.910291000000143,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 24.625540999999885,
+      "measuredModelWaitMs": 20.822167000000036,
+      "overheadMs": 3.803373999999849,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 22.59550000000013,
+      "measuredModelWaitMs": 20.145125000000007,
+      "overheadMs": 2.450375000000122,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.733625000000075,
+      "measuredModelWaitMs": 19.44145800000001,
+      "overheadMs": 4.292167000000063,
+      "traceBytes": 13786
+    },
+    {
+      "enabled": false,
+      "totalMs": 23.41466700000001,
+      "measuredModelWaitMs": 20.109415999999783,
+      "overheadMs": 3.3052510000002258,
+      "traceBytes": 841
+    },
+    {
+      "enabled": true,
+      "totalMs": 23.5045419999999,
+      "measuredModelWaitMs": 20.16404199999988,
+      "overheadMs": 3.34050000000002,
+      "traceBytes": 13786
+    }
+  ]
+}

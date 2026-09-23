@@ -12,9 +12,19 @@ import { runningTurns, runSessionTurn } from "../agent/turn.ts";
 import { getSession, saveSession } from "../store/sessions.ts";
 import { loadSessionSettings } from "../store/settings.ts";
 import { applyOperation, isWorkbenchBusy, loadWorkbench, locked, operationChecks, saveWorkbench, stageOperation, undoOperation } from "../store/workbench.ts";
+import { finishDebugSpan } from "../agent/debug-trace.ts";
 import { newId, nowIso } from "../util.ts";
 
 const policySchema = z.object({ review: z.boolean(), shell: z.enum(["host", "native", "docker"]).transform(() => "native" as const), network: z.boolean(), image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/), maxCalls: z.number().int().min(1).max(500), maxTokens: z.number().int().min(1000).max(5000000), maxCost: z.number().min(0).max(10000).default(0), inputPrice: z.number().min(0).max(10000), outputPrice: z.number().min(0).max(10000) });
+function closeOperationSpan(sessionId: string, op: { callId: string; status: string; output?: string; error?: string; sandbox?: { effective?: string; backend?: string } }) {
+  const executed = op.status === "applied";
+  finishDebugSpan(sessionId, op.callId, executed ? "ok" : op.status === "error" ? "error" : "cancelled", {
+    sandboxEffective: op.sandbox?.effective ?? (executed ? "未采集" : "尚未执行"),
+    sandboxBackend: op.sandbox?.backend ?? "未采集",
+    ...(op.output ? { output: op.output } : {}),
+    ...(executed ? {} : { error: op.error || (op.status === "rejected" ? "用户拒绝了本轮操作，未执行。" : "操作未完成") }),
+  });
+}
 type Template = { id: string; name: string; prompt: string; builtin?: boolean };
 const BUILTINS: Template[] = [
   { id: "review", name: "代码审查", prompt: "审查工作区代码，重点检查错误处理、安全边界与测试缺口。先输出带文件路径的审查报告，不要修改文件。", builtin: true },
@@ -35,7 +45,7 @@ export function registerWorkbenchRoutes(app: Hono) {
     try { return await locked("templates", async () => { const items = await customTemplates(); await atomicWriteJson(templateFile, items.filter((t) => t.id !== c.req.param("id"))); return c.json({ ok: true }); }); } catch (err) { return c.json({ error: (err as Error).message }, 409); }
   });
   app.use("/api/sessions/:id/*", async (c, next) => {
-    if (c.req.method !== "GET" && !c.req.path.endsWith("/abort") && isWorkbenchBusy(c.req.param("id"))) return c.json({ error: "任务正在处理文件操作，请稍后重试。" }, 409);
+    if (c.req.method !== "GET" && !c.req.path.endsWith("/abort") && !c.req.path.endsWith("/debug") && isWorkbenchBusy(c.req.param("id"))) return c.json({ error: "任务正在处理文件操作，请稍后重试。" }, 409);
     if (c.req.method === "POST" && /\/(messages|retry|team-run)$/.test(c.req.path)) {
       try { return await locked(c.req.param("id"), () => next()); }
       catch (err) { return c.json({ error: (err as Error).message }, 409); }
@@ -100,6 +110,7 @@ export function registerWorkbenchRoutes(app: Hono) {
         runningTurns.set(id, controller);
         try { await applyOperation(id, state, op, controller.signal); }
         catch (err) {
+          closeOperationSpan(id, op);
           session.lastError = (err as Error).message;
           for (const message of session.messages) if (message.toolCallId === op.callId) { message.content = `操作未完成，需要核对：${session.lastError}`; message.toolOk = false; }
           await publishPersistedEvent(id, { type: "done", session });
@@ -108,8 +119,8 @@ export function registerWorkbenchRoutes(app: Hono) {
         } finally { if (!state.checkpoint) runningTurns.delete(id); }
       }
       else if (action === "undo") await undoOperation(id, state, op);
-      else if (action === "reject" && op.status === "pending") { op.status = "rejected"; await saveWorkbench(id, state); }
-      else if (action === "acknowledge" && (op.status === "applying" || op.status === "error")) { op.status = "rejected"; op.output = "用户已核对中断操作；不自动重放。"; await saveWorkbench(id, state); }
+      else if (action === "reject" && op.status === "pending") { op.status = "rejected"; op.error = "用户拒绝了本轮操作，未执行。"; await saveWorkbench(id, state); closeOperationSpan(id, op); }
+      else if (action === "acknowledge" && (op.status === "applying" || op.status === "error")) { op.status = "rejected"; op.output = "用户已核对中断操作；不自动重放。"; op.error = op.output; await saveWorkbench(id, state); closeOperationSpan(id, op); }
       else throw new Error("操作状态不允许此动作。");
       session.lastError = undefined;
       if (op.status === "applied" && !session.messages.some((message) => message.toolCallId === op.callId)) {
@@ -137,6 +148,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       }
       if (op.status === "applied") for (const step of session.steps) if (step.detail?.includes(op.id)) { step.status = "done"; step.detail = "已批准执行并记录结果。"; }
       if (!state.checkpoint || op.status !== "applied") session.messages.push({ id: newId("msg"), role: "assistant", content: `变更 ${op.id}：${op.status === "applied" ? "已执行并记录结果" : op.status === "undone" ? "已撤销并核对快照" : "已拒绝／已核对，不会自动重放"}。目标：${op.root}。`, createdAt: nowIso() });
+      if (op.status === "applied" || op.status === "error") closeOperationSpan(id, op);
       await publishPersistedEvent(id, { type: "done", session });
       await saveSession(session);
       if (op.status === "applied" && state.checkpoint) {

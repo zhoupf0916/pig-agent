@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Session, Settings } from "../types.ts";
-import { deliverableSummary, runAgent, ToolAuthorizationDenied } from "./runtime.ts";
+import { dropDebugSession, readDebugTrace, setDebugContent } from "./debug-trace.ts";
+import { MAX_HISTORY_CHARS, deliverableSummary, runAgent, ToolAuthorizationDenied } from "./runtime.ts";
 
 function pigSettings(workspaceRoot: string, extra: Partial<Settings> = {}): Settings {
   return {
@@ -173,6 +174,35 @@ describe("runAgent harness", () => {
       else expect(result.lastError).toContain("用户拒绝了远端操作");
     } finally { decide(false); await mock.close(); }
   });
+
+  it("closes the approval span when remote authorization is rejected and does not run the next write", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-approval-trace-"));
+    const id = "ses_approval_reject_" + Date.now();
+    dropDebugSession(id);
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "denied-write", name: "write_file", args: { path: "forbidden.txt", content: "must not write" } },
+        { id: "later-write", name: "write_file", args: { path: "also-forbidden.txt", content: "no" } },
+      ]),
+    ]);
+    try {
+      const result = await runAgent({
+        session: emptySession({ id }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+        authorizeTool: async () => false,
+      });
+      expect(result.lastError).toContain("用户拒绝了远端操作");
+      expect(existsSync(join(root, "forbidden.txt"))).toBe(false);
+      expect(existsSync(join(root, "also-forbidden.txt"))).toBe(false);
+      const trace = readDebugTrace(id);
+      expect(trace.spans.some((span) => span.status === "running")).toBe(false);
+      expect(trace.spans.some((span) => span.kind === "approval" && (span.status === "cancelled" || span.status === "error"))).toBe(true);
+    } finally {
+      await mock.close();
+    }
+  });
   it("leaves an unconfirmed plan pending when the model asks for a destination", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-agent-pending-"));
     const mock = await startScriptedLlm([
@@ -324,6 +354,312 @@ describe("runAgent harness", () => {
     await hung.close();
     expect(next.status).toBe("idle");
     expect(next.messages.some((m) => m.content.includes("已停止"))).toBe(true);
+  });
+});
+
+describe("debug model request", () => {
+  it("records the posted request body and leaves a workspace file tool unlabeled as seatbelt", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-debug-request-"));
+    writeFileSync(join(root, "README.md"), "hello");
+    const id = "ses_debug_request_" + Date.now();
+    dropDebugSession(id);
+    setDebugContent(id, true);
+    const seen: Array<Record<string, unknown>> = [];
+    const mock = await startScriptedLlm([
+      (raw, res) => {
+        seen.push(JSON.parse(raw) as Record<string, unknown>);
+        sse(res, { choices: [{ delta: { tool_calls: [{ index: 0, id: "read-1", function: { name: "read_file", arguments: JSON.stringify({ path: "README.md" }) } }] }, finish_reason: null }] });
+        sse(res, { choices: [{ delta: {}, finish_reason: "tool_calls" }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } });
+      },
+      (raw, res) => {
+        seen.push(JSON.parse(raw) as Record<string, unknown>);
+        sse(res, { choices: [{ delta: { content: "INDEPENDENT_RESPONSE_CANARY" }, finish_reason: null }] });
+        sse(res, { choices: [{ delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } });
+      },
+    ]);
+    try {
+      await runAgent({
+        session: emptySession({
+          id,
+          messages: [{ id: "u1", role: "user", content: "INDEPENDENT_PROMPT_CANARY", createdAt: new Date().toISOString() }],
+        }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url, llmModel: "independent-mock" }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      });
+      const models = readDebugTrace(id).spans.filter((span) => span.kind === "model");
+      const posted = seen[0];
+      const recorded = models[0]?.detail?.request as { body?: { stream?: boolean; messages?: unknown; max_tokens?: unknown } } | undefined;
+      expect(recorded?.body?.stream).toBe(true);
+      expect(recorded?.body?.messages).toEqual(posted?.messages);
+      expect(JSON.stringify(models)).toContain("INDEPENDENT_PROMPT_CANARY");
+      expect(JSON.stringify(models)).toContain("INDEPENDENT_RESPONSE_CANARY");
+      expect(JSON.stringify(models)).toContain('"stop"');
+      expect(JSON.stringify(models)).toContain('"prompt_tokens":100');
+      const fileTool = readDebugTrace(id).spans.find((span) => span.name === "read_file");
+      expect(fileTool?.detail?.sandboxEffective).toBe("workspace");
+      expect(fileTool?.status).not.toBe("running");
+    } finally {
+      await mock.close();
+    }
+  });
+});
+
+describe("read order and retained context", () => {
+  it("returns independent reads in call order and applies a later edit only after the earlier write", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-order-"));
+    writeFileSync(join(root, "a.txt"), "AAA");
+    writeFileSync(join(root, "b.txt"), "BBB");
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "read-a", name: "read_file", args: { path: "a.txt" } },
+        { id: "read-b", name: "read_file", args: { path: "b.txt" } },
+      ]),
+      (_raw, res) => toolDelta(res, [
+        { id: "write-order", name: "write_file", args: { path: "order.txt", content: "first" } },
+        { id: "edit-order", name: "edit_file", args: { path: "order.txt", old_string: "first", new_string: "second" } },
+      ]),
+      (_raw, res) => sse(res, { choices: [{ delta: { content: "完成" } }] }),
+    ]);
+    try {
+      const result = await runAgent({
+        session: emptySession({ id: "ses_order_" + Date.now() }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      });
+      const tools = result.messages.filter((message) => message.role === "tool");
+      expect(tools.map((message) => message.toolCallId)).toEqual(["read-a", "read-b", "write-order", "edit-order"]);
+      expect(tools[0]?.content).toContain("AAA");
+      expect(tools[1]?.content).toContain("BBB");
+      expect(readFileSync(join(root, "order.txt"), "utf8")).toBe("second");
+      expect(tools[3]?.toolOk).toBe(true);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("keeps the goal, constraint, approval, and todo after old tool output is trimmed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-history-"));
+    const fat = "NOISE ".repeat(4000);
+    const now = new Date().toISOString();
+    const messages: Session["messages"] = [
+      { id: "goal", role: "user", content: "目标：交付周报。约束：不要改动锁文件。", createdAt: now },
+      {
+        id: "plan",
+        role: "assistant",
+        content: "",
+        createdAt: now,
+        toolCalls: [{ id: "plan-call", name: "update_plan", arguments: JSON.stringify({ steps: [{ title: "核对标题", status: "pending" }] }) }],
+      },
+      { id: "approved", role: "tool", content: "已批准写入 report.md", toolCallId: "plan-call", createdAt: now },
+    ];
+    for (let i = 0; i < 8; i += 1) {
+      messages.push({ id: `noise-a-${i}`, role: "assistant", content: "继续", createdAt: now });
+      messages.push({ id: `noise-t-${i}`, role: "tool", content: fat, toolCallId: `noise-${i}`, createdAt: now });
+    }
+    let sent = "";
+    const mock = await startScriptedLlm([
+      (raw, res) => {
+        sent = raw;
+        sse(res, { choices: [{ delta: { content: "仍记得任务" } }] });
+      },
+    ]);
+    try {
+      await runAgent({
+        session: emptySession({ id: "ses_history_" + Date.now(), messages }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      });
+      expect(sent).toContain("交付周报");
+      expect(sent).toContain("不要改动锁文件");
+      expect(sent).toContain("核对标题");
+      expect(sent).toContain("已批准写入 report.md");
+      expect((sent.match(/NOISE /g) ?? []).length).toBeLessThan(4000 * 6);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("records a rejected read without an unhandled rejection and still returns the earlier read", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-read-fail-"));
+    writeFileSync(join(root, "a.txt"), "AAA");
+    writeFileSync(join(root, ".env"), "SECRET=1\n");
+    const rejections: unknown[] = [];
+    const onRejection = (error: unknown) => rejections.push(error);
+    process.on("unhandledRejection", onRejection);
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "read-ok", name: "read_file", args: { path: "a.txt" } },
+        { id: "read-secret", name: "read_file", args: { path: ".env" } },
+      ]),
+      (_raw, res) => sse(res, { choices: [{ delta: { content: "已处理失败" } }] }),
+    ]);
+    try {
+      const result = await runAgent({
+        session: emptySession({ id: "ses_read_fail_" + Date.now() }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const tools = result.messages.filter((message) => message.role === "tool");
+      expect(tools.map((message) => message.toolCallId)).toEqual(["read-ok", "read-secret"]);
+      expect(tools[0]?.content).toContain("AAA");
+      expect(tools[1]?.toolOk).toBe(false);
+      expect(tools[1]?.content).toContain("Refusing to read a secret file");
+      expect(tools[1]?.content).not.toContain("SECRET=1");
+      expect(rejections).toEqual([]);
+      const span = readDebugTrace(result.id).spans.find((item) => item.id === "read-ok");
+      expect(span?.durationMs).toBe(tools[0]?.toolDurationMs);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+      await mock.close();
+    }
+  });
+
+  it("does not start a fourth read after the batch is cancelled", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-read-cancel-"));
+    writeFileSync(join(root, "a.txt"), "AAA");
+    writeFileSync(join(root, "b.txt"), "BBB");
+    writeFileSync(join(root, "c.txt"), "CCC");
+    writeFileSync(join(root, ".env"), "SECRET=1\n");
+    const controller = new AbortController();
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "read-a", name: "read_file", args: { path: "a.txt" } },
+        { id: "read-b", name: "read_file", args: { path: "b.txt" } },
+        { id: "read-c", name: "read_file", args: { path: "c.txt" } },
+        { id: "read-secret", name: "read_file", args: { path: ".env" } },
+      ]),
+    ]);
+    try {
+      const result = await runAgent({
+        session: emptySession({ id: "ses_read_cancel_" + Date.now() }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: controller.signal,
+        emit: (event) => {
+          if (event.type === "tool_start" && event.id === "read-a") controller.abort();
+        },
+      });
+      const text = result.messages.map((message) => message.content).join("\n");
+      expect(text).not.toContain("Refusing to read a secret file");
+      expect(text).not.toContain("SECRET=1");
+      expect(result.messages.some((message) => message.toolCallId === "read-secret")).toBe(false);
+      expect(result.messages.some((message) => message.content.includes("已停止"))).toBe(true);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  it("keeps a bounded note and does not send an unpaired tool message", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-pair-"));
+    const now = new Date().toISOString();
+    const messages: Session["messages"] = [
+      { id: "goal", role: "user", content: "目标：交付周报。约束：不要改动锁文件。", createdAt: now },
+      {
+        id: "plan",
+        role: "assistant",
+        content: "",
+        createdAt: now,
+        toolCalls: [
+          { id: "plan-call", name: "update_plan", arguments: JSON.stringify({ steps: [{ title: "核对标题", status: "pending" }] }) },
+          { id: "write-call", name: "write_file", arguments: JSON.stringify({ path: "report.md", content: "周报" }) },
+        ],
+      },
+      { id: "planned", role: "tool", content: "计划已更新", toolCallId: "plan-call", createdAt: now },
+      { id: "approved", role: "tool", content: "已批准写入 report.md", toolCallId: "write-call", createdAt: now },
+      { id: "orphan", role: "tool", content: "已批准孤立不应该作为工具消息", toolCallId: "missing-call", createdAt: now },
+    ];
+    for (let i = 0; i < 6; i += 1) {
+      messages.push({ id: `fat-${i}`, role: "user", content: `填充 ${"NOISE ".repeat(4000)}`, createdAt: now });
+    }
+    let sent = "";
+    const mock = await startScriptedLlm([
+      (raw, res) => {
+        sent = raw;
+        sse(res, { choices: [{ delta: { content: "仍记得任务" } }] });
+      },
+    ]);
+    try {
+      await runAgent({
+        session: emptySession({ id: "ses_pair_" + Date.now(), messages }),
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      });
+      const body = JSON.parse(sent) as { messages: Array<{ role: string; content?: string; tool_calls?: Array<{ id: string }>; tool_call_id?: string }> };
+      const rows = body.messages.filter((message) => message.role !== "system");
+      const pending: string[] = [];
+      for (const message of rows) {
+        if (message.role === "assistant" && message.tool_calls?.length) {
+          expect(pending).toEqual([]);
+          pending.push(...message.tool_calls.map((call) => call.id));
+        } else if (message.role === "tool") {
+          expect(pending.shift()).toBe(message.tool_call_id);
+        } else {
+          expect(pending).toEqual([]);
+        }
+      }
+      expect(pending).toEqual([]);
+      expect(sent).toContain("交付周报");
+      expect(sent).toContain("不要改动锁文件");
+      expect(sent).toContain("核对标题");
+      expect(sent).toContain("已批准写入 report.md");
+      expect(rows.some((message) => message.role === "tool" && message.content?.includes("已批准孤立"))).toBe(false);
+      const kept = rows.reduce((sum, message) => sum + (message.content?.length ?? 0) + JSON.stringify(message.tool_calls ?? []).length, 0);
+      expect(kept).toBeLessThanOrEqual(MAX_HISTORY_CHARS);
+    } finally {
+      await mock.close();
+    }
+  });
+});
+
+describe("cancelled checkpoints", () => {
+  it("does not replay the next write after the turn is cancelled", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-cancel-replay-"));
+    const session = emptySession({ id: "ses_cancel_replay_" + Date.now(), deliveryMode: true });
+    const controller = new AbortController();
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "write-a", name: "write_file", args: { path: "finished.txt", content: "done" } },
+        { id: "write-b", name: "write_file", args: { path: "must-not-replay.txt", content: "later" } },
+      ]),
+    ]);
+    try {
+      await runAgent({
+        session,
+        settings: pigSettings(root, { llmBaseUrl: mock.url }),
+        signal: controller.signal,
+        emit: (event) => {
+          if (event.type === "tool_end" && event.id === "write-a") controller.abort();
+        },
+      });
+    } finally {
+      await mock.close();
+    }
+    expect(readFileSync(join(root, "finished.txt"), "utf8")).toBe("done");
+    expect(existsSync(join(root, "must-not-replay.txt"))).toBe(false);
+    let replayed = 0;
+    const replay = await startScriptedLlm([
+      (_raw, res) => {
+        replayed += 1;
+        sse(res, { choices: [{ delta: { content: "不应该重放" } }] });
+      },
+    ]);
+    try {
+      await expect(runAgent({
+        session,
+        settings: pigSettings(root, { llmBaseUrl: replay.url }),
+        signal: new AbortController().signal,
+        emit: () => {},
+      })).rejects.toThrow("本轮已拒绝或取消，请发送新的指令后再执行。");
+      expect(replayed).toBe(0);
+      expect(existsSync(join(root, "must-not-replay.txt"))).toBe(false);
+    } finally {
+      await replay.close();
+    }
   });
 });
 

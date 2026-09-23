@@ -15,7 +15,7 @@ exports.createVault = function createVault(userData, safeStorage) {
       try {
         return JSON.parse(safeStorage.decryptString(await fs.readFile(file)));
       } catch (error) {
-        if (error.code === "ENOENT") return { llmApiKey: "", cloudToken: "", codexApiKey: "" };
+        if (error.code === "ENOENT") return { llmApiKey: "", cloudToken: "", codexApiKey: "", mcpSecrets: {} };
         throw error;
       }
     }
@@ -25,7 +25,13 @@ exports.createVault = function createVault(userData, safeStorage) {
       typeof value?.cloudToken !== "string"
     )
       throw new Error("Invalid secret request");
-    const next = { llmApiKey: value.llmApiKey, cloudToken: value.cloudToken, codexApiKey: typeof value.codexApiKey === "string" ? value.codexApiKey : "" };
+    const mcpSecrets = {};
+    if (value.mcpSecrets && typeof value.mcpSecrets === "object" && !Array.isArray(value.mcpSecrets)) {
+      for (const [key, item] of Object.entries(value.mcpSecrets)) {
+        if (/^m_[a-f0-9]{16}$/.test(key) && typeof item === "string" && item.length <= 4000) mcpSecrets[key] = item;
+      }
+    }
+    const next = { llmApiKey: value.llmApiKey, cloudToken: value.cloudToken, codexApiKey: typeof value.codexApiKey === "string" ? value.codexApiKey : "", mcpSecrets };
     await fs.writeFile(
       file + ".tmp",
       safeStorage.encryptString(JSON.stringify(next)),

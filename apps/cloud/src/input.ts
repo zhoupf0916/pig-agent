@@ -9,6 +9,8 @@ export const inputSchema = z.object({
   sessionId: z.string().max(100).optional(),
   projectId: z.string().regex(/^project_[a-f0-9]{32}$/).optional(),
   requireApproval: z.boolean().optional(),
+  /** Mirrors CloudCreateRunRequest.debugContent. Only an explicit true enables body capture. */
+  debugContent: z.boolean().optional(),
   networkPolicy: z.enum(["ask", "blocked"]).default("ask"),
   files: z
     .array(

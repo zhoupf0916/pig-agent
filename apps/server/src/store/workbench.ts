@@ -1,3 +1,5 @@
+import type { McpExecutionTarget } from "@pig-agent/contracts";
+import { parseMcpToolName } from "@pig-agent/contracts";
 import { nativeFileTool } from "../agent/file-helper-client.ts";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -10,7 +12,7 @@ import type { Artifact, ToolCall } from "../types.ts";
 
 export type Policy = { review: boolean; shell: "host" | "docker" | "native"; network: boolean; image: string; maxCalls: number; maxTokens: number; maxCost: number; inputPrice: number; outputPrice: number };
 export type FileVersion = { path: string; data: string | null; mode?: number };
-export type Operation = { id: string; callId: string; tool: string; args: Record<string, unknown>; root: string; environment: Policy["shell"]; image: string; network: boolean; status: "pending" | "applying" | "applied" | "rejected" | "undone" | "error"; before: FileVersion[]; after: FileVersion[]; createdAt: string; output?: string; error?: string; artifacts?: Artifact[] };
+export type Operation = { id: string; callId: string; tool: string; args: Record<string, unknown>; root: string; environment: Policy["shell"]; image: string; network: boolean; status: "pending" | "applying" | "applied" | "rejected" | "undone" | "error"; before: FileVersion[]; after: FileVersion[]; createdAt: string; output?: string; error?: string; artifacts?: Artifact[]; mcpTarget?: McpExecutionTarget };
 export type Workbench = { checkpoint?: { calls: ToolCall[]; blockedCallId?: string; userMessageId?: string; stopped?: boolean }; root: string; policy: Policy; operations: Operation[]; usage: { calls: number; input: number; output: number; estimated: boolean; durationMs: number; cost: number }; interrupted?: boolean };
 export const DEFAULT_POLICY: Policy = { review: false, shell: "native", network: false, image: "node:22-alpine", maxCalls: 40, maxTokens: 100000, maxCost: 0, inputPrice: 0, outputPrice: 0 };
 const locks = new Set<string>();
@@ -55,7 +57,7 @@ export async function stageOperation(state: Workbench, callId: string, tool: str
   const existing = state.operations.find((op) => op.callId === callId);
   if (existing) return existing;
   if (state.operations.some((op) => op.status === "pending" || op.status === "applying")) throw new Error("请先处理当前审批，一次只能审批一项。");
-  const paths = tool === "run_shell" || tool === "http_fetch" ? [] : tool === "move_file" ? [String(args.from ?? ""), String(args.to ?? "")] : [String(args.path ?? "")];
+  const paths = tool === "run_shell" || tool === "http_fetch" || parseMcpToolName(tool) ? [] : tool === "move_file" ? [String(args.from ?? ""), String(args.to ?? "")] : [String(args.path ?? "")];
   if (paths.some((p) => !p || p === ".")) throw new Error("必须指定文件路径。");
   const before = await capture(state.root, paths, state.policy.shell);
   const after = before.map((v) => ({ ...v }));
@@ -104,6 +106,21 @@ export async function operationChecks(state: Workbench) {
 
 export async function applyOperation(sessionId: string, state: Workbench, op: Operation, signal?: AbortSignal) {
   if (op.status !== "pending") throw new Error("该操作已处理，不能重复执行。");
+  if (parseMcpToolName(op.tool)) {
+    op.status = "applying";
+    await saveWorkbench(sessionId, state);
+    try {
+      const { invokeApprovedMcp } = await import("./mcp-servers.ts");
+      op.output = await invokeApprovedMcp(op.tool, op.args, op.mcpTarget, signal);
+      Object.assign(op, { sandbox: { requested: "mcp", effective: "远端 MCP 服务", backend: "mcp-http" } });
+      op.status = "applied";
+    } catch (err) {
+      op.status = "error";
+      op.error = err instanceof Error ? err.message : String(err);
+      throw err;
+    } finally { await saveWorkbench(sessionId, state); }
+    return op;
+  }
   await assertUnchanged(op.root, op.before, op.environment);
   op.status = "applying";
   await saveWorkbench(sessionId, state);
@@ -114,13 +131,14 @@ export async function applyOperation(sessionId: string, state: Workbench, op: Op
       workspaceRoot: op.root, artifacts, signal, shellMode: op.environment, dockerImage: op.image, dockerNetwork: op.network,
       recordArtifact: (path, action, extra) => artifacts.push({ path, action, ...extra, updatedAt: nowIso() }),
     });
+    Object.assign(op, { sandbox: result.sandbox });
     const actual = await capture(op.root, op.after.map((v) => v.path), op.environment);
     if (actual.some((v, i) => v.data !== op.after[i]?.data)) throw new Error("执行后内容与预览不符，需要人工核对。");
     op.after = actual;
     op.artifacts = artifacts;
     op.output = result.output;
     op.status = "applied";
-  } catch (err) { op.status = "error"; op.error = err instanceof Error ? err.message : String(err); throw err; }
+  } catch (err) { op.status = "error"; op.error = err instanceof Error ? err.message : String(err); if (err && typeof err === "object" && "sandbox" in err) Object.assign(op, { sandbox: (err as { sandbox?: unknown }).sandbox }); throw err; }
   finally { await saveWorkbench(sessionId, state); }
   return op;
 }

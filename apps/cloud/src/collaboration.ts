@@ -29,6 +29,22 @@ export function registerCollaborationRoutes(app: Hono<CloudEnv>) {
       await client.query("COMMIT"); return c.json({id:projectId},201);
     } catch(e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
   });
+  app.post("/v1/projects/:id/share", async c => {
+    const parsed = z.object({ spaceId: z.string().trim().min(1).max(80) }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "请选择组织" }, 400);
+    const actor = c.get("principal").id;
+    const updated = await db.query(
+      `UPDATE shared_projects SET space_id=$3
+       WHERE id=$1 AND owner_id=$2 AND space_id IS NULL
+       AND EXISTS(SELECT 1 FROM space_members m JOIN principals a ON a.id=$2 AND a.enabled
+         WHERE m.space_id=$3 AND m.principal_id=$2 AND m.role='admin')
+       RETURNING id`,
+      [c.req.param("id"), actor, parsed.data.spaceId],
+    );
+    if (!updated.rowCount) return c.json({ error: "只能把自己的个人项目共享到你管理的组织" }, 404);
+    await db.query("INSERT INTO audit(actor,action) VALUES($1,$2)", [actor, "project:share:" + c.req.param("id")]);
+    return c.json({ id: c.req.param("id"), spaceId: parsed.data.spaceId });
+  });
   app.put("/v1/projects/:id/workspace/files", async c => {
     const parsed=z.object({files:workspaceFilesSchema}).strict().safeParse(await c.req.json().catch(()=>({})));
     if(!parsed.success) return c.json({error:parsed.error.issues[0]?.message || "工作区文件无效"},400);

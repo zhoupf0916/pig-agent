@@ -1,3 +1,4 @@
+import { pluginCapabilities } from "./ecosystem-plugins.ts";
 import { BUNDLED_EXPERTS } from "@pig-agent/contracts";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ async function bundledSkills():Promise<Entry[]>{
 export async function listCapabilities(ownerId:string,kind:"expert"|"skill",client:Client=db):Promise<Entry[]>{
  const builtin:Entry[]=kind==="expert"?BUNDLED_EXPERTS:await bundledSkills();
  const custom=(await client.query("SELECT id,value,created_at,updated_at FROM cloud_capabilities WHERE owner_id=$1 AND kind=$2 ORDER BY created_at,id",[ownerId,kind])).rows;
- return [...builtin,...custom.map(row=>({...row.value,id:row.id,bundled:false,createdAt:row.created_at,updatedAt:row.updated_at}))];
+ return [...builtin,...await pluginCapabilities(ownerId,kind,client),...custom.map(row=>({...row.value,id:row.id,bundled:false,createdAt:row.created_at,updatedAt:row.updated_at}))];
 }
 export async function resolveCapabilityContext(ownerId:string,input:{expertId?:string;skillIds?:string[]},client:Client=db):Promise<string>{
  if(!input.expertId && !input.skillIds?.length)return "";

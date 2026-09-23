@@ -42,6 +42,11 @@ export type CloudWorkspaceHandoff = {
 
 export type CloudCreateRunRequest = {
   requireApproval?: boolean;
+  /**
+   * Opt in to storing redacted model and tool bodies on this run's debug trace.
+   * Omitted and false do not collect that content.
+   */
+  debugContent?: boolean;
   prompt: string;
   sessionId: string;
   messages: Array<Pick<ChatMessage, "id" | "role" | "content" | "createdAt">>;
@@ -57,6 +62,8 @@ export type CloudCreateRunResponse = {
 
 export type CloudFollowUpRequest = {
   prompt: string;
+  /** Same opt-in as CloudCreateRunRequest.debugContent. Omitted does not inherit a previous run. */
+  debugContent?: boolean;
 };
 
 export type CloudFollowUpResponse = {
@@ -168,4 +175,16 @@ export type CloudSharedProject = {
   role: CloudSpace["role"];
 };
 
-export type CloudApproval = {id:string;call_id:string;tool:string;args:Record<string,unknown>;state:"pending"|"approved"|"rejected"|"consumed"|"expired";created_at:string;decided_at?:string;decided_by?:string};
+export type McpApprovalTarget = { serverId: string; serverName: string; url: string; credentialVersion: number };
+export type CloudApproval = {mcp_target?: McpApprovalTarget | null;id:string;call_id:string;tool:string;args:Record<string,unknown>;state:"pending"|"approved"|"rejected"|"consumed"|"expired";created_at:string;decided_at?:string;decided_by?:string};
+
+export type CloudProject = CloudSharedProject & {
+  kind: "personal" | "collaborative";
+  workspace_name: string;
+};
+export type CloudProjectWorkspace = {
+  projectId: string;
+  workspaceName: string;
+  seed?: { fileCount: number; byteSize: number; files: string[] };
+  conversations: Array<{ id: string; title: string; versions: Array<{ run_id: string; created_at: string; manifest: { files?: string[] } }> }>;
+};

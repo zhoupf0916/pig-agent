@@ -18,6 +18,8 @@ export type CloudStubRun = {
   repoUrl?: string;
   ref?: string;
   installHints?: CloudInstallHints;
+  debugContent?: boolean;
+  followDebug?: boolean[];
 };
 
 export type CloudControlStub = {
@@ -37,6 +39,7 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
     const body = (await c.req.json().catch(() => ({}))) as {
       prompt?: string;
       sessionId?: string;
+      debugContent?: boolean;
       workspace?: {
         snapshot?: {
           encoding?: string;
@@ -99,6 +102,8 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
       repoUrl: body.workspace?.repoUrl,
       ref: body.workspace?.ref,
       ...(hasInstallHints(installHints) ? { installHints } : {}),
+      debugContent: body.debugContent === true,
+      followDebug: [],
     };
     runs.set(id, run);
     return c.json({ id, status: "running" });
@@ -139,8 +144,9 @@ export function createCloudControlApp(options: { runsRoot?: string } = {}): Clou
     if (!run || run.status === "expired") {
       return c.json({ error: "run expired" }, 404);
     }
-    const body = (await c.req.json().catch(() => ({}))) as { prompt?: string };
+    const body = (await c.req.json().catch(() => ({}))) as { prompt?: string; debugContent?: boolean };
     run.prompts.push(typeof body.prompt === "string" ? body.prompt : "");
+    run.followDebug = [...(run.followDebug ?? []), body.debugContent === true];
     run.status = "running";
     return c.json({ ok: true, id: run.id, status: "running" });
   });

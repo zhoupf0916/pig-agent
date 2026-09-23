@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nativeCommand } from "./native-sandbox.ts";
-import type { ToolContext, ToolResult, ArtifactPatch } from "./tools.ts";
+import type { ToolContext, ToolResult, ToolSandboxFact, ArtifactPatch } from "./tools.ts";
 import type { ArtifactAction } from "../types.ts";
 const quote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
 export const FILE_TOOLS = new Set([
@@ -31,9 +31,9 @@ export async function nativeFileTool(
     Boolean(path && existsSync(path)),
   );
   if (!helper)
-    throw Error(
+    throw Object.assign(Error(
       "原生文件工具尚未构建。请先运行 pnpm build；不会降级为宿主文件访问。",
-    );
+    ), { sandbox: { requested: ctx.shellMode ?? "native", effective: "未采集", backend: "未采集" } satisfies ToolSandboxFact });
   const trustedReadPaths = [helper, process.execPath];
   const appIndex = process.execPath.indexOf(".app/");
   if (appIndex >= 0)
@@ -72,25 +72,29 @@ export async function nativeFileTool(
       stderr += chunk;
       if (stderr.length > 64000) stop();
     });
-    execution.child.on("error", (error) => finish(error));
+    const sandboxFor = (ran: boolean): ToolSandboxFact => ran
+      ? { requested: ctx.shellMode ?? "native", effective: execution.backend, backend: execution.backend }
+      : { requested: ctx.shellMode ?? "native", effective: "未采集", backend: "未采集" };
+    execution.child.on("error", (error) => finish(Object.assign(error, { sandbox: sandboxFor(false) })));
     execution.child.on("close", (code) => {
+      const ran = stdout.length > 0;
+      const sandbox = sandboxFor(ran);
       try {
-        if (!stdout) throw Error(stderr || `原生文件工具退出（${code}）`);
+        if (!stdout) throw Object.assign(Error(stderr || `原生文件工具退出（${code}）`), { sandbox });
         const value = JSON.parse(stdout);
-        if (ctx.signal?.aborted) throw Error("Aborted");
+        if (ctx.signal?.aborted) throw Object.assign(Error("Aborted"), { sandbox });
         if (code !== 0 || value.error)
-          throw Error(value.error || stderr || "原生文件工具失败");
+          throw Object.assign(Error(value.error || stderr || "原生文件工具失败"), { sandbox });
         for (const artifact of value.artifacts as Array<{
           path: string;
           action: ArtifactAction;
           extra?: ArtifactPatch;
         }>)
           ctx.recordArtifact(artifact.path, artifact.action, artifact.extra);
-        finish(undefined, value.result);
+        finish(undefined, { ...value.result, sandbox });
       } catch (error) {
-        finish(
-          error instanceof Error ? error : new Error(stderr || String(error)),
-        );
+        const wrapped = error instanceof Error ? error : new Error(stderr || String(error));
+        finish(Object.assign(wrapped, { sandbox }));
       }
     });
     execution.child.stdin!.on("error", () => {});

@@ -1,0 +1,7 @@
+{
+  "transport": "official-sdk-default",
+  "passed": true,
+  "streams": 3,
+  "terminated": 1,
+  "durationMs": 33
+}

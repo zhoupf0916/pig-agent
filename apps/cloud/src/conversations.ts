@@ -12,7 +12,11 @@ import { db, hash, terminal } from "./db.ts";
 import type { CloudEnv } from "./types.ts";
 
 const followSchema = z
-  .object({ prompt: z.string().trim().min(1).max(32000), attachmentIds: attachmentIdsSchema })
+  .object({
+    prompt: z.string().trim().min(1).max(32000),
+    attachmentIds: attachmentIdsSchema,
+    debugContent: z.boolean().optional(),
+  })
   .strict();
 export function registerConversationRoutes(app: Hono<CloudEnv>) {
   app.get("/v1/conversations", async (c) =>
@@ -207,6 +211,8 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         input.requireApproval=defaults.requireApproval;
         input.networkPolicy=defaults.networkPolicy;
       }
+      if (parsed.data.debugContent === true) input.debugContent = true;
+      else delete input.debugContent;
       delete input.files;
       delete input.attachments;
       input.attachmentIds=parsed.data.attachmentIds;

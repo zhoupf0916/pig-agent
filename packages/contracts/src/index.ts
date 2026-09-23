@@ -93,6 +93,12 @@ export type Session = {
   /** Follow-up response is uncertain; retry the same parent and idempotency key. */
   remoteFollowUpPending?: boolean;
   remoteRequireApproval?: boolean;
+  /**
+   * Opt in to redacted debug bodies on the next remote run of this session.
+   * Omitted and false do not collect content. A new session does not copy it.
+   * Follow-ups send it only while it is still true.
+   */
+  remoteDebugContent?: boolean;
   /** Optional local expert / playbook pinned to this session. */
   expertId?: string;
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */
@@ -582,3 +588,10 @@ export type ProjectDetail = Project & { sessions?: SessionSummary[] };
 export { BUNDLED_EXPERTS, BUNDLED_TEAMS, BUNDLED_SCOUT_ID, BUNDLED_PLAN_ID, BUNDLED_IMPLEMENT_ID, BUNDLED_REVIEW_ID, BUNDLED_CODING_TEAM_ID } from "./bundled-experts.js";
 export { planToCron, cronToPlan, describePlan, localLeaseDecision, SchedulePlanError } from "./schedule-plan.js";
 export type { SchedulePlan } from "./schedule-plan.js";
+export { isBlockedEgressAddress, isLoopbackAddress, isMetadataAddress, expandIp, isPrivateIPv4Address } from "./egress.js";
+export { ECOSYSTEM_CATALOG, catalogPlugin } from "./ecosystem-catalog.js";
+export type { EcosystemPlugin, EcosystemSkill, EcosystemExpert, McpServerView, McpToolView, McpExecutionTarget } from "./ecosystem.js";
+export { MCP_TOOL_PREFIX, mcpToolName, parseMcpToolName, exposedMcpToolName, redactConfiguredSecret, redactSecretValue, mcpDefinitions } from "./ecosystem.js";
+export { presentDebugTrace, closeTerminalDebugTrace } from "./debug-trace.js";
+export type { DebugSpan, DebugSpanKind, DebugSpanStatus, DebugTraceView } from "./debug-trace.js";
+export type { PluginManifest, InstalledPlugin } from "./plugins.ts";

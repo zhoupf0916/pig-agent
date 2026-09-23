@@ -64,6 +64,77 @@ describe("unified workbench control-plane boundaries", () => {
     });
     expect(await r.text()).not.toContain("test-plane-token");
   });
+  it("stores approval required when remote is selected without touching the checkbox", async () => {
+    const created = (await (await app.request("/api/sessions", { method: "POST" })).json()) as { id: string; remoteRequireApproval?: boolean };
+    const remote = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ executionTarget: "remote", engine: "pig" }),
+    });
+    expect(remote.status).toBe(200);
+    expect(await remote.json()).toMatchObject({ executionTarget: "remote", remoteRequireApproval: true });
+    const off = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ executionTarget: "remote", engine: "pig", remoteRequireApproval: false }),
+    });
+    expect(await off.json()).toMatchObject({ remoteRequireApproval: false });
+    const again = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ executionTarget: "remote", engine: "pig" }),
+    });
+    expect(await again.json()).toMatchObject({ remoteRequireApproval: false });
+  });
+  it("keeps remote debug content off unless this session opts in", async () => {
+    const created = (await (await app.request("/api/sessions", { method: "POST" })).json()) as { id: string; remoteDebugContent?: boolean };
+    expect(created.remoteDebugContent).toBeUndefined();
+    const bad = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remoteDebugContent: "yes" }),
+    });
+    expect(bad.status).toBe(400);
+    const enabled = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remoteDebugContent: true }),
+    });
+    expect(enabled.status).toBe(200);
+    expect(await enabled.json()).toMatchObject({ remoteDebugContent: true });
+    const next = (await (await app.request("/api/sessions", { method: "POST" })).json()) as { id: string; remoteDebugContent?: boolean };
+    expect(next.remoteDebugContent).toBeUndefined();
+    const local = await app.request(`/api/sessions/${next.id}/debug`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: true }),
+    });
+    expect(local.status).toBe(200);
+    expect(await (await app.request(`/api/sessions/${next.id}`)).json()).not.toMatchObject({ remoteDebugContent: true });
+    const cleared = await app.request(`/api/sessions/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remoteDebugContent: false }),
+    });
+    expect(await cleared.json()).not.toMatchObject({ remoteDebugContent: true });
+  });
+  it("proxies a remote debug read and refuses to enable capture through the bridge", async () => {
+    await saveSettings({ cloudBaseUrl: "http://127.0.0.1:9", cloudToken: "test-plane-token" });
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ spans: [] }), { headers: { "Content-Type": "application/json" } }),
+    );
+    const read = await app.request("/api/remote/v1/runs/run_debug/debug");
+    expect(read.status).toBe(200);
+    expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain("/v1/runs/run_debug/debug");
+    const callsBefore = fetcher.mock.calls.length;
+    const write = await app.request("/api/remote/v1/runs/run_debug/debug", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ debugContent: true }),
+    });
+    expect(write.status).toBe(404);
+    expect(fetcher.mock.calls.length).toBe(callsBefore);
+  });
   it("does not disguise failed remote creation as successful local creation", async () => {
     await saveSettings({
       cloudBaseUrl: "http://127.0.0.1:8890",

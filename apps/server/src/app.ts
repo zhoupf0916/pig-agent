@@ -1,5 +1,6 @@
 import { registerComputerRoutes } from "./desktop/computer.ts";
 import { registerPluginRoutes } from "./routes/plugins.ts";
+import { registerMcpRoutes } from "./routes/mcp.ts";
 import { reconcileRemoteSession, isRemoteActive } from "./control-plane/run-state.ts";
 import { planeJson } from "./control-plane/client.ts";
 import { newId } from "./util.ts";
@@ -36,6 +37,7 @@ import { registerMemoryRoutes } from "./routes/memory.ts";
 import { registerSearchRoutes } from "./routes/search.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { publishPersistedEvent } from "./store/events.ts";
+import { clearDebugView, cancelRunningDebugSpans, readDebugTrace, setDebugContent } from "./agent/debug-trace.ts";
 import { clearAutomationLastSessionId } from "./store/automations.ts";
 import { clearInboxSessionRefs } from "./store/inbox.ts";
 import { clearMemoryRefs } from "./store/memory.ts";
@@ -89,6 +91,7 @@ export function createApp(): Hono {
 
   registerComputerRoutes(app);
   registerPluginRoutes(app);
+  registerMcpRoutes(app);
   registerWorkbenchRoutes(app);
   registerConnectionTest(app);
 
@@ -156,6 +159,7 @@ export function createApp(): Hono {
     if (defaults.runtime !== "cloud" || defaults.cloudMode === "remote") {
       session.executionTarget = defaults.runtime === "cloud" ? "remote" : "local";
       session.engine = "pig";
+      if (session.executionTarget === "remote" && typeof session.remoteRequireApproval !== "boolean") session.remoteRequireApproval = true;
       await saveSession(session);
     }
     if (projectId) await recordSessionBound(projectId, session.id);
@@ -172,6 +176,21 @@ export function createApp(): Hono {
     return c.json(session);
   });
 
+  app.get("/api/sessions/:id/debug", async (c) => {
+    const session = await getSession(c.req.param("id"));
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json(readDebugTrace(session.id));
+  });
+
+  app.post("/api/sessions/:id/debug", async (c) => {
+    const session = await getSession(c.req.param("id"));
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { content?: boolean; clear?: boolean };
+    if (typeof body.content === "boolean") setDebugContent(session.id, body.content);
+    if (body.clear) clearDebugView(session.id);
+    return c.json(readDebugTrace(session.id));
+  });
+
   app.patch("/api/sessions/:id", async (c) => {
     const session = await getSession(c.req.param("id"));
     if (!session) return c.json({ error: "Session not found" }, 404);
@@ -183,6 +202,7 @@ export function createApp(): Hono {
       executionTarget?: "local" | "remote";
       engine?: "pig" | "codex";
       remoteRequireApproval?: boolean;
+      remoteDebugContent?: boolean;
     };
     if (body.executionTarget !== undefined || body.engine !== undefined || body.remoteRequireApproval !== undefined) {
       if (runningTurns.has(session.id) || session.status === "running") return c.json({error:"运行期间不能切换执行配置"},409);
@@ -195,6 +215,7 @@ export function createApp(): Hono {
       const engine = "pig";
       if (!["local","remote"].includes(target)) return c.json({error:"执行位置无效"},400);
       if (target !== session.executionTarget) {delete session.remoteRunId;delete session.remoteState;delete session.remoteRetry;}
+      if (target === "remote" && typeof session.remoteRequireApproval !== "boolean" && body.remoteRequireApproval === undefined) session.remoteRequireApproval = true;
       if(body.remoteRequireApproval !== undefined){
         if(typeof body.remoteRequireApproval !== "boolean")return c.json({error:"审批设置无效"},400);
         if(session.remoteRunId && body.remoteRequireApproval !== !!session.remoteRequireApproval)return c.json({error:"审批策略已随远端会话固定，请新建会话调整"},409);
@@ -202,6 +223,11 @@ export function createApp(): Hono {
       }
       session.executionTarget = target;
       session.engine = engine;
+    }
+    if (body.remoteDebugContent !== undefined) {
+      if (typeof body.remoteDebugContent !== "boolean") return c.json({ error: "调试正文设置无效" }, 400);
+      if (body.remoteDebugContent) session.remoteDebugContent = true;
+      else delete session.remoteDebugContent;
     }
     if (typeof body.title === "string" && body.title.trim()) {
       session.title = body.title.trim();
@@ -274,6 +300,7 @@ export function createApp(): Hono {
           const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
           for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) session.messages.push({ id: newId("msg"), role: "tool", toolCallId: call.id, toolOk: false, content: "用户已取消本轮，操作未执行。", createdAt: new Date().toISOString() });
           await saveWorkbench(id, state); await saveSession(session);
+          cancelRunningDebugSpans(id, "用户已取消本轮，操作未执行。");
         }
       });
     }

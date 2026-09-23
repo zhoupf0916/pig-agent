@@ -1,3 +1,4 @@
+import { isBlockedEgressAddress } from "@pig-agent/contracts";
 import { lookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -49,19 +50,14 @@ export function isPrivateIPv4(ip: string): boolean {
     [0xc0a80000, 0xffff0000], // 192.168.0.0/16
     [0x64400000, 0xffc00000], // 100.64.0.0/10
     [0xc0000000, 0xffffff00], // 192.0.0.0/24
+    [0xe0000000, 0xf0000000], // 224.0.0.0/4 multicast
+    [0xf0000000, 0xf0000000], // 240.0.0.0/4 reserved, including broadcast
   ];
   return ranges.some(([base, mask]) => ((n & mask) >>> 0) === base);
 }
 
 export function isPrivateIPv6(ip: string): boolean {
-  const lower = ip.toLowerCase();
-  if (lower === "::1" || lower === "::" || lower === "0:0:0:0:0:0:0:1") return true;
-  if (lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd")) {
-    return true;
-  }
-  const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
-  if (mapped?.[1]) return isPrivateIPv4(mapped[1]);
-  return false;
+  return isBlockedEgressAddress(ip);
 }
 
 export function isPrivateIp(ip: string): boolean {

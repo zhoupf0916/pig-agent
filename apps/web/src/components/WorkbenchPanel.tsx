@@ -10,6 +10,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { DiffView } from "./DiffView";
+import type { McpExecutionTarget } from "@pig-agent/contracts";
 
 type Policy = {
   review: boolean;
@@ -36,6 +37,7 @@ type Operation = {
   after: Version[];
   output?: string;
   error?: string;
+  mcpTarget?: McpExecutionTarget;
 };
 type State = {
   root: string;
@@ -226,7 +228,7 @@ export function WorkbenchPanel({
           )}
         </div>
         <p className="mt-1 text-ink-500">
-          {remoteRequireApproval
+          {remoteRequireApproval !== false
             ? "写入与命令需经控制面批准后执行。"
             : "本会话未开启写入前审批。"}{" "}
           日志、审批决定与成果由控制面保存；下载的成果可另行审阅后导入本机。
@@ -264,7 +266,11 @@ export function WorkbenchPanel({
               ) : (
                 <FileText size={17} />
               )}
-              <strong>{op.after[0]?.path || "运行命令"}</strong>
+              <strong>
+                {op.mcpTarget
+                  ? "外部 MCP 工具"
+                  : op.after[0]?.path || "运行命令"}
+              </strong>
               <span>{op.tool}</span>
             </div>
             {op.tool === "run_shell" ? (
@@ -287,28 +293,43 @@ export function WorkbenchPanel({
                 </div>
               ))
             )}
-            <p className="approval-scope break-all">
-              影响范围：{op.root} ·{" "}
-              {op.environment === "docker"
-                ? `Docker 容器 ${op.image}`
-                : op.environment === "native"
-                  ? "原生沙箱"
-                  : "本机工作区"}
-              {op.tool === "run_shell"
-                ? "。命令的外部副作用不能自动撤销。"
-                : "。文件写入前会重新检查磁盘内容是否变化。"}
-            </p>
+            {op.mcpTarget ? (
+              <div className="approval-mcp-target">
+                <strong>{op.mcpTarget.url}</strong>
+                <p>
+                  实际在此 MCP
+                  服务执行，不受本机沙箱约束。仅批准本次参数，外部副作用不能自动撤销。
+                </p>
+                <pre className="approval-code">
+                  {JSON.stringify(op.args, null, 2)}
+                </pre>
+              </div>
+            ) : (
+              <p className="approval-scope break-all">
+                影响范围：{op.root} ·{" "}
+                {op.environment === "docker"
+                  ? `Docker 容器 ${op.image}`
+                  : op.environment === "native"
+                    ? "原生沙箱"
+                    : "本机工作区"}
+                {op.tool === "run_shell"
+                  ? "。命令的外部副作用不能自动撤销。"
+                  : "。文件写入前会重新检查磁盘内容是否变化。"}
+              </p>
+            )}
             {state.currentRoot !== state.root && (
               <p role="alert" className="approval-scope text-danger">
                 工作区设置已改变，请切回上述位置后再批准。
               </p>
             )}
-            <details>
-              <summary>高级：完整操作参数</summary>
-              <pre className="approval-code">
-                {JSON.stringify(op.args, null, 2)}
-              </pre>
-            </details>
+            {!op.mcpTarget && (
+              <details>
+                <summary>高级：完整操作参数</summary>
+                <pre className="approval-code">
+                  {JSON.stringify(op.args, null, 2)}
+                </pre>
+              </details>
+            )}
             <footer>
               <button
                 className="btn-quiet"
@@ -491,37 +512,42 @@ export function WorkbenchPanel({
                     type="checkbox"
                     checked={policy.network}
                     onChange={(e) =>
-                      setPolicy({ ...policy, network: e.target.checked, shell: "native" })
+                      setPolicy({
+                        ...policy,
+                        network: e.target.checked,
+                        shell: "native",
+                      })
                     }
                   />
                   允许沙箱访问网络
                 </label>
                 <p className="text-ink-500">
-                  默认与 Codex 相同：沙箱内的读写和命令直接执行，联网仍逐次确认。勾选「每次写入和命令都先询问」后，沙箱内的改动也会先停下来。命令名单只是额外拒绝，不是隔离边界。网络默认关闭。
+                  默认与 Codex
+                  相同：沙箱内的读写和命令直接执行，联网仍逐次确认。勾选「每次写入和命令都先询问」后，沙箱内的改动也会先停下来。命令名单只是额外拒绝，不是隔离边界。网络默认关闭。
                 </p>
                 <div className="flex items-center gap-2">
-                    <button
-                      className="btn-ghost"
-                      type="button"
-                      onClick={() =>
-                        void request<{
-                          available: boolean;
-                          backend?: string;
-                          error?: string;
-                        }>("/api/workbench/sandbox")
-                          .then((r) =>
-                            setSandboxStatus(
-                              r.available
-                                ? `原生沙箱可用 · ${r.backend || "系统隔离"}`
-                                : r.error || "原生沙箱不可用",
-                            ),
-                          )
-                          .catch((e) => setSandboxStatus(e.message))
-                      }
-                    >
-                      检查沙箱
-                    </button>
-                    <span role="status">{sandboxStatus}</span>
+                  <button
+                    className="btn-ghost"
+                    type="button"
+                    onClick={() =>
+                      void request<{
+                        available: boolean;
+                        backend?: string;
+                        error?: string;
+                      }>("/api/workbench/sandbox")
+                        .then((r) =>
+                          setSandboxStatus(
+                            r.available
+                              ? `原生沙箱可用 · ${r.backend || "系统隔离"}`
+                              : r.error || "原生沙箱不可用",
+                          ),
+                        )
+                        .catch((e) => setSandboxStatus(e.message))
+                    }
+                  >
+                    检查沙箱
+                  </button>
+                  <span role="status">{sandboxStatus}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {(
@@ -601,12 +627,22 @@ export function WorkbenchPanel({
                       {op.status === "applying" && state.busy
                         ? "执行中"
                         : (labels[op.status] ?? op.status)}{" "}
-                      · {op.tool} · {op.after[0]?.path ?? op.environment}
+                      · {op.tool} ·{" "}
+                      {op.mcpTarget
+                        ? "外部 MCP"
+                        : (op.after[0]?.path ?? op.environment)}
                     </summary>
                     <div className="mt-3 space-y-3">
                       <p className="break-all">
-                        目标：{op.root} · 原生沙箱 · 网络{op.network ? "开" : "关"}
+                        {op.mcpTarget
+                          ? `目标：${op.mcpTarget.url} · 外部 MCP 服务，不受本机沙箱约束，不能自动撤销。`
+                          : `目标：${op.root} · ${op.environment === "native" ? "原生沙箱" : op.environment === "docker" ? "Docker 容器" : "本机工作区"} · 网络${op.network ? "开" : "关"}`}
                       </p>
+                      {op.mcpTarget && (
+                        <pre className="approval-code">
+                          {JSON.stringify(op.args, null, 2)}
+                        </pre>
+                      )}
                       {op.tool === "run_shell" ? (
                         <>
                           <pre className="overflow-auto rounded bg-ink-100 p-3">

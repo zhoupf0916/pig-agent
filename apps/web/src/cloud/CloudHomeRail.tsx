@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, FileText, Plus, Search, Server } from "lucide-react";
+import { ChevronRight, FileText, Plus, Search, Server, Share2, Users } from "lucide-react";
 import { cloudRequest } from "./cloud-api";
 
 type Project = {
@@ -49,6 +49,8 @@ export function CloudHomeRail({
   onOpenProject,
   onCreateProject,
   onOpenWorkspace,
+  onOpenMembers,
+  onShareProject,
   onSearch,
   onOpenRuns,
 }: {
@@ -57,6 +59,8 @@ export function CloudHomeRail({
   onOpenProject: (id: string) => void;
   onCreateProject: () => void;
   onOpenWorkspace: (projectId: string) => void;
+  onOpenMembers: (projectId: string) => void;
+  onShareProject: (projectId: string) => void;
   onSearch: (query: string) => void;
   onOpenRuns: () => void;
 }) {
@@ -71,7 +75,7 @@ export function CloudHomeRail({
   const activeProject = activeConversation
     ? conversations.find((item) => item.id === activeConversation)?.project_id ||
       ""
-    : pinned;
+    : path.match(/^#\/projects\/(project_[a-z0-9]+)\/overview$/)?.[1] || pinned;
   const needle = query.trim().toLowerCase();
 
   useEffect(() => {
@@ -138,7 +142,7 @@ export function CloudHomeRail({
         );
         if (needle && !project.name.toLowerCase().includes(needle) && !nested.length)
           return null;
-        const open = !collapsed[project.id];
+        const open = collapsed[project.id] === false || (collapsed[project.id] === undefined && activeProject === project.id);
         return (
           <div className="jd-project" key={project.id}>
             <div className="jd-project-row">
@@ -176,14 +180,35 @@ export function CloudHomeRail({
                 <span>{project.name}</span>
                 {project.kind === "collaborative" && <em>共享</em>}
               </button>
-              <button
-                className="jd-icon"
-                type="button"
-                aria-label={`查看${project.name}的工作区`}
-                onClick={() => onOpenWorkspace(project.id)}
-              >
-                <FileText size={14} />
-              </button>
+              {project.kind === "collaborative" ? (
+                <button
+                  className="jd-icon"
+                  type="button"
+                  aria-label={`${project.name}的成员`}
+                  onClick={() => onOpenMembers(project.id)}
+                >
+                  <Users size={14} />
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="jd-icon"
+                    type="button"
+                    aria-label={`共享${project.name}`}
+                    onClick={() => onShareProject(project.id)}
+                  >
+                    <Share2 size={14} />
+                  </button>
+                  <button
+                    className="jd-icon"
+                    type="button"
+                    aria-label={`查看${project.name}的工作区`}
+                    onClick={() => onOpenWorkspace(project.id)}
+                  >
+                    <FileText size={14} />
+                  </button>
+                </>
+              )}
             </div>
             {open &&
               nested.map((item) => (

@@ -1,4 +1,4 @@
-import { loadWorkbench } from "../store/workbench.ts";
+import { loadWorkbench, saveWorkbench } from "../store/workbench.ts";
 import { getExpertTeam, resolveTeamMemberPlaybook } from "../store/experts.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
 import { saveSession } from "../store/sessions.ts";
@@ -88,6 +88,8 @@ export type SequentialTeamHooks = {
   runner: Runner;
   /** start = reset pipeline; continue = resume first pending/error/cancelled member. */
   action?: "start" | "continue";
+  mcpTools?: AgentRunOptions["mcpTools"];
+  mcpInvoke?: AgentRunOptions["mcpInvoke"];
 };
 
 export async function runSequentialTeamTurn(
@@ -171,7 +173,16 @@ export async function runSequentialTeamTurn(
       break;
     }
 
-    const resumingCheckpoint = action === "continue" && i === startIndex && hooks.runtime === "pig" && Boolean((await loadWorkbench(current.id, hooks.settings.workspaceRoot)).checkpoint);
+    let resumingCheckpoint = false;
+    if (action === "continue" && i === startIndex && hooks.runtime === "pig") {
+      const state = await loadWorkbench(current.id, hooks.settings.workspaceRoot);
+      if (state.checkpoint?.stopped) {
+        delete state.checkpoint;
+        await saveWorkbench(current.id, state);
+      } else {
+        resumingCheckpoint = Boolean(state.checkpoint?.calls.length);
+      }
+    }
     if (!resumingCheckpoint) {
       pushAndEmit(current, hooks.emit, teamMarker(`${i + 1}/${total} · ${member.name} 开始`));
       pushAndEmit(current, hooks.emit, handoffNudge(team.name, member.name, member.kind, i, total));
@@ -185,6 +196,8 @@ export async function runSequentialTeamTurn(
       projectInstruction,
       expertInstruction: playbook.instruction,
       preferredSkillIds: playbook.skillIds,
+      mcpTools: hooks.mcpTools,
+      mcpInvoke: hooks.mcpInvoke,
     });
     current = next;
 

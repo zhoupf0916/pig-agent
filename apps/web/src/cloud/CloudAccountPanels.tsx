@@ -1,6 +1,8 @@
+import { ExtensionsPanel } from "../components/ExtensionsPanel";
 import { useEffect, useState, useRef } from "react";
 import { cloudRequest as api } from "./cloud-api";
 export function CloudSettingsPanel() {
+  const [section,setSection]=useState<"preferences"|"extensions">(()=>location.hash.endsWith("/extensions")?"extensions":"preferences");
   const [value, setValue] = useState<{
       name?: string;
       networkPolicy: "ask" | "blocked";
@@ -30,6 +32,9 @@ export function CloudSettingsPanel() {
   return (
     <section className="cloud-page">
       <h2 className="jd-duplicate-title">设置</h2>
+      <nav className="cloud-settings-tabs" aria-label="设置分类"><button type="button" aria-pressed={section==="preferences"} onClick={()=>setSection("preferences")}>偏好设置</button><button type="button" aria-pressed={section==="extensions"} onClick={()=>setSection("extensions")}>扩展与 MCP</button></nav>
+      {section==="extensions"&&<ExtensionsPanel mode="cloud" request={api}/>}
+      <div hidden={section!=="preferences"}>
       <p className="muted">
         对新任务生效。进行中的任务不变。
       </p>
@@ -133,7 +138,7 @@ export function CloudSettingsPanel() {
               <option value="ask">逐次申请 HTTPS 读取</option>
               <option value="blocked">禁止网络访问</option>
             </select>
-            <small>仅授权单次 HTTPS GET，不开放命令联网或安装依赖。</small>
+            <small>HTTPS 读取和 MCP 调用逐次批准，不开放命令联网或安装依赖。</small>
           </label>
           <label>
             默认操作审批
@@ -141,7 +146,7 @@ export function CloudSettingsPanel() {
               <option value="review">写入与命令需审批</option>
               <option value="auto">沙箱内自动执行</option>
             </select>
-            <small>个人项目默认沙箱内直接执行。协同项目始终逐次审批。联网规则单独算。</small>
+            <small>个人项目默认沙箱内直接执行。协同项目和外部 MCP 调用始终逐次审批。</small>
           </label>
           <label className="cloud-check settings-span">
             <input
@@ -168,6 +173,7 @@ export function CloudSettingsPanel() {
           {saved && <p className="settings-span" role="status">{saved}</p>}
         </form>
       )}
+      </div>
     </section>
   );
 }

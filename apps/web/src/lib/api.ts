@@ -18,6 +18,7 @@ import type {
   SearchResponse,
   Session,
   SessionSummary,
+  DebugTraceView,
   Settings,
   SkillMeta,
   TodoStatus,
@@ -61,6 +62,16 @@ export const api = {
   session: (id: string) =>
     fetch(`/api/sessions/${id}`).then((r) => json<Session>(r)),
 
+  debugTrace: (id: string) =>
+    fetch(`/api/sessions/${id}/debug`).then((r) => json<DebugTraceView>(r)),
+
+  updateDebugTrace: (id: string, body: { content?: boolean; clear?: boolean }) =>
+    fetch(`/api/sessions/${id}/debug`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => json<DebugTraceView>(r)),
+
   createSession: (
     input?:
       | {
@@ -97,6 +108,7 @@ export const api = {
       expertTeamId?: string | null;
       title?: string;
       remoteRequireApproval?: boolean;
+      remoteDebugContent?: boolean;
       executionTarget?: "local" | "remote";
       engine?: "pig" | "codex";
     },

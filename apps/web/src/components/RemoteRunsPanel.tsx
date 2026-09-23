@@ -553,7 +553,7 @@ export function RemoteRunsPanel({
                     <p>
                       {
                         {
-                          pending: "等待审批，尚未执行；等待计入容器运行时限",
+                          pending: "等待审批，尚未执行；执行计时已暂停，最多等待 30 分钟",
                           approved:
                             detail &&
                             ["succeeded", "failed", "cancelled"].includes(

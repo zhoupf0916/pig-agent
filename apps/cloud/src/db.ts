@@ -1,3 +1,5 @@
+import { ecosystemPluginSchema } from "./ecosystem-plugins.ts";
+import { mcpServerSchema } from "./mcp-schema.ts";
 import { attachmentSchema } from "./attachments.ts";
 import { capabilitySchema } from "./capabilities.ts";
 import pg from "pg";
@@ -78,6 +80,8 @@ export async function migrate() {
     await client.query(userDataSchema);
     await client.query(collaborationSchema);
     await client.query(capabilitySchema);
+    await client.query(ecosystemPluginSchema);
+    await client.query(mcpServerSchema);
     await client.query(attachmentSchema);
     await client.query(clusterSchema);
     for (const [id, name, role, token] of [

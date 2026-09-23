@@ -1,0 +1,2002 @@
+{
+  "at": "2026-09-23T05:29:16.222Z",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "samplesRequested": 5,
+  "isolation": "PIG_DESKTOP=1 disables dotenv; DATA_DIR and WORKSPACE_ROOT are fresh temp directories; model keys are removed from the child environment",
+  "method": {
+    "coldStartup": "Milliseconds from parent spawn until the child prints ready, after imports and before the task.",
+    "hot": "One process imports once, runs one discarded warmup, then five samples. startupMs is in-process session preparation, not a new process.",
+    "ttft": "Client time until the first text token. Null when the task has no text token. firstToolMs is the first tool_start and is separate.",
+    "overhead": "Per-sample totalMs minus that sample's measured model wait. Percentiles are taken from those per-sample values. Model calls in these tasks do not overlap.",
+    "reconnect": "reconnectMs is only the cursor resume read. It is not added to totalMs."
+  },
+  "limits": [
+    "本机单个 Node 进程和模拟模型，不连接 8890 或 8892，也不使用真实模型。",
+    "冷启动包含进程启动和模块加载，不包含任务本身。热样本复用同一次进程预热。",
+    "模型等待按每个样本实际累计的模拟延迟测量，不是固定 30ms，也不能把两个分位数相减当开销。",
+    "这些数字不是生产容量，也不表示并行优化的收益。"
+  ],
+  "tasks": {
+    "short": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 122,
+          "p95": 271
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 50,
+          "p95": 52
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 50,
+          "p95": 53
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 32
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 19,
+          "p95": 22
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 4
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 35,
+          "p95": 41
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 35,
+          "p95": 41
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 32
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 4,
+          "p95": 10
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "stream": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 129,
+          "p95": 147
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 50,
+          "p95": 52
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 82,
+          "p95": 83
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 65,
+          "p95": 66
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 17,
+          "p95": 19
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 3
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 34,
+          "p95": 34
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 68,
+          "p95": 69
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 65,
+          "p95": 65
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 4,
+          "p95": 4
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "read": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 107,
+          "p95": 126
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 83,
+          "p95": 83
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 49,
+          "p95": 50
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 83,
+          "p95": 83
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 61,
+          "p95": 62
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 21,
+          "p95": 22
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 5
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 69,
+          "p95": 79
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 36,
+          "p95": 44
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 70,
+          "p95": 79
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 62,
+          "p95": 62
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 8,
+          "p95": 17
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "multi-write": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 134,
+          "p95": 195
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 91,
+          "p95": 92
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 56,
+          "p95": 57
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 92,
+          "p95": 92
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 62,
+          "p95": 62
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 30,
+          "p95": 32
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 3
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 71,
+          "p95": 72
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 36,
+          "p95": 38
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 71,
+          "p95": 72
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 62,
+          "p95": 62
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 9,
+          "p95": 10
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "approvals": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 109,
+          "p95": 144
+        },
+        "ttftMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 61,
+          "p95": 67
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 612,
+          "p95": 814
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 61,
+          "p95": 63
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 551,
+          "p95": 753
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 3
+        },
+        "ttftMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "firstToolMs": {
+          "n": 5,
+          "p50": 40,
+          "p95": 54
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 565,
+          "p95": 584
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 62,
+          "p95": 64
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 503,
+          "p95": 522
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "long-context": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 114,
+          "p95": 122
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 52,
+          "p95": 55
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 53,
+          "p95": 55
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 31
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 22,
+          "p95": 24
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 6
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 39,
+          "p95": 93
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 39,
+          "p95": 93
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 32
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 9,
+          "p95": 62
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "cancel": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 130,
+          "p95": 316
+        },
+        "ttftMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 55,
+          "p95": 56
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 36,
+          "p95": 41
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 19,
+          "p95": 56
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 1
+        },
+        "ttftMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 52,
+          "p95": 52
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 49,
+          "p95": 50
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 2,
+          "p95": 3
+        },
+        "reconnectMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    },
+    "reconnect": {
+      "cold": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 116,
+          "p95": 131
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 51,
+          "p95": 52
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 58,
+          "p95": 59
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 31
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 28,
+          "p95": 29
+        },
+        "reconnectMs": {
+          "n": 5,
+          "p50": 0.4,
+          "p95": 0.9
+        }
+      },
+      "hot": {
+        "succeeded": 5,
+        "startupMs": {
+          "n": 5,
+          "p50": 1,
+          "p95": 3
+        },
+        "ttftMs": {
+          "n": 5,
+          "p50": 36,
+          "p95": 37
+        },
+        "firstToolMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "totalMs": {
+          "n": 5,
+          "p50": 39,
+          "p95": 41
+        },
+        "modelWaitMs": {
+          "n": 5,
+          "p50": 31,
+          "p95": 31
+        },
+        "overheadMs": {
+          "n": 5,
+          "p50": 8,
+          "p95": 10
+        },
+        "reconnectMs": {
+          "n": 5,
+          "p50": 0.3,
+          "p95": 0.8
+        }
+      },
+      "startupDefinition": {
+        "cold": "spawn-to-ready",
+        "hot": "warm-process session prepare"
+      }
+    }
+  },
+  "samples": [
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 271,
+      "ttftMs": 48,
+      "firstToolMs": null,
+      "totalMs": 49,
+      "modelWaitMs": 32,
+      "overheadMs": 17,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 122,
+      "ttftMs": 49,
+      "firstToolMs": null,
+      "totalMs": 49,
+      "modelWaitMs": 31,
+      "overheadMs": 18,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 116,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 50,
+      "modelWaitMs": 31,
+      "overheadMs": 19,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 119,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 50,
+      "modelWaitMs": 30,
+      "overheadMs": 20,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 141,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 53,
+      "modelWaitMs": 31,
+      "overheadMs": 22,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 4,
+      "ttftMs": 34,
+      "firstToolMs": null,
+      "totalMs": 35,
+      "modelWaitMs": 31,
+      "overheadMs": 4,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 2,
+      "ttftMs": 33,
+      "firstToolMs": null,
+      "totalMs": 33,
+      "modelWaitMs": 31,
+      "overheadMs": 2,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 1,
+      "ttftMs": 41,
+      "firstToolMs": null,
+      "totalMs": 41,
+      "modelWaitMs": 31,
+      "overheadMs": 10,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 0,
+      "ttftMs": 36,
+      "firstToolMs": null,
+      "totalMs": 36,
+      "modelWaitMs": 30,
+      "overheadMs": 6,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "short",
+      "startupMs": 1,
+      "ttftMs": 35,
+      "firstToolMs": null,
+      "totalMs": 35,
+      "modelWaitMs": 32,
+      "overheadMs": 3,
+      "reconnectMs": null,
+      "assertions": [
+        "short"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 129,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 83,
+      "modelWaitMs": 64,
+      "overheadMs": 19,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 147,
+      "ttftMs": 51,
+      "firstToolMs": null,
+      "totalMs": 82,
+      "modelWaitMs": 64,
+      "overheadMs": 18,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 122,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 82,
+      "modelWaitMs": 65,
+      "overheadMs": 17,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 129,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 83,
+      "modelWaitMs": 66,
+      "overheadMs": 17,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 126,
+      "ttftMs": 47,
+      "firstToolMs": null,
+      "totalMs": 81,
+      "modelWaitMs": 66,
+      "overheadMs": 15,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 3,
+      "ttftMs": 34,
+      "firstToolMs": null,
+      "totalMs": 68,
+      "modelWaitMs": 64,
+      "overheadMs": 4,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 0,
+      "ttftMs": 34,
+      "firstToolMs": null,
+      "totalMs": 69,
+      "modelWaitMs": 65,
+      "overheadMs": 4,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 1,
+      "ttftMs": 33,
+      "firstToolMs": null,
+      "totalMs": 67,
+      "modelWaitMs": 65,
+      "overheadMs": 2,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 0,
+      "ttftMs": 34,
+      "firstToolMs": null,
+      "totalMs": 68,
+      "modelWaitMs": 65,
+      "overheadMs": 3,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "stream",
+      "startupMs": 1,
+      "ttftMs": 34,
+      "firstToolMs": null,
+      "totalMs": 67,
+      "modelWaitMs": 63,
+      "overheadMs": 4,
+      "reconnectMs": null,
+      "assertions": [
+        "stream"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 126,
+      "ttftMs": 83,
+      "firstToolMs": 50,
+      "totalMs": 83,
+      "modelWaitMs": 62,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 106,
+      "ttftMs": 82,
+      "firstToolMs": 49,
+      "totalMs": 82,
+      "modelWaitMs": 61,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 106,
+      "ttftMs": 83,
+      "firstToolMs": 49,
+      "totalMs": 83,
+      "modelWaitMs": 61,
+      "overheadMs": 22,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 117,
+      "ttftMs": 82,
+      "firstToolMs": 48,
+      "totalMs": 82,
+      "modelWaitMs": 61,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 107,
+      "ttftMs": 83,
+      "firstToolMs": 49,
+      "totalMs": 83,
+      "modelWaitMs": 62,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 5,
+      "ttftMs": 72,
+      "firstToolMs": 38,
+      "totalMs": 73,
+      "modelWaitMs": 61,
+      "overheadMs": 12,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 0,
+      "ttftMs": 68,
+      "firstToolMs": 36,
+      "totalMs": 68,
+      "modelWaitMs": 62,
+      "overheadMs": 6,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 1,
+      "ttftMs": 68,
+      "firstToolMs": 36,
+      "totalMs": 69,
+      "modelWaitMs": 62,
+      "overheadMs": 7,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 0,
+      "ttftMs": 69,
+      "firstToolMs": 36,
+      "totalMs": 70,
+      "modelWaitMs": 62,
+      "overheadMs": 8,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "read",
+      "startupMs": 1,
+      "ttftMs": 79,
+      "firstToolMs": 44,
+      "totalMs": 79,
+      "modelWaitMs": 62,
+      "overheadMs": 17,
+      "reconnectMs": null,
+      "assertions": [
+        "read"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 195,
+      "ttftMs": 91,
+      "firstToolMs": 55,
+      "totalMs": 92,
+      "modelWaitMs": 60,
+      "overheadMs": 32,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 110,
+      "ttftMs": 91,
+      "firstToolMs": 56,
+      "totalMs": 91,
+      "modelWaitMs": 62,
+      "overheadMs": 29,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 108,
+      "ttftMs": 87,
+      "firstToolMs": 53,
+      "totalMs": 87,
+      "modelWaitMs": 62,
+      "overheadMs": 25,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 134,
+      "ttftMs": 92,
+      "firstToolMs": 57,
+      "totalMs": 92,
+      "modelWaitMs": 62,
+      "overheadMs": 30,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 138,
+      "ttftMs": 92,
+      "firstToolMs": 57,
+      "totalMs": 92,
+      "modelWaitMs": 61,
+      "overheadMs": 31,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 3,
+      "ttftMs": 71,
+      "firstToolMs": 38,
+      "totalMs": 71,
+      "modelWaitMs": 62,
+      "overheadMs": 9,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 1,
+      "ttftMs": 67,
+      "firstToolMs": 35,
+      "totalMs": 68,
+      "modelWaitMs": 62,
+      "overheadMs": 6,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 0,
+      "ttftMs": 68,
+      "firstToolMs": 35,
+      "totalMs": 68,
+      "modelWaitMs": 62,
+      "overheadMs": 6,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 1,
+      "ttftMs": 71,
+      "firstToolMs": 36,
+      "totalMs": 71,
+      "modelWaitMs": 62,
+      "overheadMs": 9,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "multi-write",
+      "startupMs": 1,
+      "ttftMs": 72,
+      "firstToolMs": 37,
+      "totalMs": 72,
+      "modelWaitMs": 62,
+      "overheadMs": 10,
+      "reconnectMs": null,
+      "assertions": [
+        "multi-write"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 144,
+      "ttftMs": null,
+      "firstToolMs": 67,
+      "totalMs": 656,
+      "modelWaitMs": 61,
+      "overheadMs": 595,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 123,
+      "ttftMs": null,
+      "firstToolMs": 61,
+      "totalMs": 612,
+      "modelWaitMs": 61,
+      "overheadMs": 551,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 106,
+      "ttftMs": null,
+      "firstToolMs": 61,
+      "totalMs": 585,
+      "modelWaitMs": 63,
+      "overheadMs": 522,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 109,
+      "ttftMs": null,
+      "firstToolMs": 60,
+      "totalMs": 573,
+      "modelWaitMs": 63,
+      "overheadMs": 510,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 106,
+      "ttftMs": null,
+      "firstToolMs": 61,
+      "totalMs": 814,
+      "modelWaitMs": 61,
+      "overheadMs": 753,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 3,
+      "ttftMs": null,
+      "firstToolMs": 40,
+      "totalMs": 571,
+      "modelWaitMs": 64,
+      "overheadMs": 507,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 0,
+      "ttftMs": null,
+      "firstToolMs": 40,
+      "totalMs": 558,
+      "modelWaitMs": 61,
+      "overheadMs": 497,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 1,
+      "ttftMs": null,
+      "firstToolMs": 39,
+      "totalMs": 565,
+      "modelWaitMs": 62,
+      "overheadMs": 503,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 0,
+      "ttftMs": null,
+      "firstToolMs": 39,
+      "totalMs": 558,
+      "modelWaitMs": 62,
+      "overheadMs": 496,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "approvals",
+      "startupMs": 2,
+      "ttftMs": null,
+      "firstToolMs": 54,
+      "totalMs": 584,
+      "modelWaitMs": 62,
+      "overheadMs": 522,
+      "reconnectMs": null,
+      "assertions": [
+        "approvals"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 110,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 31,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 109,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 31,
+      "overheadMs": 21,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 114,
+      "ttftMs": 54,
+      "firstToolMs": null,
+      "totalMs": 55,
+      "modelWaitMs": 31,
+      "overheadMs": 24,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 118,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 53,
+      "modelWaitMs": 31,
+      "overheadMs": 22,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 122,
+      "ttftMs": 55,
+      "firstToolMs": null,
+      "totalMs": 55,
+      "modelWaitMs": 31,
+      "overheadMs": 24,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 6,
+      "ttftMs": 93,
+      "firstToolMs": null,
+      "totalMs": 93,
+      "modelWaitMs": 31,
+      "overheadMs": 62,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 1,
+      "ttftMs": 41,
+      "firstToolMs": null,
+      "totalMs": 41,
+      "modelWaitMs": 32,
+      "overheadMs": 9,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 1,
+      "ttftMs": 38,
+      "firstToolMs": null,
+      "totalMs": 38,
+      "modelWaitMs": 31,
+      "overheadMs": 7,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 0,
+      "ttftMs": 39,
+      "firstToolMs": null,
+      "totalMs": 39,
+      "modelWaitMs": 30,
+      "overheadMs": 9,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "long-context",
+      "startupMs": 1,
+      "ttftMs": 38,
+      "firstToolMs": null,
+      "totalMs": 38,
+      "modelWaitMs": 30,
+      "overheadMs": 8,
+      "reconnectMs": null,
+      "assertions": [
+        "long-context"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 122,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 56,
+      "modelWaitMs": 41,
+      "overheadMs": 15,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 316,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 55,
+      "modelWaitMs": 36,
+      "overheadMs": 19,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 157,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 54,
+      "modelWaitMs": 16,
+      "overheadMs": 38,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 130,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 53,
+      "modelWaitMs": 37,
+      "overheadMs": 16,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 116,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 56,
+      "modelWaitMs": 0,
+      "overheadMs": 56,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 1,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 49,
+      "overheadMs": 3,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 0,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 50,
+      "overheadMs": 2,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 1,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 51,
+      "modelWaitMs": 49,
+      "overheadMs": 2,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 0,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 49,
+      "overheadMs": 3,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "cancel",
+      "startupMs": 1,
+      "ttftMs": null,
+      "firstToolMs": null,
+      "totalMs": 52,
+      "modelWaitMs": 50,
+      "overheadMs": 2,
+      "reconnectMs": null,
+      "assertions": [
+        "cancel"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 131,
+      "ttftMs": 52,
+      "firstToolMs": null,
+      "totalMs": 59,
+      "modelWaitMs": 31,
+      "overheadMs": 28,
+      "reconnectMs": 0.4,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "index": 0,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 116,
+      "ttftMs": 51,
+      "firstToolMs": null,
+      "totalMs": 58,
+      "modelWaitMs": 31,
+      "overheadMs": 27,
+      "reconnectMs": 0.7,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "index": 1,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 107,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 57,
+      "modelWaitMs": 31,
+      "overheadMs": 26,
+      "reconnectMs": 0.4,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "index": 2,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 119,
+      "ttftMs": 51,
+      "firstToolMs": null,
+      "totalMs": 58,
+      "modelWaitMs": 29,
+      "overheadMs": 29,
+      "reconnectMs": 0.4,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "index": 3,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 114,
+      "ttftMs": 50,
+      "firstToolMs": null,
+      "totalMs": 58,
+      "modelWaitMs": 30,
+      "overheadMs": 28,
+      "reconnectMs": 0.9,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "index": 4,
+      "phase": "cold"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 3,
+      "ttftMs": 36,
+      "firstToolMs": null,
+      "totalMs": 39,
+      "modelWaitMs": 31,
+      "overheadMs": 8,
+      "reconnectMs": 0.3,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 1,
+      "ttftMs": 37,
+      "firstToolMs": null,
+      "totalMs": 41,
+      "modelWaitMs": 31,
+      "overheadMs": 10,
+      "reconnectMs": 0.8,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 1,
+      "ttftMs": 36,
+      "firstToolMs": null,
+      "totalMs": 38,
+      "modelWaitMs": 31,
+      "overheadMs": 7,
+      "reconnectMs": 0.2,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 0,
+      "ttftMs": 36,
+      "firstToolMs": null,
+      "totalMs": 39,
+      "modelWaitMs": 31,
+      "overheadMs": 8,
+      "reconnectMs": 0.4,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "phase": "hot"
+    },
+    {
+      "event": "sample",
+      "ok": true,
+      "task": "reconnect",
+      "startupMs": 1,
+      "ttftMs": 35,
+      "firstToolMs": null,
+      "totalMs": 39,
+      "modelWaitMs": 31,
+      "overheadMs": 8,
+      "reconnectMs": 0.3,
+      "assertions": [
+        "events resume without gaps or duplicates"
+      ],
+      "phase": "hot"
+    }
+  ],
+  "failures": []
+}

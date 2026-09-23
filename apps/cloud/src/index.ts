@@ -1,3 +1,5 @@
+import { registerEcosystemPluginRoutes } from "./ecosystem-plugins.ts";
+import { registerMcpRoutes } from "./mcp-servers.ts";
 import { registerAttachmentRoutes, resolveAttachments, bindAttachments } from "./attachments.ts";
 import { loadProjectFiles } from "./project-files.ts";
 import { executionPolicy } from "./execution-policy.ts";
@@ -19,6 +21,7 @@ import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
 import { registerConversationRoutes } from "./conversations.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
+import { presentDebugTrace, closeTerminalDebugTrace, type DebugTraceView } from "@pig-agent/contracts";
 import { inputSchema } from "./input.ts";
 import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
 import type { CloudEnv } from "./types.ts";
@@ -93,6 +96,8 @@ registerScheduleRoutes(app);
 registerConversationRoutes(app);
 registerCollaborationRoutes(app);
 registerCapabilityRoutes(app);
+registerEcosystemPluginRoutes(app);
+registerMcpRoutes(app);
 registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
 registerApprovalRoutes(app, runFor);
@@ -224,6 +229,33 @@ app.get("/v1/runs/:id/eventlog", async (c) => {
       )
     ).rows,
   });
+});
+app.get("/v1/runs/:id/debug", async (c) => {
+  const id = c.req.param("id");
+  const run = await runFor(id, c.get("principal"));
+  if (!run) return c.json({ error: "任务不存在" }, 404);
+  const row = (
+    await db.query(
+      "SELECT event->'trace' AS trace FROM events WHERE run_id=$1 AND event->>'type'='debug_trace' ORDER BY seq DESC LIMIT 1",
+      [id],
+    )
+  ).rows[0] as { trace?: unknown } | undefined;
+  const allowed = (
+    await db.query(
+      "SELECT coalesce((input->>'debugContent')::boolean, false) AS debug_content FROM runs WHERE id=$1",
+      [id],
+    )
+  ).rows[0]?.debug_content === true;
+  const empty: DebugTraceView = { sessionId: id, contentEnabled: false, spans: [], dropped: 0 };
+  const trace = row?.trace;
+  if (!trace || typeof trace !== "object" || !Array.isArray((trace as DebugTraceView).spans)) return c.json(empty);
+  const view = trace as DebugTraceView;
+  return c.json(presentDebugTrace(closeTerminalDebugTrace({
+    sessionId: view.sessionId || id,
+    contentEnabled: view.contentEnabled === true,
+    spans: view.spans,
+    dropped: view.dropped ?? 0,
+  }, String(run.state)), allowed));
 });
 app.get("/v1/runs/:id/events", async (c) => {
   const id = c.req.param("id");

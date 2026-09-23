@@ -13,6 +13,7 @@ import { MarkdownView } from "./MarkdownView";
 import { DiffView } from "./DiffView";
 import type { AgentEvent } from "../types";
 import { ExecutionJournal } from "./ExecutionJournal";
+import { DeveloperPanel } from "./DeveloperPanel";
 
 /** Remote previews are immutable run snapshots; importing creates a separate local review. */
 export function RemoteArtifactPanel({
@@ -20,11 +21,17 @@ export function RemoteArtifactPanel({
   runState,
   sessionId,
   onOpenSession,
+  debugContent = false,
+  onDebugContent,
+  onDeveloperActive,
 }: {
   runId?: string;
   runState?: string;
   sessionId?: string;
   onOpenSession?: (id: string) => void;
+  debugContent?: boolean;
+  onDebugContent?: (enabled: boolean) => void;
+  onDeveloperActive?: (active: boolean) => void;
 }) {
   const [selectedRun, setSelectedRun] = useState(runId);
   const [runs, setRuns] = useState<Array<{ id: string }>>([]);
@@ -36,10 +43,13 @@ export function RemoteArtifactPanel({
   const [reading, setReading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [refresh, setRefresh] = useState(0);
-  const [mode, setMode] = useState<"file" | "diff" | "logs">("file");
+  const [mode, setMode] = useState<"file" | "diff" | "logs" | "debug">("file");
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [logsError, setLogsError] = useState("");
   const mounted = useRef(true);
+  useEffect(() => {
+    onDeveloperActive?.(mode === "debug");
+  }, [mode, onDeveloperActive]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -200,6 +210,7 @@ export function RemoteArtifactPanel({
             ["file", "文件"],
             ["diff", "对比"],
             ["logs", "执行日志"],
+            ["debug", "开发者"],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -212,8 +223,19 @@ export function RemoteArtifactPanel({
           </button>
         ))}
       </nav>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        {mode === "logs" ? (
+      <div className={mode === "debug" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "min-h-0 flex-1 overflow-auto p-4"}>
+        {mode === "debug" ? (
+          <DeveloperPanel
+            sessionKey={selectedRun || "remote"}
+            url={selectedRun ? `/api/remote/v1/runs/${selectedRun}/debug` : ""}
+            writable={false}
+            contentChoice={onDebugContent ? {
+              enabled: debugContent,
+              label: "下次远端运行记录正文",
+              onChange: onDebugContent,
+            } : undefined}
+          />
+        ) : mode === "logs" ? (
           <section aria-label="当前运行日志">
             {logsError && (
               <p role="alert" className="text-sm text-danger">
@@ -324,7 +346,7 @@ export function RemoteArtifactPanel({
           </>
         )}
       </div>
-      {files.length > 0 && onOpenSession && (
+      {mode !== "debug" && files.length > 0 && onOpenSession && (
         <footer className="border-t border-ink-300 p-4">
           <button
             className="btn-primary w-full"

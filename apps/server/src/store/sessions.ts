@@ -6,6 +6,7 @@ import type { Session, SessionSummary } from "../types.ts";
 import { normalizeTeamRun } from "./team-run-state.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
 import { deleteSessionEvents, getLastEventSeq } from "./events.ts";
+import { dropDebugSession } from "../agent/debug-trace.ts";
 
 const DIR = join(DATA_DIR, "sessions");
 
@@ -100,6 +101,7 @@ export async function deleteSession(id: string): Promise<boolean> {
   if (!existsSync(file)) return false;
   await unlink(file);
   await deleteSessionEvents(id);
+  dropDebugSession(id);
   return true;
 }
 
@@ -128,6 +130,7 @@ async function readSessionFile(file: string): Promise<Session> {
       typeof raw.remoteRunId === "string" && raw.remoteRunId.trim()
         ? raw.remoteRunId.trim()
         : undefined,
+    remoteDebugContent: raw.remoteDebugContent === true ? true : undefined,
     remoteRetry: parseRemoteRetry(raw.remoteRetry),
     localRetry: parseLocalRetry(raw.localRetry),
     teamRun: normalizeTeamRun(raw.teamRun),

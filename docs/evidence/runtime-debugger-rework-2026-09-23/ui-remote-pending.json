@@ -1,0 +1,28 @@
+{
+  "run": "run_f1b05b0a974a4bbead5064e59112dad5",
+  "state": "running",
+  "requireApproval": true,
+  "pending": 1,
+  "writeCompleted": false,
+  "debugContent": true,
+  "spans": [
+    {
+      "kind": "model",
+      "name": "cloud-managed",
+      "status": "ok",
+      "sandbox": "未采集"
+    },
+    {
+      "kind": "sandbox",
+      "name": "probe",
+      "status": "ok",
+      "sandbox": "未采集"
+    },
+    {
+      "kind": "approval",
+      "name": "write_file",
+      "status": "running",
+      "sandbox": "尚未执行"
+    }
+  ]
+}

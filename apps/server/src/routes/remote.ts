@@ -233,6 +233,9 @@ export function registerRemoteRoutes(app: Hono): void {
         /^\/v1\/memory\/[a-zA-Z0-9_-]+$/.test(path)) ||
       (c.req.method === "GET" && path === "/v1/search") ||
       (["GET", "POST"].includes(c.req.method) && path === "/v1/projects") ||
+      (["GET", "POST"].includes(c.req.method) && path === "/v1/mcp/servers") ||
+      (["PATCH", "DELETE"].includes(c.req.method) && /^\/v1\/mcp\/servers\/m_[a-f0-9]{16}$/.test(path)) ||
+      (c.req.method === "POST" && /^\/v1\/mcp\/servers\/m_[a-f0-9]{16}\/test$/.test(path)) ||
       (c.req.method === "GET" &&
         /^\/v1\/projects\/[a-zA-Z0-9_-]+\/workspace$/.test(path)) ||
       (c.req.method === "GET" && path === "/v1/me") ||
@@ -261,7 +264,7 @@ export function registerRemoteRoutes(app: Hono): void {
           path,
         )) ||
       (c.req.method === "GET" &&
-        /^\/(health|v1\/runs(?:\/[a-zA-Z0-9_-]+(?:\/events|\/eventlog|\/artifacts(?:\/[a-zA-Z0-9_-]+)?)?)?|v1\/schedules\/[a-zA-Z0-9_-]+\/history)$/.test(
+        /^\/(health|v1\/runs(?:\/[a-zA-Z0-9_-]+(?:\/events|\/eventlog|\/debug|\/artifacts(?:\/[a-zA-Z0-9_-]+)?)?)?|v1\/schedules\/[a-zA-Z0-9_-]+\/history)$/.test(
           path,
         )) ||
       (c.req.method === "POST" &&

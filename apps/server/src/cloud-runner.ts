@@ -1,10 +1,13 @@
 import { ExecutionBudget } from "./agent/cloud/execution-budget.ts";
+import { parseMcpToolName } from "@pig-agent/contracts";
+import { cloudToolGate } from "./agent/mcp-approval.ts";
 import { randomUUID } from "node:crypto";
 /** Trusted per-job agent process; untrusted tools run in native OS sandboxes. */
 import { mkdir, readdir, readFile, lstat, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { runAgent, ToolAuthorizationDenied } from "./agent/runtime.ts";
+import { readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
 import { normalizeSettings } from "./store/settings.ts";
 import {
   extractWorkspaceSnapshot,
@@ -15,6 +18,15 @@ import type { Session } from "./types.ts";
 const gateway = process.env.GATEWAY_URL || "http://gateway:8891";
 const token = process.env.RUN_TOKEN || "";
 let immutableAttachmentPaths: string[] = [];
+let debugSessionId = "";
+let stopDebug = () => {};
+let debugTimer: ReturnType<typeof setTimeout> | undefined;
+const flushDebug = (sessionId: string) => {
+  clearTimeout(debugTimer);
+  stopDebug();
+  stopDebug = () => {};
+  emit({ kind: "event", event: { type: "debug_trace", trace: readDebugTrace(sessionId) } });
+};
 const workspaceRoot = process.env.WORKSPACE_ROOT || "/workspace";
 // Shell children do not need the inference credential.
 delete process.env.RUN_TOKEN;
@@ -42,9 +54,20 @@ try {
       projectFiles?: Array<{ path: string; content: string }>;
       attachments?: Array<{ id: string; name: string; mime: string; kind: string; workspacePath: string; data: string; text?: string; warning?: string }>;
       messages: Session["messages"];
+      debugContent?: boolean;
       workspace?: { snapshot: Parameters<typeof extractWorkspaceSnapshot>[0] };
     };
   };
+  debugSessionId = id;
+  setDebugContent(id, input.debugContent === true);
+  stopDebug = subscribeDebugSpans((sessionId) => {
+    if (sessionId !== id) return;
+    if (debugTimer) return;
+    debugTimer = setTimeout(() => {
+      debugTimer = undefined;
+      emit({ kind: "event", event: { type: "debug_trace", trace: readDebugTrace(id) } });
+    }, 200);
+  });
   immutableAttachmentPaths = (input.attachments || []).flatMap(a => [a.workspacePath, a.workspacePath + ".txt"]);
   if (input.workspace?.snapshot)
     extractWorkspaceSnapshot(input.workspace.snapshot, workspaceRoot);
@@ -158,6 +181,21 @@ try {
     throw Error("Aborted");
     } finally { resumeBudget(); }
   };
+  const mcpTargets = new Map<string, { url: string; credentialVersion: number }>();
+  let mcpTools: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }> = [];
+  try {
+    const listed = await fetch(gateway + "/mcp/tools", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (listed.ok) {
+      const catalog = await listed.json() as { tools?: typeof mcpTools; targets?: Array<{ serverId: string; url: string; credentialVersion: number }> };
+      mcpTools = catalog.tools ?? [];
+      for (const target of catalog.targets ?? []) mcpTargets.set(target.serverId, target);
+    }
+  } catch { /* MCP discovery failed closed; the task continues without those tools. */ }
   const result = await runAgent({
     session: {
       id,
@@ -178,7 +216,27 @@ try {
     signal: deadline,
     emit: (event) => emit({ kind: "event", event }),
     memoryPins: [],
-    authorizeTool: input.requireApproval !== false ? authorizeCloudTool : undefined,
+    authorizeTool: async (call) => {
+      const gate = cloudToolGate(call.tool, input.requireApproval !== false);
+      if (gate === "auto") return true;
+      return authorizeCloudTool(call);
+    },
+    authorizeMutations: input.requireApproval !== false,
+    mcpTools,
+    mcpInvoke: async (call) => {
+      const parsed = parseMcpToolName(call.name);
+      const target = parsed ? mcpTargets.get(parsed.serverId) : undefined;
+      if (!target) throw new Error("外部 MCP 未启用，本次未调用");
+      const response = await fetch(gateway + "/mcp/invoke", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ callId: call.callId, tool: call.name, args: call.args, url: target.url, credentialVersion: target.credentialVersion }),
+        signal: call.signal,
+      });
+      const payload = await response.json().catch(() => ({})) as { output?: string; error?: string };
+      if (!response.ok) throw new Error(payload.error || "MCP 调用失败");
+      return payload.output || "";
+    },
     networkFetch: async (args, callId) => {
       if (input.networkPolicy === "blocked")
         throw Error(
@@ -244,6 +302,7 @@ try {
       (input.capabilityContext ? "\n\n用户选择的专家与技能：\n" + input.capabilityContext : "") +
       (input.privateMemoryContext ? "\n\n用户私人背景：\n" + input.privateMemoryContext : ""),
   });
+  flushDebug(id);
   budget.dispose();
   if (deadline.aborted) throw new Error("任务执行或审批等待超过时限");
   const files: Array<{ path: string; content: string }> = [];
@@ -282,6 +341,7 @@ try {
     snapshot: packWorkspaceSnapshot(workspaceRoot, immutableAttachmentPaths),
   });
 } catch (error) {
+  if (debugSessionId) flushDebug(debugSessionId);
   emit({
     kind: "result",
     ok: false,

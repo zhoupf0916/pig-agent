@@ -1,4 +1,6 @@
+import { createTokenBatch } from "../lib/token-batch";
 import { ApprovalPreview } from "../components/ApprovalPreview";
+import { DeveloperPanel } from "../components/DeveloperPanel";
 import { useCloudDraft } from "./use-cloud-draft";
 import {
   MessageAttachments,
@@ -34,31 +36,16 @@ import type { AgentEvent } from "../types";
 import type {
   CloudApproval,
   CloudArtifactSummary,
-  CloudSharedProject,
+  CloudProject,
+  CloudProjectWorkspace,
   CloudSpace,
 } from "@pig-agent/contracts/cloud";
 import { redactSecretsForDisplay } from "../lib/remote-retry";
 import { accountNamePattern } from "./account-name";
 import "./cloud-workspace.css";
 
-type WorkspaceProject = CloudSharedProject & {
-  kind: "personal" | "collaborative";
-  workspace_name: string;
-};
-type ProjectWorkspace = {
-  seed?: { fileCount: number; byteSize: number; files: string[] };
-  projectId: string;
-  workspaceName: string;
-  conversations: Array<{
-    id: string;
-    title: string;
-    versions: Array<{
-      run_id: string;
-      created_at: string;
-      manifest: { files?: string[] };
-    }>;
-  }>;
-};
+type WorkspaceProject = CloudProject;
+type ProjectWorkspace = CloudProjectWorkspace;
 type Message = {
   id: string;
   role: string;
@@ -122,6 +109,7 @@ export function CloudWorkspace({
   taskOptions,
   onOpenNavigation,
   hashSync = true,
+  onProjectCreated,
 }: {
   apiBase?: string;
   embedded?: boolean;
@@ -133,6 +121,7 @@ export function CloudWorkspace({
   routePrefix?: string;
   onOpenNavigation?: () => void;
   hashSync?: boolean;
+  onProjectCreated?: (id: string) => void;
   taskOptions?: { expertId?: string; skillIds?: string[] };
 }) {
   const composerControls = useRef<HTMLDivElement>(null);
@@ -185,7 +174,8 @@ export function CloudWorkspace({
     [networkPolicy, setNetworkPolicy] = useState<"ask" | "blocked">("ask");
   const [networkChanged, setNetworkChanged] = useState(false);
   const [requireApproval, setRequireApproval] = useState(false),
-    [approvalChanged, setApprovalChanged] = useState(false);
+    [approvalChanged, setApprovalChanged] = useState(false),
+    [debugContent, setDebugContent] = useState(false);
   const [expertId, setExpertId] = useState(taskOptions?.expertId || ""),
     [skillIds, setSkillIds] = useState<string[]>(taskOptions?.skillIds || []);
   const [experts, setExperts] = useState<Array<{ id: string; name: string }>>(
@@ -227,8 +217,10 @@ export function CloudWorkspace({
     [loading, setLoading] = useState(false),
     [mobile, setMobile] = useState(false),
     [membersOpen, setMembersOpen] = useState(false),
+    [shareTarget, setShareTarget] = useState<string | null>(null),
+    [shareSpace, setShareSpace] = useState(""),
     [resource, setResource] = useState(false),
-    [tab, setTab] = useState<"files" | "logs" | "workspace">("files");
+    [tab, setTab] = useState<"files" | "logs" | "workspace" | "debug">("files");
   const [approvals, setApprovals] = useState<CloudApproval[]>([]),
     [artifacts, setArtifacts] = useState<CloudArtifactSummary[]>([]),
     [events, setEvents] = useState<AgentEvent[]>([]),
@@ -409,6 +401,10 @@ export function CloudWorkspace({
     const journal = new Map<string, { runId: string; event: AgentEvent }>();
     const controller = new AbortController();
     setLoading(true);
+    const liveBatch = createTokenBatch((text) => {
+      if (generation !== accountGeneration.current) return;
+      setLive((current) => current + text);
+    });
     function receive(raw: string) {
       if (generation !== accountGeneration.current) return;
       const data = JSON.parse(raw);
@@ -443,13 +439,17 @@ export function CloudWorkspace({
       journal.set(cursor, { runId: data.runId, event });
       const latest = snapshot?.runs.at(-1);
       if (!latest || latest.id !== data.runId) return;
+      if (event.type === "token") {
+        if (!terminal(latest.state)) liveBatch.push(event.text);
+        return;
+      }
+      liveBatch.flushNow();
       setEvents(
         [...journal.values()]
           .filter((row) => row.runId === latest.id)
           .map((row) => row.event),
       );
       if (terminal(latest.state)) return;
-      if (event.type === "token") setLive((t) => t + event.text);
       if (event.type === "message" && event.message.role === "assistant") {
         setLiveMessages((ms) => [
           ...ms.filter((m) => m.id !== event.message.id),
@@ -567,7 +567,7 @@ export function CloudWorkspace({
         detail.create === "collaborative" ||
         detail.create === "choose"
       ) {
-        setProjectBranch(detail.create);
+        setProjectBranch(detail.create === "collaborative" ? "collaborative" : "personal");
         setSelected("");
         if (detail.create === "choose") setProjectId("");
         setMembersOpen(true);
@@ -576,6 +576,18 @@ export function CloudWorkspace({
         setSelected("");
         setProjectId(detail.projectId);
       }
+      if (detail.panel === "members") {
+        setProjectBranch("collaborative");
+        setMembersOpen(true);
+      }
+      if (detail.panel === "manage" && detail.projectId) {
+        void request("/v1/projects").then(data => {
+          const target = data.projects.find((p: WorkspaceProject) => p.id === detail.projectId);
+          if (target?.kind === "collaborative") { setProjectBranch("collaborative"); setMembersOpen(true); }
+          else if (target) setShareTarget(detail.projectId!);
+        }).catch(e => setError(e.message));
+      }
+      if (detail.panel === "share" && detail.projectId) setShareTarget(detail.projectId);
       if (detail.panel === "workspace") {
         setTab("workspace");
         setResource(true);
@@ -595,7 +607,10 @@ export function CloudWorkspace({
       routePrefix ?? (apiBase ? "#/projects/collaboration" : "#/conversations");
     const next = prefix + (selected ? "/" + selected : "");
     const current = location.hash.split("?")[0] || "";
-    if (current !== next) history.replaceState(null, "", next);
+    if (current !== next) {
+      history.replaceState(null, "", next);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }
   }, [hashSync, selected, apiBase, routePrefix]);
   useEffect(() => {
     const node = scrollArea.current;
@@ -654,11 +669,12 @@ export function CloudWorkspace({
         last ? `/v1/runs/${last.id}/follow-ups` : "/v1/runs",
         "POST",
         last
-          ? { prompt: text, attachmentIds: attachments.ids }
+          ? { prompt: text, attachmentIds: attachments.ids, ...(debugContent ? { debugContent: true } : {}) }
           : {
               prompt: text,
               attachmentIds: attachments.ids,
               useUserDefaults: true,
+              ...(debugContent ? { debugContent: true } : {}),
               ...(networkChanged ? { networkPolicy } : {}),
               ...(approvalChanged ? { requireApproval } : {}),
               ...(expertId ? { expertId } : {}),
@@ -1413,6 +1429,15 @@ export function CloudWorkspace({
                 </details>
               )}
               <footer>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={debugContent}
+                    onChange={(event) => setDebugContent(event.target.checked)}
+                    aria-label="记录本次调试正文"
+                  />
+                  调试正文
+                </label>
                 {project?.kind === "collaborative" && <small>团队共享</small>}
                 {active && canWrite ? (
                   <button
@@ -1599,6 +1624,13 @@ export function CloudWorkspace({
               >
                 执行步骤
               </button>
+              <button
+                disabled={!last}
+                aria-pressed={tab === "debug"}
+                onClick={() => setTab("debug")}
+              >
+                开发者
+              </button>
             </div>
             <div className="cw-resource-body">
               {selected && (
@@ -1688,6 +1720,13 @@ export function CloudWorkspace({
                 </section>
               ) : tab === "logs" ? (
                 <ExecutionJournal events={events} />
+              ) : tab === "debug" ? (
+                <DeveloperPanel
+                  sessionKey={`${me?.id || "account"}:${last?.id || "run"}`}
+                  url={last ? `${apiBase}/v1/runs/${last.id}/debug` : ""}
+                  writable={false}
+                  contentChoice={{ enabled: debugContent, onChange: setDebugContent }}
+                />
               ) : (
                 <>
                   {current?.runs.some((r) => r.attachments?.length) && (
@@ -1757,6 +1796,41 @@ export function CloudWorkspace({
           </aside>
         </>
       )}
+      {shareTarget && (
+        <div className="cw-modal-backdrop">
+          <section className="cw-space-dialog" role="dialog" aria-modal="true" aria-label="共享项目">
+            <header>
+              <h2>共享项目</h2>
+              <button type="button" aria-label="关闭共享" onClick={() => setShareTarget(null)}>
+                <X size={18} />
+              </button>
+            </header>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void act(async () => {
+                  await request(`/v1/projects/${shareTarget}/share`, "POST", { spaceId: shareSpace });
+                  await refresh();
+                  setProjectId(shareTarget);
+                  setShareTarget(null);
+                });
+              }}
+            >
+              <label>
+                组织
+                <select required value={shareSpace} onChange={(e) => setShareSpace(e.target.value)}>
+                  <option value="">选择组织</option>
+                  {spaces.filter((space) => space.role === "admin").map((space) => (
+                    <option key={space.id} value={space.id}>{space.name}</option>
+                  ))}
+                </select>
+              </label>
+              {!spaces.some((space) => space.role === "admin") && <p>先创建你管理的组织。</p>}
+              <button className="cw-primary" disabled={busy || !shareSpace}>共享</button>
+            </form>
+          </section>
+        </div>
+      )}
       {membersOpen && projectBranch === "choose" && (
         <div className="cw-modal-backdrop">
           <section
@@ -1803,12 +1877,14 @@ export function CloudWorkspace({
             setProjectId(id);
             setSelected("");
             setMembersOpen(false);
+            onProjectCreated?.(id);
           }}
         />
       )}
       {membersOpen && projectBranch === "collaborative" && (
         <SpacesDialog
           spaces={spaces}
+          initialSpaceId={projects.find((item) => item.id === projectId)?.space_id}
           error={error}
           projectId={projectId}
           request={request}
@@ -1828,6 +1904,7 @@ export function CloudWorkspace({
 }
 function SpacesDialog({
   spaces,
+  initialSpaceId,
   error,
   request,
   busy,
@@ -1837,6 +1914,7 @@ function SpacesDialog({
   onClose,
 }: {
   spaces: CloudSpace[];
+  initialSpaceId?: string | null;
   error: string;
   projectId: string;
   request: (path: string, method?: string, body?: unknown) => Promise<any>;
@@ -1848,7 +1926,7 @@ function SpacesDialog({
 }) {
   const [name, setName] = useState(""),
     [join, setJoin] = useState(""),
-    [spaceId, setSpaceId] = useState(spaces[0]?.id || ""),
+    [spaceId, setSpaceId] = useState(initialSpaceId || spaces[0]?.id || ""),
     [projectName, setProjectName] = useState(""),
     [background, setBackground] = useState(""),
     [membersError, setMembersError] = useState(""),

@@ -1,0 +1,52 @@
+{
+  "run": "run_f1b05b0a974a4bbead5064e59112dad5",
+  "state": "succeeded",
+  "requireApproval": true,
+  "pending": 0,
+  "writeCompleted": true,
+  "debugContent": true,
+  "spans": [
+    {
+      "kind": "model",
+      "name": "cloud-managed",
+      "status": "ok",
+      "sandbox": "未采集"
+    },
+    {
+      "kind": "sandbox",
+      "name": "probe",
+      "status": "ok",
+      "sandbox": "未采集"
+    },
+    {
+      "kind": "approval",
+      "name": "write_file",
+      "status": "ok",
+      "sandbox": "尚未执行"
+    },
+    {
+      "kind": "tool",
+      "name": "write_file",
+      "status": "ok",
+      "sandbox": "bubblewrap"
+    },
+    {
+      "kind": "model",
+      "name": "cloud-managed",
+      "status": "ok",
+      "sandbox": "未采集"
+    },
+    {
+      "kind": "tool",
+      "name": "read_file",
+      "status": "ok",
+      "sandbox": "bubblewrap"
+    },
+    {
+      "kind": "model",
+      "name": "cloud-managed",
+      "status": "ok",
+      "sandbox": "未采集"
+    }
+  ]
+}

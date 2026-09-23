@@ -4,14 +4,20 @@ import { X } from "lucide-react";
 export function InspectorFrame({
   children,
   onClose,
+  wide = false,
 }: {
   children: ReactNode;
   onClose: () => void;
+  wide?: boolean;
 }) {
   const [width, setWidth] = useState(400);
+  const [expanded, setExpanded] = useState(false);
   const [drawer, setDrawer] = useState(
     () => window.matchMedia("(max-width: 1100px)").matches,
   );
+  useEffect(() => {
+    if (!wide) setExpanded(false);
+  }, [wide]);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1100px)");
     const update = () => setDrawer(media.matches);
@@ -26,8 +32,8 @@ export function InspectorFrame({
       tabIndex={-1}
       role={drawer ? "dialog" : "region"}
       aria-modal={drawer ? true : undefined}
-      className="inspector-frame"
-      style={{ width }}
+      className={`inspector-frame${wide ? " is-wide" : ""}${expanded ? " is-expanded" : ""}`}
+      style={expanded ? undefined : { width: wide ? Math.max(width, 720) : width }}
       aria-label="任务成果检查器"
       onKeyDown={(event) => {
         if (!drawer && event.key === "Escape") {
@@ -41,8 +47,8 @@ export function InspectorFrame({
         aria-label="调整成果面板宽度"
         aria-orientation="vertical"
         aria-valuemin={300}
-        aria-valuemax={680}
-        aria-valuenow={width}
+        aria-valuemax={wide ? 960 : 680}
+        aria-valuenow={wide ? Math.max(width, 720) : width}
         tabIndex={0}
         className="inspector-resizer"
         onKeyDown={(e) => {
@@ -51,7 +57,7 @@ export function InspectorFrame({
             setWidth((w) =>
               Math.max(
                 300,
-                Math.min(680, w + (e.key === "ArrowLeft" ? 24 : -24)),
+                Math.min(wide ? 960 : 680, w + (e.key === "ArrowLeft" ? 24 : -24)),
               ),
             );
           }
@@ -65,8 +71,8 @@ export function InspectorFrame({
             setWidth(
               Math.max(
                 300,
-                Math.min(
-                  680,
+                  Math.min(
+                  wide ? 960 : 680,
                   start.current.width + start.current.x - e.clientX,
                 ),
               ),
@@ -81,6 +87,12 @@ export function InspectorFrame({
       />
       <header className="inspector-header">
         <strong>成果与文件</strong>
+        <span className="flex items-center gap-1">
+          {wide && (
+            <button type="button" className="btn-ghost text-xs" aria-label={expanded ? "收回开发者" : "展开开发者"} onClick={() => setExpanded((value) => !value)}>
+              {expanded ? "收回" : "展开"}
+            </button>
+          )}
         <button
           className="icon-button"
           onClick={onClose}
@@ -88,6 +100,7 @@ export function InspectorFrame({
         >
           <X size={18} />
         </button>
+        </span>
       </header>
       {children}
     </section>

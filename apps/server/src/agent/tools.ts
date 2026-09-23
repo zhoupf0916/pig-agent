@@ -82,9 +82,31 @@ export type ToolContext = {
   signal?: AbortSignal;
 };
 
+export type ToolSandboxFact = {
+  requested: string;
+  /** Set only after this call's process or file API actually ran. */
+  effective: "seatbelt" | "bubblewrap" | "host" | "workspace" | "尚未执行" | "未采集" | "远端 MCP 服务";
+  backend: string;
+};
+
 export type ToolResult = {
   output: string;
+  sandbox?: ToolSandboxFact;
 };
+
+export function sandboxFromError(error: unknown): ToolSandboxFact | undefined {
+  if (!error || typeof error !== "object" || !("sandbox" in error)) return undefined;
+  const sandbox = (error as { sandbox?: ToolSandboxFact }).sandbox;
+  return sandbox?.effective ? sandbox : undefined;
+}
+
+function hostSandbox(ctx: ToolContext): ToolSandboxFact {
+  return { requested: ctx.shellMode ?? "unset", effective: "host", backend: "host" };
+}
+
+function notExecuted(requested: string): ToolSandboxFact {
+  return { requested, effective: "尚未执行", backend: "未采集" };
+}
 
 export const TOOL_DEFINITIONS = [
   {
@@ -336,9 +358,18 @@ export async function executeTool(
 ): Promise<ToolResult> {
   if (ctx.signal?.aborted) throw new Error("Aborted");
   if (process.env.PIG_FILE_HELPER !== "1" && ctx.shellMode === "host" && (FILE_TOOLS.has(name) || name === "run_shell")) {
-    throw new Error("沙箱未启用，已拒绝在主机上执行。");
+    throw Object.assign(new Error("沙箱未启用，已拒绝在主机上执行。"), { sandbox: notExecuted("host") });
   }
   if (process.env.PIG_FILE_HELPER !== "1" && FILE_TOOLS.has(name) && (process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker")) return nativeFileTool(name, rawArgs, ctx);
+  const result = await executeUnsandboxed(name, rawArgs, ctx);
+  if (!result.sandbox && FILE_TOOLS.has(name)) {
+    result.sandbox = { requested: ctx.shellMode ?? "unset", effective: "workspace", backend: "workspace" };
+  }
+  if (!result.sandbox && name === "run_shell") result.sandbox = hostSandbox(ctx);
+  return result;
+}
+
+async function executeUnsandboxed(name: string, rawArgs: unknown, ctx: ToolContext): Promise<ToolResult> {
   const args = asObject(rawArgs);
   switch (name) {
     case "update_plan":
@@ -702,8 +733,10 @@ async function runShell(
     stdout: string;
     stderr: string;
     timedOut: boolean;
+    sandbox: ToolSandboxFact;
   }>((resolvePromise) => {
-    const container = (process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker") ? nativeCommand(ctx.workspaceRoot, trimmed, process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX !== "1" && ctx.dockerNetwork === true) : undefined;
+    const wantsNative = process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX === "1" || ctx.shellMode === "native" || ctx.shellMode === "docker";
+    const container = wantsNative ? nativeCommand(ctx.workspaceRoot, trimmed, process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX !== "1" && ctx.dockerNetwork === true) : undefined;
     const child = container?.child ?? spawn(trimmed, {
       cwd: ctx.workspaceRoot,
       shell: true,
@@ -714,7 +747,14 @@ async function runShell(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let spawned = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    child.once("spawn", () => { spawned = true; });
+    const sandbox = (): ToolSandboxFact => {
+      if (!spawned) return { requested: ctx.shellMode ?? (wantsNative ? "native" : "unset"), effective: "未采集", backend: "未采集" };
+      if (container) return { requested: ctx.shellMode ?? "native", effective: container.backend, backend: container.backend };
+      return hostSandbox(ctx);
+    };
     const killProcess = (signal: NodeJS.Signals) => {
       try {
         if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
@@ -748,7 +788,7 @@ async function runShell(
       clearTimeout(killTimer);
       container?.cleanup();
       ctx.signal?.removeEventListener("abort", onAbort);
-      resolvePromise(payload);
+      resolvePromise({ ...payload, sandbox: sandbox() });
     };
     child.on("close", (code, signal) => {
       finish({ code, signal: signal ?? null, stdout, stderr, timedOut });
@@ -773,8 +813,10 @@ async function runShell(
     stdout: capText(result.stdout, MAX_SHELL_CHARS),
     stderr: capText(result.stderr, MAX_SHELL_CHARS),
   };
-  if (result.code !== 0 || result.timedOut || ctx.signal?.aborted) throw new Error(JSON.stringify(payload, null, 2));
-  return { output: JSON.stringify(payload, null, 2) };
+  if (result.code !== 0 || result.timedOut || ctx.signal?.aborted) {
+    throw Object.assign(new Error(JSON.stringify(payload, null, 2)), { sandbox: result.sandbox });
+  }
+  return { output: JSON.stringify(payload, null, 2), sandbox: result.sandbox };
 }
 
 async function httpFetchTool(ctx: ToolContext, args: Json): Promise<ToolResult> {

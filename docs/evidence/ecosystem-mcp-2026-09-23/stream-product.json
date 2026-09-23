@@ -1,0 +1,7 @@
+{
+  "transport": "pig-pinned-fetch",
+  "passed": true,
+  "streams": 3,
+  "terminated": 1,
+  "durationMs": 76
+}

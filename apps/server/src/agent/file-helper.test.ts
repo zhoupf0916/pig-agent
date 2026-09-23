@@ -45,4 +45,36 @@ describe("OS-sandboxed file tools", () => {
     },
     15000,
   );
+
+  it.skipIf(process.platform !== "darwin")(
+    "writes and reads cloud-proof.txt in a project whose home is a different directory",
+    async () => {
+      const parent = realpathSync(await mkdtemp(join(tmpdir(), "pig-proof-")));
+      const workspace = await mkdtemp(join(parent, "project-"));
+      const agentHome = await mkdtemp(join(parent, "agent-home-"));
+      const previousHome = process.env.HOME;
+      const previousForce = process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX;
+      process.env.HOME = agentHome;
+      process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX = "1";
+      const ctx: ToolContext = {
+        workspaceRoot: workspace,
+        shellMode: "native",
+        artifacts: [],
+        recordArtifact: () => {},
+      };
+      try {
+        const written = await executeTool("write_file", { path: "cloud-proof.txt", content: "PIG_CLOUD_CONTAINER_OK\n" }, ctx);
+        expect(written.sandbox?.effective).toBe("seatbelt");
+        expect((await executeTool("read_file", { path: "cloud-proof.txt" }, ctx)).output).toBe("PIG_CLOUD_CONTAINER_OK\n");
+        process.env.HOME = workspace;
+        await expect(executeTool("write_file", { path: "nope.txt", content: "x" }, { ...ctx, workspaceRoot: workspace })).rejects.toThrow(/主目录/);
+      } finally {
+        process.env.HOME = previousHome;
+        if (previousForce === undefined) delete process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX;
+        else process.env.PIG_AGENT_FORCE_NATIVE_SANDBOX = previousForce;
+        await rm(parent, { recursive: true, force: true });
+      }
+    },
+    15000,
+  );
 });

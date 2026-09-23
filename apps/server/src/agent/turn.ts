@@ -9,7 +9,9 @@ import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts
 import { newId, nowIso, truncate } from "../util.ts";
 import { decideRemoteRetry, formatCloudRemoteError } from "./cloud/errors.ts";
 import { runCloudAgent } from "./cloud/runtime.ts";
+import { runCodexAgent } from "./codex/runtime.ts";
 import { decideLocalRetry, formatLocalTurnError } from "./local-errors.ts";
+import { prepareSessionMcp } from "../store/mcp-servers.ts";
 import { runAgent } from "./runtime.ts";
 import { runSequentialTeamTurn } from "./team-run.ts";
 
@@ -47,6 +49,7 @@ export async function waitForTurnRelease(
 
 export function pickRunner(runtime: AgentRuntime) {
   if (runtime === "cloud") return runCloudAgent;
+  if (runtime === "codex") return runCodexAgent;
   return runAgent;
 }
 
@@ -90,12 +93,13 @@ export async function runSessionTurn(
 ): Promise<Session> {
   const settings = await loadSessionSettings(session);
   const requested = hooks.runtime ?? (session.executionTarget === "remote" ? "cloud" : session.executionTarget === "local" ? (session.engine || "pig") : settings.runtime);
-  const runtime = requested === "codex" ? "pig" : requested;
+  const runtime = requested;
   if (runtime === "cloud") {
     if (session.executionTarget === "remote" || settings.cloudMode === "remote") session.executionTarget = "remote";
     else delete session.executionTarget; // Legacy local-stub stays on its existing adapter.
   } else session.executionTarget = "local";
-  session.engine = "pig";
+  if (runtime === "codex") session.engine = "codex";
+  else if (runtime !== "cloud") session.engine = "pig";
   if (session.executionTarget === "remote") settings.cloudMode = "remote";
   await saveSession(session);
   if (runtime === "pig") session.deliveryMode = true;
@@ -117,6 +121,7 @@ export async function runSessionTurn(
       expertTeamId: session.expertTeamId,
     });
     const sequential = shouldRunSequentialTeam(session, playbook.team);
+    const mcp = runtime === "pig" && session.executionTarget !== "remote" ? await prepareSessionMcp(controller.signal) : undefined;
     const next = sequential
       ? await runSequentialTeamTurn(session, {
           settings,
@@ -126,6 +131,8 @@ export async function runSessionTurn(
           flush: () => writes,
           runner,
           action: hooks.teamAction ?? "start",
+          mcpTools: mcp?.definitions,
+          mcpInvoke: mcp?.invoke,
         })
       : await runner({
           session,
@@ -135,6 +142,8 @@ export async function runSessionTurn(
           projectInstruction: await resolveProjectInstruction(session.projectId),
           expertInstruction: playbook.instruction,
           preferredSkillIds: playbook.skillIds,
+          mcpTools: mcp?.definitions,
+          mcpInvoke: mcp?.invoke,
           onRunCreated: async (runId: string) => { session.remoteRunId = runId; session.remoteState = "queued"; await saveSession(session); },
         });
     await writes;

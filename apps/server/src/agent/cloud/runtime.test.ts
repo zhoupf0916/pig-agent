@@ -92,6 +92,77 @@ describe("local-stub cloud runtime", () => {
     expect(body.requireApproval).toBe(requireApproval);
   });
 
+  it("sends approval required on the first remote run when the desktop has not stored a choice", () => {
+    const body = buildCreateRunRequest(
+      emptySession({ executionTarget: "remote" }),
+      cloudSettings("/tmp/workspace"),
+    );
+    expect(body.requireApproval).toBe(true);
+  });
+
+  it("keeps a pinned false approval policy instead of turning it back on", () => {
+    const body = buildCreateRunRequest(
+      emptySession({ executionTarget: "remote", remoteRequireApproval: false, remoteRunId: "run_pinned" }),
+      cloudSettings("/tmp/workspace"),
+    );
+    expect(body.requireApproval).toBe(false);
+  });
+
+  it("omits debug content until this session opts in, including a follow-up", async () => {
+    const { buildFollowUpRequest } = await import("./request.ts");
+    const quiet = emptySession({ id: "ses_quiet" });
+    const opted = emptySession({ id: "ses_opted", remoteDebugContent: true });
+    expect(buildCreateRunRequest(quiet, cloudSettings("/tmp/workspace")).debugContent).toBeUndefined();
+    expect(buildFollowUpRequest(quiet).debugContent).toBeUndefined();
+    expect(buildCreateRunRequest(opted, cloudSettings("/tmp/workspace")).debugContent).toBe(true);
+    expect(buildFollowUpRequest(opted).debugContent).toBe(true);
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-debug-content-"));
+    writeFileSync(join(workspaceRoot, "ok.md"), "visible");
+    const stub = await startCloudControlStub();
+    try {
+      const settings = cloudSettings(workspaceRoot, { cloudMode: "remote", cloudBaseUrl: stub.url });
+      const first = await runCloudAgent({
+        session: emptySession({ id: "ses_opted_run", remoteDebugContent: true }),
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(stub.runs.get(first.remoteRunId!)?.debugContent).toBe(true);
+      const second = await runCloudAgent({
+        session: {
+          ...first,
+          remoteDebugContent: true,
+          messages: [...first.messages, { id: "u2", role: "user", content: "继续记录", createdAt: new Date().toISOString() }],
+        },
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(stub.runs.get(second.remoteRunId!)?.followDebug).toEqual([true]);
+      const other = await runCloudAgent({
+        session: emptySession({ id: "ses_other_run", messages: [{ id: "u", role: "user", content: "另一个会话", createdAt: new Date().toISOString() }] }),
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(stub.runs.get(other.remoteRunId!)?.debugContent).toBe(false);
+      const { remoteDebugContent: _ignored, ...withoutFlag } = second;
+      void _ignored;
+      const third = await runCloudAgent({
+        session: {
+          ...withoutFlag,
+          messages: [...second.messages, { id: "u3", role: "user", content: "不再记录", createdAt: new Date().toISOString() }],
+        },
+        settings,
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      expect(stub.runs.get(third.remoteRunId!)?.followDebug?.at(-1)).toBe(false);
+    } finally {
+      await stub.close();
+    }
+  });
+
   it("runs the pig loop in an isolated copy and syncs artifacts back", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-cloud-host-"));
     const runsRoot = mkdtempSync(join(tmpdir(), "pig-cloud-runs-"));

@@ -1,7 +1,7 @@
 import { nativeFileTool } from "../file-helper-client.ts";
 import type { Session, Settings } from "../../types.ts";
 import { prependBoundInstructions, type BoundInstructions } from "../bound-instructions.ts";
-import { CloudRuntimeError, type CloudCreateRunRequest, type CloudWorkspaceHandoff } from "./contract.ts";
+import { CloudRuntimeError, type CloudCreateRunRequest, type CloudFollowUpRequest, type CloudWorkspaceHandoff } from "./contract.ts";
 import { loadInstallHints } from "./environment-json.ts";
 import { cloudRemoteError } from "./errors.ts";
 import { collectWorkspaceHandoff, resolveCloudRepoHint } from "./snapshot.ts";
@@ -20,7 +20,8 @@ export function buildCreateRunRequest(
   const body: CloudCreateRunRequest = {
     prompt: prependBoundInstructions(lastUser?.content ?? "", bound ?? {}),
     sessionId: session.id,
-    ...(typeof session.remoteRequireApproval === "boolean" ? {requireApproval:session.remoteRequireApproval} : {}),
+    requireApproval: session.remoteRequireApproval !== false,
+    ...(session.remoteDebugContent === true ? { debugContent: true } : {}),
     messages: session.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({
@@ -40,9 +41,12 @@ export function buildCreateRunRequest(
   return body;
 }
 
-export function buildFollowUpRequest(session: Session): { prompt: string } {
+export function buildFollowUpRequest(session: Session): CloudFollowUpRequest {
   const lastUser = [...session.messages].reverse().find((m) => m.role === "user");
-  return { prompt: lastUser?.content ?? "" };
+  return {
+    prompt: lastUser?.content ?? "",
+    ...(session.remoteDebugContent === true ? { debugContent: true } : {}),
+  };
 }
 
 /** Snapshot of sandbox-safe files plus optional repo / install hints. */
