@@ -80,6 +80,15 @@ describe("assembleCodexPrompt", () => {
     expect(prompt.match(/Tool\(read_file\):/g)?.length).toBe(CODEX_TOOL_SUMMARY_MAX);
   });
 
+  it("keeps the original goal when the recent Codex window is only filler", () => {
+    const messages: ChatMessage[] = [msg("user", "原始目标：交付周报，不要改锁文件。", { id: "goal" })];
+    for (let i = 0; i < 20; i += 1) messages.push(msg("user", `闲聊 ${"噪声".repeat(400)}`, { id: `n${i}` }));
+    messages.push(msg("user", "按原目标继续。", { id: "now" }));
+    const prompt = assembleCodexPrompt(messages);
+    expect(prompt).toContain("原始目标：交付周报");
+    expect(prompt).toContain("Current user request:\n按原目标继续。");
+  });
+
   it("falls back to unknown when a tool result has no matching toolCall", () => {
     const prompt = assembleCodexPrompt([
       msg("user", "先看一下"),

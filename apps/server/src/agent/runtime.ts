@@ -22,7 +22,7 @@ import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { nativeSandboxStatus } from "./native-sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
-import { parseMcpToolName } from "@pig-agent/contracts";
+import { assembleModelContext, parseMcpToolName, type ContextMetrics } from "@pig-agent/contracts";
 import { requireMcpTarget } from "../store/mcp-servers.ts";
 import { executeTool, sandboxFromError, summarizeToolArgs, type ToolContext, type ToolSandboxFact, TOOL_DEFINITIONS } from "./tools.ts";
 import { cancelRunningDebugSpans, debugDetail, recordDebugSpan } from "./debug-trace.ts";
@@ -292,13 +292,19 @@ export async function runAgent(options: {
         response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
-      const history = trimHistory([system, ...session.messages]);
+      const extraToolDefs = allowComputer || options.mcpTools?.length
+        ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
+        : [];
+      const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
+      const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
+      const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0);
+      const history = assembled.messages;
+      const contextEstimate = assembled.estimate;
       if (forceSummary) {
         history.push({
           id: newId("msg"),
           role: "user",
-          content:
-            "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.",
+          content: summaryHarness,
           createdAt: nowIso(),
         });
       }
@@ -326,7 +332,7 @@ export async function runAgent(options: {
         status: "running",
         startedAtMs: 0,
         wallStartedAt: new Date(modelStarted).toISOString(),
-        detail: { model: settings.llmModel, provider: providerHost(settings.llmBaseUrl), sandboxEffective: "未采集", usage: null, finishReason: null, ttftMs: null },
+        detail: { model: settings.llmModel, provider: providerHost(settings.llmBaseUrl), sandboxEffective: "未采集", usage: null, finishReason: null, ttftMs: null, contextEstimate },
       }, modelStartedMono);
       response = await complete(settings, history, {
         signal,
@@ -365,6 +371,7 @@ export async function runAgent(options: {
             usage: reported ?? null,
             finishReason: null,
             ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
+            contextEstimate,
           }, {
             request: requestFrom(err),
           }),
@@ -389,6 +396,7 @@ export async function runAgent(options: {
           usage: reported ?? null,
           finishReason: response.finishReason,
           ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
+          contextEstimate,
         }, {
           request: response.request,
           response: response.content,
@@ -779,7 +787,6 @@ export function deliverableSummary(session: Session, lead: string): string {
 }
 
 const READONLY_PARALLEL = 3;
-const CONTEXT_NOTE_BUDGET = 4_000;
 
 function createReadonlyWindow(
   calls: Array<{ id: string; name: string; arguments: string }>,
@@ -817,99 +824,35 @@ function createReadonlyWindow(
   };
 }
 
-function historySize(messages: ChatMessage[]): number {
-  return messages.reduce((sum, message) => sum + message.content.length + JSON.stringify(message.toolCalls ?? []).length, 0);
-}
 
-function repairMessages(messages: ChatMessage[]): ChatMessage[] {
-  const kept: ChatMessage[] = [];
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (!message) continue;
-    if (message.role === "assistant" && message.toolCalls?.length) {
-      const ids = message.toolCalls.map((call) => call.id);
-      const results: ChatMessage[] = [];
-      let cursor = index + 1;
-      const pending = new Set(ids);
-      while (cursor < messages.length && messages[cursor]?.role === "tool" && messages[cursor]?.toolCallId && pending.has(messages[cursor]!.toolCallId!)) {
-        const result = messages[cursor];
-        if (!result?.toolCallId) break;
-        pending.delete(result.toolCallId);
-        results.push(result);
-        cursor += 1;
-      }
-      if (pending.size === 0) {
-        kept.push(message, ...results);
-        index = cursor - 1;
-      } else if (message.content.trim()) {
-        kept.push({ ...message, toolCalls: undefined });
-      }
-      continue;
-    }
-    if (message.role === "tool") continue;
-    kept.push({ ...message, toolCalls: undefined });
-  }
-  return kept;
-}
-
-function contextNote(rest: ChatMessage[]): ChatMessage | undefined {
-  const facts: string[] = [];
-  const goal = rest.find((message) => message.role === "user" && !message.content.startsWith("[harness]"));
-  if (goal?.content.trim()) facts.push(goal.content.slice(0, 1500));
-  const results = new Map(rest.filter((message) => message.role === "tool" && message.toolCallId).map((message) => [message.toolCallId, message]));
-  for (const message of rest) {
-    if (message.role !== "assistant" || !message.toolCalls?.length) continue;
-    for (const call of message.toolCalls) {
-      const result = results.get(call.id);
-      if (!result) continue;
-      if (call.name === "update_plan") facts.push(call.arguments.slice(0, 800));
-      if (/约束|待办|批准|已批准|applied:/.test(`${call.arguments}\n${result.content}`)) facts.push(result.content.slice(0, 800));
-    }
-  }
-  let body = "";
-  for (const fact of facts) {
-    const next = body ? `${body}\n${fact}` : fact;
-    if (next.length > CONTEXT_NOTE_BUDGET) break;
-    body = next;
-  }
-  if (!body) return undefined;
-  return {
-    id: "history-note",
-    role: "user",
-    content: `较早的工具输出已省略。保留的目标、约束、审批和待办：\n${body}`,
-    createdAt: goal?.createdAt ?? nowIso(),
-  };
-}
-
-function trimHistory(messages: ChatMessage[]): ChatMessage[] {
+function trimHistory(messages: ChatMessage[], toolSchemaChars: number, reservedChars = 0): { messages: ChatMessage[]; estimate: Record<string, unknown> } {
   const [system, ...rest] = messages;
-  if (!system) return messages;
-  const note = contextNote(rest);
-  // Bound individual results before dropping message groups. A single large web
-  // page must not erase its own call/result and make the model request it again.
-  // These are model-input copies; the persisted transcript retains full output.
-  let kept = repairMessages(rest.map(message => message.role === "tool" && message.content.length > 16000
-    ? {...message, content: message.content.slice(0, 12000) + "\n[工具结果已截断：中间部分省略；完整内容保存在任务记录中。请基于已返回的结果继续，勿仅因截断重复执行。]\n" + message.content.slice(-4000)}
-    : message));
-  while (kept.length > 4 && historySize(kept) + (note?.content.length ?? 0) > MAX_HISTORY_CHARS) {
-    kept = repairMessages(kept.slice(1));
-  }
-  while (kept.length > 1 && historySize(kept) + (note?.content.length ?? 0) > MAX_HISTORY_CHARS) {
-    kept = repairMessages(kept.slice(1));
-  }
-  const visible = `${kept.map((message) => `${message.content}\n${JSON.stringify(message.toolCalls ?? [])}`).join("\n")}`;
-  const needed = note && !note.content.split("\n").slice(1).every((line) => line.length < 12 || visible.includes(line.slice(0, 24)));
-  let combined = needed && note ? [note, ...kept] : kept;
-  while (combined.length > 1 && historySize(combined) > MAX_HISTORY_CHARS) {
-    combined = combined[0]?.id === "history-note"
-      ? [combined[0], ...repairMessages(combined.slice(2))]
-      : repairMessages(combined.slice(1));
-  }
-  if (combined[0]?.id === "history-note" && historySize(combined) > MAX_HISTORY_CHARS) {
-    const room = Math.max(0, MAX_HISTORY_CHARS - historySize(combined.slice(1)));
-    combined = [{ ...combined[0], content: combined[0].content.slice(0, room) }, ...combined.slice(1)];
-  }
-  return [system, ...combined];
+  if (!system) return { messages, estimate: { unit: "estimated_chars", measuredTokens: false, note: "字符估算，不是实测 token" } };
+  const assembled = assembleModelContext({
+    messages: rest,
+    systemChars: system.content.length,
+    toolSchemaChars,
+    budgetChars: MAX_HISTORY_CHARS,
+    reservedChars,
+  });
+  const metrics: ContextMetrics = assembled.metrics;
+  return {
+    messages: [system, ...assembled.messages],
+    estimate: {
+      unit: "estimated_chars",
+      measuredTokens: false,
+      note: "字符估算，不是实测 token",
+      budgetChars: metrics.budgetChars,
+      usedChars: metrics.usedChars,
+      systemChars: metrics.systemChars,
+      toolSchemaChars: metrics.toolSchemaChars,
+      omittedMessages: metrics.omittedMessages,
+      reservedChars,
+      trimmedToolResults: metrics.trimmedToolResults,
+      retrievalHits: metrics.retrievalHits,
+      modelMessages: metrics.modelMessages,
+    },
+  };
 }
 
 function parsePlan(parsed: unknown): PlanStep[] {

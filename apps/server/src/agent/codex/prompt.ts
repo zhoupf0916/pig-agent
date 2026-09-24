@@ -1,3 +1,4 @@
+import { assembleModelContext, ContextBudgetExceededError, isContextCompact } from "@pig-agent/contracts";
 import type { ChatMessage } from "../../types.ts";
 import { prependBoundInstructions } from "../bound-instructions.ts";
 
@@ -54,44 +55,39 @@ export function assembleCodexPrompt(
   projectInstruction?: string,
   expertInstruction?: string,
 ): string {
-  const text = messages.filter(isPromptText);
-  const kept = text.slice(-limit);
-  if (kept.length === 0) return "";
-  const current = kept[kept.length - 1]!;
-  const prior = kept.slice(0, -1);
-  const currentText = current.content.trim();
+  // The legacy count is retained in the signature for callers; the actual
+  // model input now uses a size budget rather than discarding early user goals.
+  void limit;
+  const current = [...messages].reverse().find((m) => m.role === "user" && isPromptText(m) && !isContextCompact(m));
+  if (!current) return "";
   const currentIndex = messages.lastIndexOf(current);
-
   const names = toolNameByCallId(messages);
-  const toolsBeforeCurrent: { index: number; line: string }[] = [];
-  if (currentIndex > 0) {
-    for (let i = 0; i < currentIndex; i++) {
-      const m = messages[i];
-      if (m?.role !== "tool") continue;
-      const name = (m.toolCallId && names.get(m.toolCallId)) || "unknown";
-      toolsBeforeCurrent.push({ index: i, line: summarizeToolResult(m, name) });
+  const recentToolIds = new Set(messages.slice(0, currentIndex)
+    .filter((m) => m.role === "tool").slice(-CODEX_TOOL_SUMMARY_MAX).map((m) => m.id));
+  const candidates: ChatMessage[] = [];
+  for (const message of messages.slice(0, currentIndex + 1)) {
+    if (message.role === "tool" && recentToolIds.has(message.id)) {
+      candidates.push({ ...message, role: "assistant", content: summarizeToolResult(message, (message.toolCallId && names.get(message.toolCallId)) || "unknown"), toolCallId: undefined, toolCalls: undefined });
+    } else if (isPromptText(message) && !isContextCompact(message)) {
+      candidates.push({ ...message, toolCalls: undefined, reasoningContent: undefined });
     }
   }
-  const recentTools = toolsBeforeCurrent.slice(-CODEX_TOOL_SUMMARY_MAX);
-
-  const priorLines: { index: number; line: string }[] = prior.map((m) => ({
-    index: messages.lastIndexOf(m),
-    line: `${m.role === "user" ? "User" : "Assistant"}: ${m.content.trim()}`,
-  }));
-
-  const historyLines = [...priorLines, ...recentTools]
-    .sort((a, b) => a.index - b.index)
-    .map((item) => item.line);
-
-  const body =
-    historyLines.length === 0
-      ? currentText
-      : [
-          "Previous conversation (assembled by Pig Agent; Codex has no native cross-turn memory in this MVP):",
-          historyLines.join("\n\n"),
-          "",
-          "Current user request:",
-          currentText,
-        ].join("\n");
-  return prependBoundInstructions(body, { expertInstruction, projectInstruction });
+  const instructions = { expertInstruction, projectInstruction };
+  const totalBudget = 24_000;
+  const boundChars = prependBoundInstructions("", instructions).length;
+  let bodyBudget = totalBudget - boundChars - 256;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const assembled = assembleModelContext({ messages: candidates, systemChars: 0, toolSchemaChars: 0, budgetChars: bodyBudget });
+    const prior = assembled.messages.filter((m) => m.id !== current.id);
+    const lines = prior.map((m) => isContextCompact(m) || recentToolIds.has(m.id)
+      ? m.content : `${m.role === "user" ? "User" : "Assistant"}: ${m.content.trim()}`);
+    const body = lines.length ? [
+      "Previous conversation (assembled by Pig Agent; Codex has no native cross-turn memory in this MVP):",
+      lines.join("\n\n"), "", "Current user request:", current.content.trim(),
+    ].join("\n") : current.content.trim();
+    const prompt = prependBoundInstructions(body, instructions);
+    if (prompt.length <= totalBudget) return prompt;
+    bodyBudget -= prompt.length - totalBudget + 128;
+  }
+  throw new ContextBudgetExceededError("项目指令与当前请求超过 Codex 上下文预算，没有截断当前请求。请缩短指令或分拆请求。");
 }

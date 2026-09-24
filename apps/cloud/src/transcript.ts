@@ -1,3 +1,5 @@
+import { isContextCompact } from "@pig-agent/contracts";
+
 type Message = {
   id: string;
   role: "user" | "assistant";
@@ -13,7 +15,8 @@ export function modelHistory(messages: unknown): Message[] {
         m &&
         ["user", "assistant"].includes(m.role) &&
         typeof m.content === "string" &&
-        m.content.length > 0,
+        m.content.length > 0 &&
+        !isContextCompact(m),
     )
     .map((m) => ({
       id: String(m.id),

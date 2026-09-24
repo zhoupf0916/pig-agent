@@ -95,6 +95,7 @@ try {
     await materializeSkillSnapshots(workspaceRoot, input.skillSnapshots);
   }
   const now = new Date().toISOString();
+  // Server-built bounded continuation. Do not expand a stored full tool transcript here.
   const messages = input.messages || [];
   if (
     messages.at(-1)?.role !== "user" ||

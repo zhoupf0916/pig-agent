@@ -53,4 +53,12 @@ describe("authoritative conversation history", () => {
       "second",
     ]);
   });
+  it("hides synthetic compact notes and does not treat private memory as a message", () => {
+    const messages = conversationTranscript(
+      [{ id: "9", input: { prompt: "取消后的请求", messages: [{ id: "context-compact", role: "user", content: "较早对话的确定性摘录\n私人记忆 sk-secret", createdAt: "2026-01-01" }] }, created_at: "2026-01-03" }],
+      [],
+    );
+    expect(messages.map((m) => m.content)).toEqual(["取消后的请求"]);
+    expect(messages.some((m) => m.content.includes("sk-secret"))).toBe(false);
+  });
 });

@@ -5,7 +5,7 @@ import { loadFileOverrides } from "./file-edits.ts";
 import { getRequestCredential } from "./web-auth.ts";
 import { streamSSE } from "hono/streaming";
 import { conversationFor, conversationSnapshot } from "./conversation-state.ts";
-import { modelHistory } from "./transcript.ts";
+import { boundedFollowUpInput } from "@pig-agent/contracts";
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -205,19 +205,33 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
           409,
         );
       }
-      const last = (
+      const history = (
         await client.query(
-          "SELECT event->'session'->'messages' AS messages FROM events WHERE run_id=$1 AND event->>'type'='done' ORDER BY seq DESC LIMIT 1",
-          [parent.id],
+          `SELECT r.id, r.input->>'prompt' AS prompt, r.created_at,
+            (SELECT e.event->'session'->'messages' FROM events e WHERE e.run_id=r.id AND e.event->>'type'='done' ORDER BY e.seq DESC LIMIT 1) AS done_messages
+           FROM runs r WHERE r.conversation_id=$1 ORDER BY r.created_at, r.id`,
+          [conversationId],
         )
-      ).rows[0];
+      ).rows;
+      const id = "run_" + randomUUID().replaceAll("-", "");
+      const bounded = boundedFollowUpInput({
+        runs: history.map((row: { id: string; prompt: string; created_at: Date | string; done_messages?: unknown }) => ({
+          id: row.id,
+          prompt: String(row.prompt ?? ""),
+          createdAt: new Date(row.created_at).toISOString(),
+          doneMessages: row.done_messages,
+        })),
+        prompt: parsed.data.prompt,
+        runId: id,
+        createdAt: new Date().toISOString(),
+      });
       const input = {
         ...parent.input,
         prompt: parsed.data.prompt,
-        messages: modelHistory(
-          last?.messages || parent.input.messages || [],
-        ).slice(-40),
+        messages: bounded.messages,
+        continuation: bounded.continuation,
       };
+      delete input.transcript;
       // A new participant never inherits somebody else's automatic execution consent.
       if (parent.owner_id !== p.id) {
         const defaults=await loadUserSettings(p.id,client);
@@ -258,7 +272,6 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);
       if (checkpoint) { input.workspace = { snapshot: checkpoint.snapshot }; delete input.projectFiles; }
       input.fileOverrides = await loadFileOverrides(conversationId, client, checkpoint?.created_at ? new Date(checkpoint.created_at).toISOString() : null);
-      const id = "run_" + randomUUID().replaceAll("-", "");
       await client.query(
         "INSERT INTO runs(id,owner_id,input,request_key,conversation_id,parent_run_id) VALUES($1,$2,$3,$4,$5,$6)",
         [id, p.id, input, key, conversationId, parent.id],

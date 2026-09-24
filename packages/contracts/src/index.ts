@@ -16,6 +16,8 @@ export type ChatMessage = {
   toolOk?: boolean;
   toolDurationMs?: number;
   createdAt: string;
+  /** Assembler-built excerpt. Never inferred from message text. */
+  synthetic?: "context-compact";
 };
 
 export type PlanStep = {
@@ -620,4 +622,19 @@ export {
 } from "./skill-pack.js";
 export type { SkillPackFile, SkillSnapshot } from "./skill-pack.js";
 export { workspaceFileRevision, decideFileEdit, workspaceEditPathError } from "./workspace-file.js";
+export {
+  CONTEXT_COMPACT_ID,
+  DEFAULT_CONTEXT_BUDGET_CHARS,
+  ContextBudgetExceededError,
+  assembleModelContext,
+  continuationTranscript,
+  durableMessages,
+  authoritativeTranscript,
+  boundedFollowUpInput,
+  followUpModelInput,
+  isContextCompact,
+  recallTranscript,
+  selectInjectableMemory,
+} from "./context.js";
+export type { AssembledContext, ContextMetrics, MemoryCandidate } from "./context.js";
 export type { WorkspaceFileEdit, WorkspaceFileVersion } from "./workspace-file.js";
