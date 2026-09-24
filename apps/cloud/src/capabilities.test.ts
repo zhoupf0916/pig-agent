@@ -1,3 +1,6 @@
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 const mocks = vi.hoisted(() => ({ query: vi.fn(), connect: vi.fn() }));
@@ -15,6 +18,46 @@ beforeEach(() => {
   mocks.connect.mockReset();
 });
 describe("cloud capability library", () => {
+  it("lists skills despite macOS archive metadata beside markdown files", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pig-skill-metadata-"));
+    const previous = process.env.CLOUD_SKILLS_DIR;
+    try {
+      process.env.CLOUD_SKILLS_DIR = dir;
+      mocks.query.mockResolvedValue({ rows: [] });
+      await writeFile(join(dir, "demo.md"), "---\nname: demo\ndescription: 示例\n---\n有效技能");
+      await writeFile(join(dir, "._demo.md"), Buffer.from([0, 5, 22, 7]));
+      const app = new Hono<CloudEnv>();
+      app.use("*", async (c, next) => { c.set("principal", { id: "alice", name: "Alice", role: "member" }); await next(); });
+      app.onError((_error, c) => c.json({ error: "request failed" }, 500));
+      registerCapabilityRoutes(app);
+      const response = await app.request("/v1/skills");
+      expect(response.status).toBe(200);
+      expect((await response.json()).skills.map((s: { id: string }) => s.id)).toEqual(["demo"]);
+    } finally {
+      if (previous === undefined) delete process.env.CLOUD_SKILLS_DIR;
+      else process.env.CLOUD_SKILLS_DIR = previous;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("keeps usable skill scripts when archive metadata is present in the pack", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pig-pack-metadata-"));
+    const previous = process.env.CLOUD_SKILLS_DIR;
+    try {
+      process.env.CLOUD_SKILLS_DIR = dir;
+      mocks.query.mockResolvedValue({ rows: [] });
+      await mkdir(join(dir, "demo", "scripts"), { recursive: true });
+      await writeFile(join(dir, "demo", "SKILL.md"), "---\nname: demo\ndescription: 示例\n---\n有效技能");
+      await writeFile(join(dir, "demo", "scripts", "run.py"), "print(1)");
+      await writeFile(join(dir, "demo", "scripts", "._run.py"), Buffer.from([0, 5, 22, 7]));
+      const items = await listCapabilities("alice", "skill");
+      expect(items[0]?.files).toEqual([{ path: "scripts/run.py", content: "print(1)" }]);
+    } finally {
+      if (previous === undefined) delete process.env.CLOUD_SKILLS_DIR;
+      else process.env.CLOUD_SKILLS_DIR = previous;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("loads existing shipped content and resolves only caller-owned resources", async () => {
     mocks.query.mockImplementation(async (_sql, args) => ({
       rows:

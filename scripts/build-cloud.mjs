@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { basename } from "node:path";
 import { mkdir, cp, rm } from "node:fs/promises";
 await rm("cloud-dist", { recursive: true, force: true });
 await mkdir("cloud-dist", { recursive: true });
@@ -23,7 +24,10 @@ for (const [name, entry] of Object.entries({
     },
   });
 }
-await cp("skills", "cloud-dist/skills", { recursive: true });
+await cp("skills", "cloud-dist/skills", {
+  recursive: true,
+  filter: (source) => !basename(source).startsWith("."),
+});
 await cp("apps/web/dist", "cloud-dist/web", { recursive: true });
 await cp("apps/admin/public", "cloud-dist/admin", { recursive: true });
 await cp("packages/design/tokens.css", "cloud-dist/admin/tokens.css");

@@ -130,3 +130,17 @@ Nginx 基于真实连接来源 IP（`$binary_remote_addr`），不信任客户�
 ## 2026-09-24 文件工作台与联网修复
 
 当前 release 为 `20260924-file-workbench`。网关已切换到 AliDNS 加密解析，修复公网地址误拦与笼统错误；真实 TechCrunch 单次审批读取返回 200。控制面和四个 Runner 已更新文件版本编辑，实际完成“生成 → 人工保存 → 下一轮 Runner 读取并更新”。详细证据、限制与截图索引见 [专项记录](file-workbench-network-2026-09-24.md)。数据库备份位于 `backups/file-workbench-20260924/`，旧控制面与 Worker 镜像保留为 `before-file-workbench` 标签。
+
+## 部署包跨平台元数据（2026-09-24 修复）
+
+macOS 的 tar 默认可能产生 AppleDouble `._*` 文件。它们进入 Linux 镜像后被当作 Markdown 技能或脚本读取，导致技能列表 500、技能包脚本清单丢失；专家页因同时请求技能列表也显示错误。已补充两个先失败后通过的行为测试，技能加载器忽略隐藏条目，构建阶段也过滤隐藏文件。
+
+在 macOS 上传产物时必须禁用扩展属性归档，例如：
+
+```sh
+COPYFILE_DISABLE=1 tar -czf /tmp/pig-runtime.tar.gz cloud-dist
+# 输出应为空；有结果则不得发布。
+tar -tzf /tmp/pig-runtime.tar.gz | grep -E '(^|/)\._'
+```
+
+源码使用 `git archive`。不要将 `.env`、数据目录或账号文件混入发布包。线上已清理这次部署引入的元数据，真实授权接口复查技能和专家均返回 200。

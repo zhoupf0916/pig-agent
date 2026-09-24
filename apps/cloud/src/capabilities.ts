@@ -67,6 +67,7 @@ async function bundledSkills(): Promise<Entry[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const skills: Entry[] = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith(".")) continue;
     if (entry.isFile() && entry.name.endsWith(".md")) {
       const raw = await readFile(join(dir, entry.name), "utf8");
       const parsed = parseSkillFrontmatter(raw);
@@ -106,7 +107,7 @@ async function readPackFiles(dir: string) {
   const files: { path: string; content: string }[] = [];
   for (const folder of ["scripts", "references", "assets"]) {
     const names = await readdir(join(dir, folder)).catch(() => [] as string[]);
-    for (const name of names)
+    for (const name of names.filter((name) => !name.startsWith(".")))
       files.push({ path: `${folder}/${name}`, content: await readFile(join(dir, folder, name), "utf8") });
   }
   if (validateSkillPackFiles(files)) return [];
