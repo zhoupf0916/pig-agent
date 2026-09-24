@@ -3,6 +3,7 @@ import { resolveExpertPlaybook } from "../store/experts.ts";
 import { publishPersistedEvent } from "../store/events.ts";
 import { resolveProjectInstruction } from "../store/projects.ts";
 import { saveSession } from "../store/sessions.ts";
+import { trackWorkspaceTurn } from "../store/workspace-edits.ts";
 import { loadSessionSettings } from "../store/settings.ts";
 import { shouldRunSequentialTeam } from "../store/team-run-state.ts";
 import type { AgentEvent, AgentRuntime, ChatMessage, Session } from "../types.ts";
@@ -115,6 +116,7 @@ export async function runSessionTurn(
   };
 
   try {
+    const execute = async () => {
     if (session.executionTarget !== "remote" && session.skillSnapshots?.length) {
       const { materializeSkillSnapshots } = await import("./skill-pack.ts");
       await materializeSkillSnapshots(settings.workspaceRoot, session.skillSnapshots);
@@ -153,6 +155,10 @@ export async function runSessionTurn(
     await writes;
     await saveSession(next);
     return next;
+    };
+    return session.executionTarget === "remote"
+      ? await execute()
+      : await trackWorkspaceTurn(settings.workspaceRoot, execute);
   } catch (err) {
     if (runtime === "cloud") {
       session.status = "error";

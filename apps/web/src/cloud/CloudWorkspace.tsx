@@ -1,3 +1,4 @@
+import { FileEditor } from "../components/FileEditor";
 import { SkillComposerInput } from "../components/SkillComposerInput";
 import { createTokenBatch } from "../lib/token-batch";
 import { ApprovalPreview } from "../components/ApprovalPreview";
@@ -168,6 +169,27 @@ export function CloudWorkspace({
     [projectId, setProjectId] = useState(""),
     [selected, setSelected] = useState(() => hashConversationId()),
     [detail, setDetail] = useState<Detail | null>(null);
+  const [fileEdit, setFileEdit] = useState<{ path: string; content: string; baseRevision: string; dirty: boolean; readOnly: boolean; notice: string; saving: boolean } | null>(null);
+  const fileEditRef = useRef(fileEdit);
+  fileEditRef.current = fileEdit;
+  const fileOpenGeneration = useRef(0);
+  const [compactFiles, setCompactFiles] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const changed = () => setCompactFiles(media.matches);
+    media.addEventListener("change", changed);
+    const guard = (e: BeforeUnloadEvent) => { if (fileEditRef.current?.dirty) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", guard);
+    return () => { media.removeEventListener("change", changed); window.removeEventListener("beforeunload", guard); };
+  }, []);
+  function leaveFile() {
+    if (fileEditRef.current?.saving) return false;
+    if (fileEditRef.current?.dirty && !window.confirm("有未保存的文件修改，仍要离开吗？")) return false;
+    fileEditRef.current = null;
+    fileOpenGeneration.current++;
+    setFileEdit(null);
+    return true;
+  }
   const [projectBranch, setProjectBranch] = useState<
       "personal" | "collaborative" | "choose"
     >(initialBranch ?? (embedded ? "collaborative" : "personal")),
@@ -236,7 +258,7 @@ export function CloudWorkspace({
       null,
     );
   const contextDialog = useDialog<HTMLElement>(mobile, () => setMobile(false));
-  const resourceDialog = useDialog<HTMLElement>(resource, () =>
+  const resourceDialog = useDialog<HTMLElement>(resource && compactFiles, () =>
     setResource(false),
   );
   const scrollArea = useRef<HTMLDivElement>(null),
@@ -266,6 +288,9 @@ export function CloudWorkspace({
   const accountGeneration = useRef(0);
   function clearAccount(clearSelection = true) {
     accountGeneration.current++;
+    fileOpenGeneration.current++;
+    fileEditRef.current = null;
+    setFileEdit(null);
     setExperts([]);
     setSkills([]);
     setExpertId("");
@@ -389,6 +414,8 @@ export function CloudWorkspace({
     };
   }, [me?.id, apiBase]);
   useEffect(() => {
+    fileOpenGeneration.current++;
+    setFileEdit(null);
     setDetail(null);
     setLive("");
     setLiveMessages([]);
@@ -559,7 +586,12 @@ export function CloudWorkspace({
   useEffect(() => {
     const apply = () => {
       if (!workspaceHash()) return;
-      setSelected(hashConversationId());
+      const next = hashConversationId();
+      if (next !== selectedRef.current && !leaveFile()) {
+        window.history.replaceState(null, "", "#/conversations/" + selectedRef.current);
+        return;
+      }
+      setSelected(next);
     };
     const onIntent = (event: Event) => {
       const detail = (
@@ -570,6 +602,7 @@ export function CloudWorkspace({
         }>
       ).detail;
       if (!detail) return;
+      if ((detail.create || typeof detail.projectId === "string") && !leaveFile()) return;
       if (
         detail.create === "personal" ||
         detail.create === "collaborative" ||
@@ -652,6 +685,7 @@ export function CloudWorkspace({
     };
   }, [projectId, last?.state]);
   function choose(c: Conversation) {
+    if (c.id !== selectedRef.current && !leaveFile()) return;
     followBottom.current = true;
     setSelected(c.id);
     setProjectId(c.project_id || "");
@@ -858,7 +892,7 @@ export function CloudWorkspace({
       </div>
     );
   return (
-    <div className={`cw-shell ${embedded ? "cw-embedded" : ""}`}>
+    <div className={`cw-shell ${embedded ? "cw-embedded" : ""} ${fileEdit ? "is-editing" : ""}`}>
       {mobile && (
         <button
           className="cw-drawer-scrim"
@@ -887,6 +921,7 @@ export function CloudWorkspace({
           className="cw-primary"
           disabled={busy}
           onClick={() => {
+            if (!leaveFile()) return;
             setSelected("");
             setPrompt("");
             setMobile(false);
@@ -902,6 +937,7 @@ export function CloudWorkspace({
               onClick={() => {
                 setProjectBranch("personal");
                 setProjectId("");
+                if (!leaveFile()) return;
                 setSelected("");
               }}
             >
@@ -912,6 +948,7 @@ export function CloudWorkspace({
               onClick={() => {
                 setProjectBranch("collaborative");
                 setProjectId("");
+                if (!leaveFile()) return;
                 setSelected("");
               }}
             >
@@ -929,6 +966,7 @@ export function CloudWorkspace({
               disabled={busy}
               onClick={() => {
                 setProjectId("");
+                if (!leaveFile()) return;
                 setSelected("");
               }}
             >
@@ -945,6 +983,7 @@ export function CloudWorkspace({
                 disabled={busy}
                 onClick={() => {
                   setProjectId(p.id);
+                  if (!leaveFile()) return;
                   setSelected("");
                 }}
               >
@@ -1088,9 +1127,43 @@ export function CloudWorkspace({
             {connection}
           </div>
         )}
+        {fileEdit && (
+          <FileEditor
+            path={fileEdit.path}
+            content={fileEdit.content}
+            dirty={fileEdit.dirty}
+            readOnly={fileEdit.readOnly || !canWrite}
+            notice={fileEdit.notice || (!canWrite ? "只读权限，不能保存。" : "")}
+            saving={fileEdit.saving}
+            onBack={() => { fileOpenGeneration.current++; setFileEdit(null); }}
+            onChange={(value) => setFileEdit({ ...fileEdit, content: value, dirty: true, notice: "" })}
+            onSave={() => {
+              if (!selected || !fileEdit || fileEdit.saving) return;
+              const generation = fileOpenGeneration.current;
+              const account = accountGeneration.current;
+              const savingPath = fileEdit.path;
+              const savingConversation = selected;
+              const draft = fileEdit.content;
+              const baseRevision = fileEdit.baseRevision;
+              setFileEdit({ ...fileEdit, saving: true });
+              void request(`/v1/conversations/${savingConversation}/file`, "PUT", {
+                path: savingPath,
+                content: draft,
+                baseRevision,
+              }).then((saved: { revision: string }) => {
+                if (selectedRef.current !== savingConversation || fileOpenGeneration.current !== generation || accountGeneration.current !== account) return;
+                setFileEdit((current) => current && current.path === savingPath ? { ...current, content: draft, baseRevision: saved.revision, dirty: false, saving: false, notice: "已保存，下一次任务会使用这份内容。" } : current);
+              }).catch((error: unknown) => {
+                if (selectedRef.current !== savingConversation || fileOpenGeneration.current !== generation || accountGeneration.current !== account) return;
+                setFileEdit((current) => current && current.path === savingPath ? { ...current, saving: false, dirty: true, notice: error instanceof Error ? error.message : "保存失败" } : current);
+              });
+            }}
+          />
+        )}
         <div
           className="cw-conversation"
           aria-label="会话内容"
+          hidden={Boolean(fileEdit)}
           ref={scrollArea}
           onScroll={() => {
             const n = scrollArea.current;
@@ -1270,7 +1343,7 @@ export function CloudWorkspace({
           )}
         </div>
         {(canWrite || selected) && (
-          <div className="jd-compose-stack">
+          <div className="jd-compose-stack" hidden={Boolean(fileEdit)}>
           <form
             className="cw-composer"
             onDragOver={(e) => {
@@ -1490,6 +1563,7 @@ export function CloudWorkspace({
                     value={projectId}
                     onChange={(e) => {
                       setProjectId(e.target.value);
+                      if (!leaveFile()) return;
                       setSelected("");
                     }}
                   >
@@ -1598,16 +1672,14 @@ export function CloudWorkspace({
       </main>
       {resource && (last || projectId) && (
         <>
-          <button
+          {compactFiles && <button
             className="cw-drawer-scrim cw-resource-scrim"
             aria-label="关闭成果抽屉"
             onClick={() => setResource(false)}
-          />
+          />}
           <aside
             ref={resourceDialog}
             className="cw-resources"
-            role="dialog"
-            aria-modal="true"
             aria-label="成果与过程"
           >
             <header>
@@ -1772,17 +1844,26 @@ export function CloudWorkspace({
                         onClick={() =>
                           void act(async () => {
                             const identity = selected;
-                            const response = await fetch(
-                              apiBase +
-                                `/v1/runs/${last!.id}/artifacts/${file.id}`,
-                            );
-                            if (!response.ok) throw Error("读取文件失败");
-                            const text = await response.text();
-                            if (
-                              selectedRef.current === identity &&
-                              currentRunRef.current === last!.id
-                            )
-                              setPreview({ path: file.path, text });
+                            if (!identity || fileEditRef.current?.saving) return;
+                            if (fileEditRef.current?.dirty && fileEditRef.current.path === file.path) return;
+                            if (fileEdit?.dirty && fileEdit.path !== file.path && !window.confirm("有未保存的修改，仍要切换文件吗？")) return;
+                            const opening = ++fileOpenGeneration.current;
+                            const opened = await request(`/v1/conversations/${identity}/file?path=${encodeURIComponent(file.path)}`) as { path: string; content: string; revision: string };
+                            if (selectedRef.current !== identity || fileOpenGeneration.current !== opening) return;
+                            const binary = opened.content.includes("\u0000");
+                            const safeContent = redactSecretsForDisplay(opened.content);
+                            const redacted = safeContent !== opened.content;
+                            const bytes = new TextEncoder().encode(opened.content).length;
+                            setFileEdit({
+                              path: opened.path,
+                              content: binary ? "" : safeContent,
+                              baseRevision: opened.revision,
+                              dirty: false,
+                              readOnly: binary || redacted || bytes > 200_000,
+                              notice: redacted ? "含敏感信息，已脱敏并设为只读。" : binary ? "这是二进制文件，请下载查看。" : bytes > 200_000 ? "文件过大，不能在工作台编辑。" : "正在编辑成果副本。保存后下一次任务使用这份内容，原成果仍保留。",
+                              saving: false,
+                            });
+                            if (window.matchMedia("(max-width: 760px)").matches) setResource(false);
                           })
                         }
                       >
@@ -1794,17 +1875,10 @@ export function CloudWorkspace({
                         }
                         download
                       >
-                        下载
+                        原成果
                       </a>
                     </div>
                   ))}
-                  {preview && (
-                    <section>
-                      <h3>{preview.path}</h3>
-                      <p>远端保存版本</p>
-                      <pre>{preview.text}</pre>
-                    </section>
-                  )}
                 </>
               )}
             </div>
@@ -1890,6 +1964,7 @@ export function CloudWorkspace({
           onCreated={async (id) => {
             await refresh();
             setProjectId(id);
+            if (!leaveFile()) return;
             setSelected("");
             setMembersOpen(false);
             onProjectCreated?.(id);
@@ -1908,6 +1983,7 @@ export function CloudWorkspace({
           refresh={refresh}
           onProject={(id) => {
             setProjectId(id);
+            if (!leaveFile()) return;
             setSelected("");
             setMembersOpen(false);
           }}

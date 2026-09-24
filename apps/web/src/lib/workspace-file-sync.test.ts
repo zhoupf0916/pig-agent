@@ -374,3 +374,9 @@ describe("open workspace preview deleted-elsewhere cleanup (Milestone AO)", () =
     expect(raw).not.toMatch(/PIG_CLOUD_TOKEN|DEEPSEEK_API_KEY/);
   });
 });
+
+it("轮询发现远端文件变更或删除时保留未保存的编辑", () => {
+  const draft = { ...preview("note.txt", "my draft"), dirty: true };
+  expect(applyWorkspaceFileSnapshot(draft, preview("note.txt", "other writer"))).toBe(draft);
+  expect(applyWorkspaceFileSnapshot(draft, null)).toBe(draft);
+});

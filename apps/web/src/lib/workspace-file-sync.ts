@@ -12,6 +12,11 @@ export type WorkspaceFilePreview = {
   content: string;
   binary: boolean;
   size: number;
+  revision?: string;
+  dirty?: boolean;
+  redacted?: boolean;
+  saving?: boolean;
+  notice?: string;
 };
 
 /**
@@ -26,6 +31,9 @@ export function sanitizeWorkspaceFilePreview(
     content: file.binary ? "" : redactSecretsForDisplay(file.content),
     binary: file.binary,
     size: file.size,
+    revision: file.revision,
+    dirty: file.dirty,
+    redacted: file.redacted || (!file.binary && redactSecretsForDisplay(file.content) !== file.content),
   };
 }
 
@@ -57,6 +65,7 @@ export function applyWorkspaceFileSnapshot(
   prev: WorkspaceFilePreview | null,
   next: WorkspaceFilePreview | null,
 ): WorkspaceFilePreview | null {
+  if (prev?.dirty || prev?.saving) return prev;
   if (next === null) return null;
   const clean = sanitizeWorkspaceFilePreview(next);
   if (prev && workspaceFileSyncKey(prev) === workspaceFileSyncKey(clean)) {

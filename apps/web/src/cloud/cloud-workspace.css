@@ -131,6 +131,11 @@
 .cw-resource-scrim {
   z-index: 20;
 }
+@media (min-width: 761px) {
+  .cw-resource-scrim {
+    display: none;
+  }
+}
 .cw-context-close {
   margin-left: auto;
 }
@@ -581,15 +586,70 @@
   font-size: 11px;
 }
 .cw-resources {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: min(480px, 100%);
+  position: relative;
+  flex: none;
+  width: min(360px, 34vw);
+  min-width: 260px;
+  height: 100%;
   background: white;
   border-left: 1px solid var(--cw-line);
   display: flex;
   flex-direction: column;
-  z-index: 25;
-  box-shadow: -8px 0 40px #172b4620;
+  z-index: 1;
+  box-shadow: none;
+}
+.file-editor {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+.file-editor-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--cw-line);
+}
+.file-editor-bar strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.file-editor-bar span {
+  flex: none;
+  font-size: 12px;
+  color: var(--cw-muted);
+}
+.file-editor-text {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  resize: none;
+  padding: 16px 20px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #fff;
+  color: inherit;
+}
+.file-editor p[role="status"] {
+  flex: none;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #9a6700;
+  background: #fff8e8;
 }
 .cw-resources header,
 .cw-space-dialog header {
@@ -774,7 +834,12 @@
     margin-left: 5%;
   }
   .cw-resources {
+    position: absolute;
+    inset: 0;
     width: 100%;
+    min-width: 0;
+    z-index: 25;
+    box-shadow: none;
   }
   .cw-space-dialog {
     padding: 0 18px 20px;
@@ -1098,3 +1163,6 @@
 .cw-composer .cw-composer-controls {
   padding-left: 48px;
 }
+
+.cw-shell [hidden] { display: none !important; }
+@media (max-width: 760px) { .cw-shell .cw-resources { z-index: 31; } }

@@ -1,6 +1,7 @@
 import { attachmentIdsSchema, resolveAttachments, bindAttachments } from "./attachments.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import { resolveCapabilityContext, resolveSkillSnapshots } from "./capabilities.ts";
+import { loadFileOverrides } from "./file-edits.ts";
 import { getRequestCredential } from "./web-auth.ts";
 import { streamSSE } from "hono/streaming";
 import { conversationFor, conversationSnapshot } from "./conversation-state.ts";
@@ -187,7 +188,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       }
       const checkpoint = (
         await client.query(
-          "SELECT snapshot FROM workspace_versions WHERE run_id=$1",
+          "SELECT snapshot, created_at FROM workspace_versions WHERE run_id=$1",
           [parent.id],
         )
       ).rows[0];
@@ -256,6 +257,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       catch(e) { await client.query("ROLLBACK");return c.json({error:(e as Error).message},400); }
       input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);
       if (checkpoint) { input.workspace = { snapshot: checkpoint.snapshot }; delete input.projectFiles; }
+      input.fileOverrides = await loadFileOverrides(conversationId, client, checkpoint?.created_at ? new Date(checkpoint.created_at).toISOString() : null);
       const id = "run_" + randomUUID().replaceAll("-", "");
       await client.query(
         "INSERT INTO runs(id,owner_id,input,request_key,conversation_id,parent_run_id) VALUES($1,$2,$3,$4,$5,$6)",

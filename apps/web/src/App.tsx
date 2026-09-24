@@ -34,6 +34,7 @@ import { isMorePage, MoreMenu } from "./components/MoreMenu";
 import { MemoryPanel } from "./components/MemoryPanel";
 import { CloudWorkspace } from "./cloud/CloudWorkspace";
 import { ProjectsPanel } from "./components/ProjectsPanel";
+import { FileEditor } from "./components/FileEditor";
 import { RightPanel } from "./components/RightPanel";
 import { SearchBox } from "./components/SearchBox";
 import { SearchPanel } from "./components/SearchPanel";
@@ -163,6 +164,13 @@ export function App() {
   const [tree, setTree] = useState<WorkspaceNode | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [preview, setPreview] = useState<WorkspaceFilePreview | null>(null);
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  useEffect(() => {
+    const guard = (e: BeforeUnloadEvent) => { if (previewRef.current?.dirty) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, []);
   const [draft, setDraft] = useState(() => {
     const boot = parseHash();
     return boot.name === "workstation" && boot.sessionId
@@ -233,6 +241,10 @@ export function App() {
   }, []);
 
   const loadSession = useCallback(async (id: string) => {
+    if (id !== activeIdRef.current && previewRef.current?.dirty && !window.confirm("有未保存的文件修改，仍要切换任务吗？")) {
+      if (activeIdRef.current) window.history.replaceState(null, "", sessionHash(activeIdRef.current));
+      return;
+    }
     const request = ++sessionRequestRef.current;
     if (id !== activeIdRef.current) {
       setFilesOpen(false);
@@ -514,7 +526,7 @@ export function App() {
       fetchFile: (path) => api.file(path, activeId || undefined),
       onFile: (next) => {
         setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
-        if (next === null) setPreviewPath(null);
+        if (next === null && !previewRef.current?.dirty) setPreviewPath(null);
       },
     });
   }, [previewPath, activeId]);
@@ -580,6 +592,9 @@ export function App() {
   }, [activeId, session?.executionTarget]);
 
   const openFile = useCallback(async (path: string) => {
+    if (preview?.dirty && preview.path === path) return;
+    if (preview?.saving) return;
+    if (preview?.dirty && preview.path !== path && !window.confirm("有未保存的修改，仍要切换文件吗？")) return;
     const request = ++fileRequestRef.current;
     setPreviewPath(path);
     setPreview(null);
@@ -589,6 +604,7 @@ export function App() {
       if (identity !== activeIdRef.current) return;
       if (request !== fileRequestRef.current) return;
       setPreview((prev) => applyWorkspaceFileSnapshot(prev, next));
+      if (window.matchMedia("(max-width: 767px)").matches) setFilesOpen(false);
     } catch (err) {
       if (request !== fileRequestRef.current) return;
       setPreview({
@@ -600,7 +616,7 @@ export function App() {
         size: 0,
       });
     }
-  }, []);
+  }, [preview]);
 
   const createSession = useCallback(
     async (projectId?: string, workspaceId?: string) => {
@@ -1254,6 +1270,10 @@ export function App() {
     remote: "远端记录",
   };
   const navigate = (action: () => void) => {
+    if (previewRef.current?.saving) return;
+    if (previewRef.current?.dirty && !window.confirm("有未保存的文件修改，仍要离开吗？")) return;
+    setPreview(null); setPreviewPath(null);
+    previewRef.current = null;
     action();
     setNavigationOpen(false);
   };
@@ -1666,6 +1686,38 @@ export function App() {
             />
           ) : (
             <>
+              {previewPath && preview && (
+                <FileEditor
+                  path={preview.path}
+                  content={preview.content}
+                  dirty={Boolean(preview.dirty)}
+                  readOnly={preview.binary || Boolean(preview.redacted) || preview.size > 200_000 || !preview.revision}
+                  notice={preview.notice || (preview.redacted ? "含敏感信息，已脱敏并设为只读，请使用本机编辑器修改原文件。" : preview.binary ? "这是二进制文件，请下载查看。" : preview.size > 200_000 ? "文件过大，不能在工作台编辑。" : "修改会保存到当前任务绑定的工作区。⌘/Ctrl + S 保存。")}
+                  saving={Boolean(preview.saving)}
+                  onBack={() => { setPreviewPath(null); setPreview(null); }}
+                  onChange={(value) => setPreview({ ...preview, content: value, dirty: true, notice: "" })}
+                  onSave={() => {
+                    if (!preview.revision || preview.saving) return;
+                    const file = preview;
+                    const identity = activeIdRef.current;
+                    const generation = fileRequestRef.current;
+                    setPreview({ ...file, saving: true, notice: "正在保存…" });
+                    void fetch("/api/workspace/file" + (identity ? "?sessionId=" + encodeURIComponent(identity) : ""), {
+                      method: "PUT", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ path: file.path, content: file.content, baseRevision: file.revision }),
+                    }).then(async response => {
+                      const body = await response.json() as { revision?: string; error?: string };
+                      if (!response.ok || !body.revision) throw new Error(body.error || "保存失败");
+                      if (identity !== activeIdRef.current || generation !== fileRequestRef.current) return;
+                      setPreview(current => current?.path === file.path ? { ...current, revision: body.revision, dirty: false, saving: false, notice: "已保存到工作区。", size: new TextEncoder().encode(file.content).length } : current);
+                    }).catch(error => {
+                      if (identity !== activeIdRef.current || generation !== fileRequestRef.current) return;
+                      setPreview(current => current?.path === file.path ? { ...current, saving: false, notice: redactSecretsForDisplay(error instanceof Error ? error.message : "保存失败") } : current);
+                    });
+                  }}
+                />
+              )}
+              <div className="local-conversation-pane" hidden={Boolean(previewPath && preview)}>
               <ChatPanel
                 skills={skills.map(s => ({ id: s.name, name: s.displayName || s.name, description: s.description }))}
                 selectedSkillIds={session?.skillIds || pendingSkillIds}
@@ -1715,6 +1767,7 @@ export function App() {
                 onHandoffDone={() => void refreshProjects()}
                 onOpenMemory={(id) => goMemory(id)}
               />
+              </div>
               {filesOpen && (
                 <InspectorFrame wide={developerWide} onClose={() => { setDeveloperWide(false); setFilesOpen(false); }}>
                   <RightPanel

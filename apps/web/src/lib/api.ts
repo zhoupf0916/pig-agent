@@ -595,7 +595,7 @@ export const api = {
       `/api/workspace/file?path=${encodeURIComponent(path)}` +
         (sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""),
     ).then((r) =>
-      json<{ path: string; content: string; binary: boolean; size: number }>(r),
+      json<{ path: string; content: string; binary: boolean; size: number; revision?: string }>(r),
     ),
 };
 

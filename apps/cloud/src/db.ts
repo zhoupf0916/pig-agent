@@ -3,6 +3,7 @@ import { ecosystemPluginSchema } from "./ecosystem-plugins.ts";
 import { mcpServerSchema } from "./mcp-schema.ts";
 import { attachmentSchema } from "./attachments.ts";
 import { capabilitySchema } from "./capabilities.ts";
+import { fileEditSchema } from "./file-edits.ts";
 import pg from "pg";
 import {userDataSchema} from "./user-data-schema.ts";
 import { passwordAccountSchema } from "./password-schema.ts";
@@ -82,6 +83,7 @@ export async function migrate() {
     await client.query(userDataSchema);
     await client.query(collaborationSchema);
     await client.query(capabilitySchema);
+    await client.query(fileEditSchema);
     await client.query(ecosystemPluginSchema);
     await client.query(mcpServerSchema);
     await client.query(attachmentSchema);

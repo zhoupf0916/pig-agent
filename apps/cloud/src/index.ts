@@ -41,6 +41,7 @@ import { z } from "zod";
 import { registerResourceRoutes } from "./resources.ts";
 import { registerPlatformRoutes, decryptSecret } from "./platform.ts";
 import { registerConversationRoutes } from "./conversations.ts";
+import { registerFileEditRoutes, loadFileOverrides } from "./file-edits.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
 import {
@@ -120,6 +121,7 @@ registerClusterRoutes(app);
 registerResourceRoutes(app);
 registerScheduleRoutes(app);
 registerConversationRoutes(app);
+registerFileEditRoutes(app);
 registerCollaborationRoutes(app);
 registerCapabilityRoutes(app);
 registerEcosystemPluginRoutes(app);
@@ -266,6 +268,7 @@ app.post("/v1/runs", async (c) => {
           requestInput: parsed.data,
           capabilityContext,
           skillSnapshots: await resolveSkillSnapshots(p.id, effectiveInput, client),
+          fileOverrides: await loadFileOverrides(conversationId, client),
           privateMemoryContext,
           projectContext: await sharedProjectContext(
             parsed.data.projectId,

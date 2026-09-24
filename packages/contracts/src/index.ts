@@ -619,3 +619,5 @@ export {
   SKILL_PACK_LIMITS,
 } from "./skill-pack.js";
 export type { SkillPackFile, SkillSnapshot } from "./skill-pack.js";
+export { workspaceFileRevision, decideFileEdit, workspaceEditPathError } from "./workspace-file.js";
+export type { WorkspaceFileEdit, WorkspaceFileVersion } from "./workspace-file.js";

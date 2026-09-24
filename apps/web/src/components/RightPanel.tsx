@@ -238,7 +238,7 @@ function LocalRightPanel({
         )}
       </div>
 
-      {(tab !== "debug" && (previewPath || selected)) && <div className="min-h-0 flex-1 overflow-auto border-t border-ink-400 bg-panel">
+      {(tab !== "debug" && selected && !previewPath) && <div className="min-h-0 flex-1 overflow-auto border-t border-ink-400 bg-panel">
         <div className="flex items-center justify-between px-3 py-2 text-meta text-ink-600">
           <span className="uppercase tracking-[0.14em]">预览</span>
           <div className="flex items-center gap-2">

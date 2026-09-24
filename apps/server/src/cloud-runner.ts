@@ -52,6 +52,7 @@ try {
       skillSnapshots?: import("@pig-agent/contracts").SkillSnapshot[];
       privateMemoryContext?: string;
       files?: Array<{ path: string; content: string }>;
+      fileOverrides?: Array<{ path: string; content: string }>;
       projectFiles?: Array<{ path: string; content: string }>;
       attachments?: Array<{ id: string; name: string; mime: string; kind: string; workspacePath: string; data: string; text?: string; warning?: string }>;
       messages: Session["messages"];
@@ -75,6 +76,7 @@ try {
     workspace: input.workspace,
     projectFiles: input.projectFiles,
     files: input.files,
+    fileOverrides: input.fileOverrides,
   });
   const attachmentContext: string[] = [];
   for (const file of input.attachments || []) {

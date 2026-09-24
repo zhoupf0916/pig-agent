@@ -13,6 +13,8 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
+import { saveWorkspaceFileEdit, workspaceFileHistory } from "./store/workspace-edits.ts";
+import { workspaceFileRevision } from "@pig-agent/contracts";
 import { listSkills } from "./agent/skills.ts";
 import { applyTeamRunStop } from "./agent/team-run.ts";
 import {
@@ -568,10 +570,47 @@ export function createApp(): Hono {
     }
     try {
       const file = await readWorkspaceText(settings.workspaceRoot, rel);
-      return c.json(file);
+      return c.json({ ...file, revision: workspaceFileRevision(file.content) });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
     }
+  });
+
+  app.put("/api/workspace/file", async (c) => {
+    const body = await c.req.json().catch(() => null) as { path?: string; content?: string; baseRevision?: string } | null;
+    if (!body?.path || typeof body.content !== "string" || typeof body.baseRevision !== "string") {
+      return c.json({ error: "请提供文件路径、内容和打开时的版本" }, 400);
+    }
+    const settings = await loadSettings();
+    const sessionId = c.req.query("sessionId");
+    if (sessionId) {
+      const session = await getSession(sessionId);
+      if (!session) return c.json({ error: "会话不存在" }, 404);
+      if (session.executionTarget === "remote") return c.json({ error: "云端文件请通过会话工作区版本编辑" }, 409);
+      if (session.workspaceRoot) settings.workspaceRoot = session.workspaceRoot;
+    }
+    const result = await saveWorkspaceFileEdit({
+      workspaceRoot: settings.workspaceRoot,
+      path: body.path,
+      content: body.content,
+      baseRevision: body.baseRevision,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result);
+  });
+
+  app.get("/api/workspace/file/history", async (c) => {
+    const path = c.req.query("path");
+    if (!path) return c.json({ error: "path is required" }, 400);
+    const settings = await loadSettings();
+    const sessionId = c.req.query("sessionId");
+    if (sessionId) {
+      const session = await getSession(sessionId);
+      if (!session) return c.json({ error: "会话不存在" }, 404);
+      if (session.executionTarget === "remote") return c.json({ error: "云端文件请通过会话工作区版本编辑" }, 409);
+      if (session.workspaceRoot) settings.workspaceRoot = session.workspaceRoot;
+    }
+    return c.json({ versions: await workspaceFileHistory(settings.workspaceRoot, path) });
   });
 
   // Used by tests / operators to confirm sandbox rejects escapes without an LLM.

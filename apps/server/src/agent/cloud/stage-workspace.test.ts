@@ -38,4 +38,16 @@ describe("cloud workspace staging", () => {
     expect(await readFile(join(dest, "notes.txt"), "utf8")).toBe("keep");
     expect(await readFile(join(dest, skillMaterialPrefix(snapshot), "SKILL.md"), "utf8")).toContain("技能正文");
   });
+
+  it("applies a saved file override after restoring the workspace checkpoint", async () => {
+    const archived = await mkdtemp(join(tmpdir(), "pig-archive-edit-"));
+    await writeFile(join(archived, "notes.txt"), "旧成果");
+    const packed = packWorkspaceSnapshot(archived, [], "cloud-result");
+    const dest = await mkdtemp(join(tmpdir(), "pig-stage-edit-"));
+    await stageCloudWorkspace(dest, {
+      workspace: { snapshot: packed },
+      fileOverrides: [{ path: "notes.txt", content: "用户编辑" }],
+    });
+    expect(await readFile(join(dest, "notes.txt"), "utf8")).toBe("用户编辑");
+  });
 });
