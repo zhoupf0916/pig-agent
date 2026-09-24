@@ -197,6 +197,24 @@ try {
       await expect(page.locator("h1, .conv-user, .conv-answer, .conv-notice, .conv-alert, .conv-current, .cw-approval").filter({ hasText: text }).locator("visible=true").first()).toBeVisible({ timeout: 20000 });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
       if (name.startsWith("local-") && name !== "local-running") await expect(page.getByRole("textbox", { name: "任务消息" })).toBeEnabled();
+      if (name === "cloud-empty") {
+        const ring = page.getByRole("button", { name: "上下文用量" });
+        await ring.click();
+        const dialog = page.getByRole("dialog", { name: "最近一次调用" });
+        await expect(dialog).toBeVisible();
+        const backdrop = page.locator(".context-usage-backdrop");
+        if (viewport === "desktop1440") {
+          await expect(backdrop).toBeHidden();
+        } else {
+          const before = await backdrop.evaluate((el) => getComputedStyle(el).backgroundColor);
+          await page.mouse.move(5, 5);
+          await expect.poll(() => backdrop.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(before);
+        }
+        await page.screenshot({ path: join(out, `uncollected-${viewport}.png`) });
+        await page.getByRole("button", { name: "关闭上下文详情" }).click();
+        await expect(dialog).toBeHidden();
+        checks.push(`${viewport} uncollected context does not cover or flash the workbench`);
+      }
       if (name === "local-two" && viewport !== "desktop1440") {
         const ring = page.getByRole("button", { name: "上下文用量" });
         await ring.click();

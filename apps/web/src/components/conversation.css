@@ -61,7 +61,7 @@
   font-size: 12px;
 }
 .context-usage { position: relative; flex: none; }
-.context-usage-ring {
+.context-usage .context-usage-ring {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -96,13 +96,19 @@
 .context-usage-popover dd { margin: 0; flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .context-usage-heading { align-items: center; }
 .context-usage-heading button { border: 0; background: transparent; color: #24539a; padding: 4px 6px; border-radius: 6px; }
-.context-usage-backdrop {
+.context-usage > .context-usage-backdrop {
   display: none;
   position: fixed;
   inset: 0;
   z-index: 40;
   border: 0;
   padding: 0;
+  background: #17203333;
+}
+/* The cloud shell has generic button hover styles. A backdrop must keep the
+   same appearance under the pointer and must never become a desktop overlay. */
+.context-usage > .context-usage-backdrop:hover,
+.context-usage > .context-usage-backdrop:focus {
   background: #17203333;
 }
 .conv-composer {
@@ -112,7 +118,7 @@
 }
 @media (max-width: 720px) {
   .conv-column, .conv-composer, .composer-shell, .cw-composer { max-width: 100%; }
-  .context-usage-backdrop { display: block; }
+  .context-usage > .context-usage-backdrop { display: block; }
   .context-usage-popover {
     position: fixed;
     left: 16px;
