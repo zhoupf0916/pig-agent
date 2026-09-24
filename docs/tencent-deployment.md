@@ -113,7 +113,9 @@ Nginx 基于真实连接来源 IP（`$binary_remote_addr`），不信任客户�
 
 ## 网关 DNS 与联网审批
 
-腾讯云部署使用 `NETWORK_DNS_MODE=system`。本地开发平台的 public 模式固定访问 Cloudflare DoH，在本服务器上会超时；不要直接照搬。system 模式仍校验全部返回的 IPv4，拒绝私网、元数据和本机地址，并将 HTTPS 连接固定到验证过的公网 IP。
+当前源码的腾讯云覆盖配置使用 `NETWORK_DNS_MODE=public`、`NETWORK_DNS_PROVIDER=alidns`，固定连接 AliDNS 的公共 IP 并保留 TLS 证书校验。旧 release 使用 system 模式；必须部署新网关并重建 gateway 容器后才生效。Cloudflare DoH 在此主机实测超时，不能直接照搬本地默认值。所有模式仍校验返回的 IPv4，拒绝私网、元数据和本机地址，并将每个新 HTTPS 连接固定到验证过的公网 IP。
+
+排障命令：`NETWORK_DNS_MODE=public NETWORK_DNS_PROVIDER=alidns node --import tsx scripts/probe-network.mjs https://www.qq.com/ https://techcrunch.com/`。该维护探针不走模型，也不是 Agent 工具。输出状态、DNS/连接/读取阶段与错误码，不输出目标正文。目标连接失败与审批失败分开报告；当前出口不能保证所有海外网站可达。详细实测见 [文件工作台与联网修复](file-workbench-network-2026-09-24.md)。
 
 用户批准的是单个 `http_fetch` HTTPS GET，不是开放 shell 网络。审批后失败需重新申请，不会自动复用授权。运维可运行 `VERIFY_ENV=/home/ubuntu/pig-agent/data/cloud-local/stack.env node scripts/verify-approved-network.mjs`，它创建一个独立管理员验收任务，只批准腾讯主页的单次 GET，调用真实模型并保存证据。此验证会消耗少量模型额度，常规回归优先使用模拟模型。
 
@@ -124,3 +126,7 @@ Nginx 基于真实连接来源 IP（`$binary_remote_addr`），不信任客户�
 新增 runner-c / runner-d，节点名 pig-tencent-runner-c / pig-tencent-runner-d。四个节点均已注册、启用、单槽，心跳检查距当前不超过 1 秒，新增节点日志为 Worker pool ready。全局任务并发保持 2，单用户/项目仍为 1；四个节点共享两个执行名额，不等于四任务同时执行。未重启已有 Runner、控制面或数据库。控制面健康检查通过。
 
 恢复为两个节点时先等待新增节点任务完成，再执行 Compose stop runner-c runner-d，并在管理端停用对应节点；不要直接中断执行中的任务。
+
+## 2026-09-24 文件工作台与联网修复
+
+当前 release 为 `20260924-file-workbench`。网关已切换到 AliDNS 加密解析，修复公网地址误拦与笼统错误；真实 TechCrunch 单次审批读取返回 200。控制面和四个 Runner 已更新文件版本编辑，实际完成“生成 → 人工保存 → 下一轮 Runner 读取并更新”。详细证据、限制与截图索引见 [专项记录](file-workbench-network-2026-09-24.md)。数据库备份位于 `backups/file-workbench-20260924/`，旧控制面与 Worker 镜像保留为 `before-file-workbench` 标签。
