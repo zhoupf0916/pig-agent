@@ -1,4 +1,4 @@
-import type { AccountBudget } from "@pig-agent/contracts/cloud";
+import type { AccountBudget, CloudMemoryRecord } from "@pig-agent/contracts/cloud";
 import { ExtensionsPanel } from "../components/ExtensionsPanel";
 import { useEffect, useState, useRef } from "react";
 import { cloudRequest as api } from "./cloud-api";
@@ -255,7 +255,7 @@ export function CloudSettingsPanel() {
   );
 }
 export function CloudMemoryPanel() {
-  const [items, setItems] = useState<Array<{ id: string; content: string }>>(
+  const [items, setItems] = useState<CloudMemoryRecord[]>(
       [],
     ),
     [content, setContent] = useState(""),

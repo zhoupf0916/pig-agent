@@ -18,6 +18,7 @@ const createSchema = z.object({
   tags: z.array(z.string().max(40)).max(12).optional(),
   sessionId: z.string().max(80).nullable().optional(),
   projectId: z.string().max(80).nullable().optional(),
+  expiresAt: z.string().max(40).nullable().optional(),
 });
 
 const patchSchema = z.object({
@@ -26,6 +27,8 @@ const patchSchema = z.object({
   tags: z.array(z.string().max(40)).max(12).nullable().optional(),
   sessionId: z.string().max(80).nullable().optional(),
   projectId: z.string().max(80).nullable().optional(),
+  expiresAt: z.string().max(40).nullable().optional(),
+  revokedAt: z.string().max(40).nullable().optional(),
 });
 
 function fail(err: unknown): { error: string; status: 400 } {

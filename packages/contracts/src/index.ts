@@ -315,6 +315,11 @@ export type MemoryNote = {
   projectId?: string;
   createdAt: string;
   updatedAt: string;
+  source?: "user" | "recap";
+  scope?: "personal" | "session" | "project";
+  stability?: "stable" | "volatile";
+  expiresAt?: string;
+  revokedAt?: string;
 };
 
 export type SearchHitType =

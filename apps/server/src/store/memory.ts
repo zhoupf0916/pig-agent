@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DATA_DIR, ensureDir } from "../config.ts";
+import { selectInjectableMemory } from "@pig-agent/contracts";
 import type { ChatMessage, MemoryKind, MemoryNote, Session } from "../types.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
 
@@ -67,6 +68,11 @@ function normalizeNote(raw: MemoryNote): MemoryNote {
   if (typeof raw.projectId === "string" && raw.projectId.trim()) {
     note.projectId = raw.projectId.trim();
   }
+  if (raw.source === "user" || raw.source === "recap") note.source = raw.source;
+  if (raw.scope === "personal" || raw.scope === "session" || raw.scope === "project") note.scope = raw.scope;
+  if (raw.stability === "stable" || raw.stability === "volatile") note.stability = raw.stability;
+  if (typeof raw.expiresAt === "string" && raw.expiresAt.trim()) note.expiresAt = raw.expiresAt.trim();
+  if (typeof raw.revokedAt === "string" && raw.revokedAt.trim()) note.revokedAt = raw.revokedAt.trim();
   return note;
 }
 
@@ -137,6 +143,7 @@ export async function createMemory(input: {
   tags?: string[];
   sessionId?: string | null;
   projectId?: string | null;
+  expiresAt?: string | null;
 }): Promise<MemoryNote> {
   const text = input.text.trim();
   if (!text) throw new Error("text is required");
@@ -156,6 +163,13 @@ export async function createMemory(input: {
   const projectId = optionalId(input.projectId);
   if (sessionId) note.sessionId = sessionId;
   if (projectId) note.projectId = projectId;
+  note.source = kind === "recap" ? "recap" : "user";
+  note.stability = kind === "recap" ? "volatile" : "stable";
+  note.scope = sessionId ? "session" : projectId ? "project" : "personal";
+  if (typeof input.expiresAt === "string" && input.expiresAt.trim()) {
+    if (!Number.isFinite(Date.parse(input.expiresAt))) throw new Error("expiresAt 无法识别");
+    note.expiresAt = input.expiresAt.trim();
+  }
   return writeNote(note);
 }
 
@@ -167,6 +181,8 @@ export async function updateMemory(
     sessionId?: string | null;
     projectId?: string | null;
     kind?: MemoryKind;
+    expiresAt?: string | null;
+    revokedAt?: string | null;
   },
 ): Promise<MemoryNote | null> {
   const note = await getMemory(id);
@@ -199,6 +215,16 @@ export async function updateMemory(
     if (projectId) note.projectId = projectId;
     else delete note.projectId;
   }
+  if (patch.expiresAt === null) delete note.expiresAt;
+  else if (typeof patch.expiresAt === "string") {
+    if (!Number.isFinite(Date.parse(patch.expiresAt))) throw new Error("expiresAt 无法识别");
+    note.expiresAt = patch.expiresAt.trim();
+  }
+  if (patch.revokedAt === null) delete note.revokedAt;
+  else if (typeof patch.revokedAt === "string" && patch.revokedAt.trim()) note.revokedAt = patch.revokedAt.trim();
+  if (note.sessionId) note.scope = "session";
+  else if (note.projectId) note.scope = "project";
+  else if (note.scope !== "session" && note.scope !== "project") note.scope = "personal";
   return writeNote(note);
 }
 
@@ -213,7 +239,8 @@ export type MemoryRefField = "sessionId" | "projectId";
 
 /**
  * Unbind memory notes that still name a deleted session / project.
- * Same field-null as PATCH; text / tags / the other ref stay put.
+ * Preserve the note for inspection, but revoke injection rather than widening
+ * scope when its originating session/project disappears (including legacy notes).
  */
 export async function clearMemoryRefs(field: MemoryRefField, id: string): Promise<void> {
   const target = id.trim();
@@ -221,7 +248,7 @@ export async function clearMemoryRefs(field: MemoryRefField, id: string): Promis
   const notes = await listMemory(field === "sessionId" ? { sessionId: target } : { projectId: target });
   for (const note of notes) {
     if (note[field] !== target) continue;
-    await updateMemory(note.id, { [field]: null });
+    await updateMemory(note.id, { [field]: null, revokedAt: nowIso() });
   }
 }
 
@@ -284,7 +311,7 @@ export function clipPinForPrompt(text: string): string {
 export function formatMemoryPinBlock(pins: string[]): string {
   const lines = pins.map(clipPinForPrompt).filter(Boolean).slice(0, MAX_INJECT_PINS);
   if (lines.length === 0) return "";
-  return `${MEMORY_PIN_HEADING}\n${lines.map((line) => `- ${line}`).join("\n")}`;
+  return `${MEMORY_PIN_HEADING}\n这些是用户整理的稳定偏好，不是当前文件或最新更正。引用文件前必须重新读取。助手猜测和工具输出不会自动变成永久事实。\n${lines.map((line) => `- ${line}`).join("\n")}`;
 }
 
 /** Top-N recent pins visible to this session (global + matching session/project). */
@@ -292,7 +319,12 @@ export async function listRecentPinTexts(
   ctx: { sessionId?: string; projectId?: string; limit?: number } = {},
 ): Promise<string[]> {
   const limit = ctx.limit ?? MAX_INJECT_PINS;
-  const pins = (await listMemory({ kind: "pin" })).filter((note) => isPinInScope(note, ctx));
+  const pins = selectInjectableMemory(await listMemory({ kind: "pin" }), {
+    now: new Date().toISOString(),
+    sessionId: ctx.sessionId,
+    projectId: ctx.projectId,
+    memoryEnabled: true,
+  });
   return pins
     .slice(0, Math.max(1, Math.min(MAX_INJECT_PINS, limit)))
     .map((note) => note.text)

@@ -7,6 +7,7 @@ import {
   clipPinForPrompt,
   formatMemoryPinBlock,
   isPinInScope,
+  listRecentPinTexts,
   MAX_PIN_INJECT_CHARS,
 } from "./memory.ts";
 import { saveSession } from "./sessions.ts";
@@ -221,6 +222,35 @@ describe("memory API", () => {
     expect(bare).not.toContain(MEMORY_PIN_HEADING);
 
     await app.request(`/api/memory/${created.id}`, { method: "DELETE" });
+  });
+
+  it("does not inject an expired or revoked pin", async () => {
+    const expired = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: `${MARKER}-expired`, expiresAt: "2000-01-01T00:00:00.000Z" }),
+      }),
+    );
+    const live = await json<MemoryNote>(
+      await app.request("/api/memory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: `${MARKER}-live` }),
+      }),
+    );
+    const texts = await listRecentPinTexts({});
+    expect(texts.some((text) => text.includes(`${MARKER}-expired`))).toBe(false);
+    expect(texts.some((text) => text.includes(`${MARKER}-live`))).toBe(true);
+    const revoked = await app.request(`/api/memory/${live.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revokedAt: "2026-09-24T00:00:00.000Z" }),
+    });
+    expect(revoked.status).toBe(200);
+    expect((await listRecentPinTexts({})).some((text) => text.includes(`${MARKER}-live`))).toBe(false);
+    await app.request(`/api/memory/${expired.id}`, { method: "DELETE" });
+    await app.request(`/api/memory/${live.id}`, { method: "DELETE" });
   });
 });
 

@@ -17,6 +17,19 @@ export const CLOUD_ABORT_PATH = (runId: string) => `/v1/runs/${runId}/abort`;
 export const CLOUD_FOLLOW_UP_PATH = (runId: string) =>
   `/v1/runs/${runId}/follow-ups`;
 
+/** Account-owned memory metadata exposed by GET /v1/memory; no model credentials. */
+export type CloudMemoryRecord = {
+  id: string;
+  content: string;
+  created_at: string;
+  updated_at?: string;
+  source?: "user" | "recap" | "agent";
+  scope?: "personal" | "project" | "session";
+  stability?: "stable" | "volatile";
+  expires_at?: string | null;
+  revoked_at?: string | null;
+};
+
 /** Non-secret worker/local prep hints. Never include API keys or .env values. */
 export type CloudInstallHints = {
   install?: string;
