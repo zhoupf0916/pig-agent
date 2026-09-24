@@ -18,7 +18,7 @@ export function seatbeltProfile(root: string, temporary: string, network = false
 (allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo") (global-name "com.apple.system.logger"))
 (allow file-read* (literal "/"))
 (allow file-read-metadata)
-(allow file-read* ${["/System", "/usr", "/bin", "/sbin", "/Library/Apple", "/opt/homebrew", "/private/etc/ssl", "/private/etc/localtime", "/dev/null", "/dev/urandom", "/dev/random", root, temporary, ...trustedReadPaths].map(p => `(subpath ${quote(p)})`).join(" ")})
+(allow file-read* ${["/System", "/usr", "/bin", "/sbin", "/Library/Apple", "/Library/Developer/CommandLineTools", "/opt/homebrew", "/private/etc/ssl", "/private/etc/localtime", "/dev/null", "/dev/urandom", "/dev/random", root, temporary, ...trustedReadPaths].map(p => `(subpath ${quote(p)})`).join(" ")})
 (allow file-write* (subpath ${quote(root)}) (subpath ${quote(temporary)}) (literal "/dev/null"))
 ${network ? "(allow network-outbound)\n(allow system-socket)" : ""}
 `;
