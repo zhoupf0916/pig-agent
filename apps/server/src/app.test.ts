@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { resolve } from "node:path";
 import { createApp } from "./app.ts";
-import { loadSettings } from "./store/settings.ts";
+import { loadSettings, saveSettings } from "./store/settings.ts";
+
+const sampleWorkspace = resolve(process.cwd(), "sample-workspace");
 
 describe("HTTP API", () => {
   const app = createApp();
@@ -12,16 +15,24 @@ describe("HTTP API", () => {
   });
 
   it("lists sample workspace files", async () => {
-    const res = await app.request("/api/workspace/tree");
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { tree: { children?: Array<{ name: string }> } };
-    const names = (body.tree.children ?? []).map((c) => c.name);
-    expect(names).toContain("notes");
-    expect(names).toContain("drafts");
+    const before = await loadSettings();
+    await saveSettings({ workspaceRoot: sampleWorkspace });
+    try {
+      const res = await app.request("/api/workspace/tree");
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { tree: { children?: Array<{ name: string }> } };
+      const names = (body.tree.children ?? []).map((c) => c.name);
+      expect(names).toContain("notes");
+      expect(names).toContain("drafts");
+    } finally {
+      await saveSettings({ workspaceRoot: before.workspaceRoot });
+    }
   });
 
   it("GET /api/workspace/file is a read-only snapshot of an existing sandbox path", async () => {
     const before = await loadSettings();
+    await saveSettings({ workspaceRoot: sampleWorkspace });
+    try {
     const res = await app.request("/api/workspace/file?path=notes/meeting-2026-03-14.md");
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -37,8 +48,11 @@ describe("HTTP API", () => {
     expect(typeof body.size).toBe("number");
     expect(JSON.stringify(body)).not.toMatch(/llmApiKey|cloudToken|DEEPSEEK_API_KEY|sk-|Bearer /);
     const after = await loadSettings();
-    expect(after).toEqual(before);
+    expect(after).toEqual({ ...before, workspaceRoot: sampleWorkspace });
     expect(after.runtime).toBe("pig");
+    } finally {
+      await saveSettings({ workspaceRoot: before.workspaceRoot });
+    }
   });
 
   it("GET /api/workspace/tree is a read-only snapshot (no secrets, no settings write)", async () => {

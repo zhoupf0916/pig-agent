@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { unlink, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createApp } from "../app.ts";
-import { PROJECT_ROOT } from "../config.ts";
 import { nowIso } from "../util.ts";
 import { saveSession } from "./sessions.ts";
+import { loadSettings } from "./settings.ts";
 import { classifyAssetPreview } from "./asset-preview.ts";
 import { recentSavableArtifactPaths } from "./artifacts-to-project.ts";
 import type { Session } from "../types.ts";
@@ -149,7 +149,8 @@ describe("project asset preview / download / handoff", () => {
       }),
     );
     const rel = `handoff-note-${session.id.slice(-6)}.md`;
-    const abs = resolve(PROJECT_ROOT, "sample-workspace", rel);
+    const abs = join((await loadSettings()).workspaceRoot, rel);
+    await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, "handoff body\n", "utf8");
     session.artifacts = [{ path: rel, action: "created", updatedAt: nowIso() }];
     await saveSession(session);

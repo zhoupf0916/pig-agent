@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { readFile, unlink, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createApp } from "../app.ts";
-import { PROJECT_ROOT } from "../config.ts";
 import { nowIso } from "../util.ts";
 import { saveSession } from "./sessions.ts";
+import { loadSettings } from "./settings.ts";
 import { assetDiskPath, getProject, uniqueAssetFilename } from "./projects.ts";
 import type { Session } from "../types.ts";
+
+async function seedWorkspace(relativePath: string, content: string): Promise<string> {
+  const root = (await loadSettings()).workspaceRoot;
+  const abs = join(root, relativePath);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, content, "utf8");
+  return abs;
+}
 
 async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
@@ -40,6 +48,7 @@ describe("artifacts → project assets", () => {
   const app = createApp();
 
   it("saves a bound session artifact and overwrites the same path", async () => {
+    await seedWorkspace("notes/todo.txt", "[ ] organize loose files\n");
     const { projectId, sessionId } = await seedBoundSession(app, [
       { path: "notes/todo.txt", action: "modified", updatedAt: nowIso() },
     ]);
@@ -76,6 +85,7 @@ describe("artifacts → project assets", () => {
   });
 
   it("resolves a unique basename", async () => {
+    await seedWorkspace("notes/todo.txt", "[ ] organize loose files\n");
     const { sessionId } = await seedBoundSession(app, [
       { path: "notes/todo.txt", action: "modified", updatedAt: nowIso() },
     ]);
@@ -88,8 +98,8 @@ describe("artifacts → project assets", () => {
   });
 
   it("versions filenames when two artifact paths share a basename", async () => {
-    const extra = resolve(PROJECT_ROOT, "sample-workspace/drafts/todo.txt");
-    await writeFile(extra, "drafts copy\n", "utf8");
+    const extra = await seedWorkspace("drafts/todo.txt", "drafts copy\n");
+    await seedWorkspace("notes/todo.txt", "[ ] organize loose files\n");
     try {
       const { projectId, sessionId } = await seedBoundSession(app, [
         { path: "notes/todo.txt", action: "modified", updatedAt: nowIso() },
@@ -138,6 +148,8 @@ describe("artifacts → project assets", () => {
   });
 
   it("save-all copies existing files and skips deleted", async () => {
+    await seedWorkspace("notes/todo.txt", "[ ] organize loose files\n");
+    await seedWorkspace("drafts/idea.md", "idea\n");
     const { projectId, sessionId } = await seedBoundSession(app, [
       { path: "notes/todo.txt", action: "modified", updatedAt: nowIso() },
       { path: "drafts/idea.md", action: "created", updatedAt: nowIso() },

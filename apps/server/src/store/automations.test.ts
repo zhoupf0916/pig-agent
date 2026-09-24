@@ -226,6 +226,12 @@ describe("local automations", () => {
       session.artifacts = [{ path: "notes/todo.txt", action: "modified", updatedAt: nowIso() }];
       return session;
     });
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const { dirname, join } = await import("node:path");
+    const { loadSettings } = await import("./settings.ts");
+    const todo = join((await loadSettings()).workspaceRoot, "notes/todo.txt");
+    await mkdir(dirname(todo), { recursive: true });
+    await writeFile(todo, "[ ] organize loose files\n", "utf8");
     const project = await json<{ id: string }>(
       await app.request("/api/projects", {
         method: "POST",
