@@ -32,7 +32,8 @@ describe("cloud capability library", () => {
       registerCapabilityRoutes(app);
       const response = await app.request("/v1/skills");
       expect(response.status).toBe(200);
-      expect((await response.json()).skills.map((s: { id: string }) => s.id)).toEqual(["demo"]);
+      const result = await response.json() as { skills: { id: string }[] };
+      expect(result.skills.map((s) => s.id)).toEqual(["demo"]);
     } finally {
       if (previous === undefined) delete process.env.CLOUD_SKILLS_DIR;
       else process.env.CLOUD_SKILLS_DIR = previous;
