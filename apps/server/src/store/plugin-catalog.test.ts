@@ -2,6 +2,18 @@ import { describe, it, expect } from "vitest";
 import { createApp } from "../app.ts";
 import { pluginSkills, pluginExperts } from "./plugins.ts";
 describe("built-in extension catalog", () => {
+  it.each(['idea-studio', 'sprint-planner', 'ux-lab', 'delight-design', 'storyboard-studio', 'game-lab'])("installs curated pack %s with its source, license and usable expert skill binding", async id => {
+    const app = createApp();
+    expect((await app.request(`/api/plugins/catalog/${id}`, {method: 'POST'})).status).toBe(201);
+    expect((await app.request(`/api/plugins/${id}`, {method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled: true})})).status).toBe(200);
+    const selected = (await pluginExperts()).find(e => e.id === `plugin_${id}_${id}-expert`);
+    const playbook = (await pluginSkills()).find(s => s.name === selected?.skillIds[0]);
+    expect(playbook?.body).toContain('https://github.com/');
+    expect(playbook?.body).toContain('MIT License');
+    expect(playbook?.body).toContain('交付');
+    await app.request(`/api/plugins/${id}`, {method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({enabled:false})});
+    expect((await app.request(`/api/plugins/${id}`, {method:'DELETE'})).status).toBe(200);
+  });
   it("installs a catalog pack disabled and makes its expert and skills available only while enabled", async () => {
     const app = createApp();
     const catalog = await app.request("/api/plugins/catalog");
