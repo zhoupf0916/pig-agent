@@ -1,3 +1,4 @@
+import { networkFailure } from "./network-errors.ts";
 import { networkRequestSchema, fetchApprovedNetwork } from "./network-fetch.ts";
 import { streamSSE } from "hono/streaming";
 import { Hono } from "hono";
@@ -107,14 +108,13 @@ app.post("/network/fetch", async (c) => {
   }, 500);
   try {
     return c.json(await fetchApprovedNetwork(parsed.data, signal));
-  } catch {
-    return c.json(
-      {
-        error:
-          "网络访问失败、已取消或超时。该单次授权已使用；重试需要重新申请。",
-      },
-      502,
-    );
+  } catch (error) {
+    const failure = networkFailure(error, "connect", signal);
+    return c.json({
+      error: `${failure.message} 此次网络审批已经通过并使用；重新请求需要再次批准。`,
+      code: failure.code,
+      phase: failure.phase,
+    }, 502);
   } finally {
     clearInterval(timer);
   }
