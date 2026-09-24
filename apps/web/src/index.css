@@ -524,7 +524,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg-app);
+  background: #fff;
 }
 .transcript {
   flex: 1;
@@ -532,6 +532,7 @@ button:disabled {
   overflow: auto;
   padding: 28px clamp(18px, 3vw, 48px);
   scrollbar-gutter: stable;
+  background: #fff;
 }
 .conversation.is-empty .transcript {
   display: flex;
@@ -583,15 +584,79 @@ button:disabled {
   text-decoration: underline;
 }
 .composer-shell {
-  padding: 16px 28px 18px;
+  padding: 12px 28px 16px;
+  background: #fff;
 }
 .composer-box {
   padding: 14px 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  box-shadow: 0 2px 5px #00000005;
-  background: var(--bg-panel);
+  border: 1px solid #e6ebf2;
+  border-radius: 20px;
+  box-shadow: none;
+  background: #fff;
 }
+.composer-layers {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 10px 12px 8px;
+}
+.composer-layers .skill-composer-input { width: 100%; min-width: 0; }
+.composer-field {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  padding: 8px 4px 4px;
+  color: #172033;
+}
+.composer-field:focus { outline: none; }
+.composer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 6px;
+  border-top: 1px solid #eef2f6;
+}
+.composer-toolbar-note {
+  color: #8b95a5;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.composer-toolbar .context-usage { margin-left: auto; }
+.conv-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.conv-meta .local-workbench { display: contents; }
+.conv-meta .local-workbench > button {
+  width: auto;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid #e6ebf2;
+  border-radius: 999px;
+  background: #fff;
+}
+.conv-meta .approval-card,
+.conv-meta .notice { flex: 1 0 100%; }
+.conv-meta .step-summary {
+  width: auto;
+  border: 0;
+  padding: 0;
+}
+.conv-meta .step-summary summary {
+  width: auto;
+  padding: 4px 10px;
+  border: 1px solid #e6ebf2;
+  border-radius: 999px;
+  background: #fff;
+}
+.conv-meta .step-summary ol { flex: 1 0 100%; }
 .composer-box:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
@@ -605,7 +670,6 @@ button:disabled {
 }
 .new-task-center .composer-box {
   min-height: 134px;
-  align-items: flex-end;
 }
 .new-task-center .composer-box textarea {
   align-self: stretch;

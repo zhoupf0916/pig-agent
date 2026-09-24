@@ -1,4 +1,8 @@
 import { SkillComposerInput, type SkillChoice } from "./SkillComposerInput";
+import { TurnTranscript } from "./TurnTranscript";
+import { ContextUsageButton } from "./ContextUsageButton";
+import { buildTurns, mergeTools } from "../lib/conversation-turns";
+import "./conversation.css";
 import { InlineRemoteActivity } from "./InlineRemoteActivity";
 import type { RemoteActivity } from "../lib/remote-activity";
 import { WorkbenchPanel } from "./WorkbenchPanel";
@@ -8,19 +12,16 @@ import {
   FileText,
   FolderOpen,
   Sparkles,
-  Check,
-  Loader2,
   Pin,
   Play,
   Square,
   StickyNote,
-  Terminal,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { streamingStatusLabel } from "../lib/create-run-progress";
-import { formatDuration, summarizeArgs, toolLabel } from "../lib/format";
+import { toolLabel } from "../lib/format";
 import type {
   ChatMessage,
   ExecutionSurface,
@@ -32,7 +33,6 @@ import type {
   TeamRunMember,
 } from "../types";
 import { HandoffDialog } from "./HandoffDialog";
-import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
@@ -162,10 +162,7 @@ export function ChatPanel({
     (m) => m.role !== "system" && !m.content.startsWith("[harness]"),
   );
   const tools = useMemo(
-    () =>
-      liveTools.length > 0
-        ? liveTools
-        : toolsFromMessages(session?.messages ?? []),
+    () => mergeTools(toolsFromMessages(session?.messages ?? []), liveTools),
     [liveTools, session?.messages],
   );
 
@@ -189,6 +186,7 @@ export function ChatPanel({
       onDraft={onDraft}
       onSend={onSend}
       onStop={onStop}
+      contextUsage={session?.lastContextUsage}
     />
   );
   return (
@@ -389,58 +387,43 @@ export function ChatPanel({
         <div
           className={`conversation-content mx-auto flex w-full max-w-3xl flex-col gap-4 ${empty ? "empty-controls" : ""}`}
         >
-          {pinnedTeam && teamMembers.length > 0 && (
-            <TeamPipeline
-              teamName={session?.teamRun?.teamName ?? pinnedTeam.name}
-              members={teamMembers}
-              status={session?.teamRun?.status}
-            />
-          )}
-          <StepStrip steps={session?.steps ?? []} />
-          {session && executionSurface?.kind !== "cloud-remote" && (
-            <WorkbenchPanel
-              key={session.id}
-              sessionId={session.id}
-              remote={false}
-              remoteRequireApproval={session.remoteRequireApproval}
-              onOpenRemote={onOpenRemote}
-              running={streaming}
-              onResume={onResume}
-              onRefresh={onRefresh}
-              onDraft={onDraft}
-            />
+          {(pinnedTeam || (session?.steps.length ?? 0) > 0 || (session && executionSurface?.kind !== "cloud-remote")) && (
+            <div className="conv-meta">
+              {pinnedTeam && teamMembers.length > 0 && (
+                <TeamPipeline
+                  teamName={session?.teamRun?.teamName ?? pinnedTeam.name}
+                  members={teamMembers}
+                  status={session?.teamRun?.status}
+                />
+              )}
+              <StepStrip steps={session?.steps ?? []} />
+              {session && executionSurface?.kind !== "cloud-remote" && (
+                <WorkbenchPanel
+                  key={session.id}
+                  sessionId={session.id}
+                  remote={false}
+                  remoteRequireApproval={session.remoteRequireApproval}
+                  onOpenRemote={onOpenRemote}
+                  running={streaming}
+                  onResume={onResume}
+                  onRefresh={onRefresh}
+                  onDraft={onDraft}
+                />
+              )}
+            </div>
           )}
 
-          {compactToolHistory(interleave(visible, tools)).map((item) =>
-            item.kind === "message" ? (
-              <MessageBlock key={item.message.id} message={item.message} />
-            ) : item.kind === "tool-group" ? (
-              <details
-                key={item.tools[0]!.id}
-                className="rounded-btn border border-ink-300 p-3 text-sm text-ink-600"
-              >
-                <summary className="cursor-pointer">
-                  已完成 {item.tools.length} 项操作{" "}
-                  <span className="text-xs">· 展开查看</span>
-                </summary>
-                <div className="mt-3 space-y-2">
-                  {item.tools.map((tool) => (
-                    <ToolCard key={tool.id} tool={tool} />
-                  ))}
-                </div>
-              </details>
-            ) : (
-              <ToolCard
-                key={item.tool.id}
-                tool={item.tool}
-                awaitingApproval={remoteActivity?.approvals.some(
-                  (a) =>
-                    !item.tool.done &&
-                    a.state === "pending" &&
-                    a.call_id === item.tool.id,
-                )}
-              />
-            ),
+          {!empty && (
+            <TurnTranscript
+              turns={buildTurns({
+                messages: session?.messages ?? [],
+                tools,
+                toolTitle: toolLabel,
+                streaming: streaming || session?.status === "running",
+                pendingApproval: Boolean(remoteActivity?.approvals.some((item) => item.state === "pending")),
+                lastError: session?.status === "error" ? session.lastError : undefined,
+              })}
+            />
           )}
           {!empty && session?.remoteRunId && remoteActivity && (
             <InlineRemoteActivity
@@ -450,15 +433,8 @@ export function ChatPanel({
               onOpenDetails={onOpenRemote || (() => {})}
             />
           )}
-          {streaming && tools.every((t) => t.done) && (
-            <div className="flex items-center gap-2 text-xs text-ink-500">
-              <Loader2 size={14} className="animate-spin text-accent" />
-              {session?.messages.some(
-                (message) => message.id === "stream_live" && message.content,
-              )
-                ? "正在生成回复…"
-                : streamingStatusLabel(session?.steps ?? [])}
-            </div>
+          {streaming && tools.every((tool) => tool.done) && !session?.messages.some((message) => message.id === "stream_live" && message.content) && (
+            <p className="conv-current" role="status">{streamingStatusLabel(session?.steps ?? [])}</p>
           )}
           {!!session?.artifacts.length && !streaming && (
             <button className="result-summary" onClick={onOpenArtifacts}>
@@ -556,83 +532,6 @@ function toolsFromMessages(messages: ChatMessage[]): LiveTool[] {
   return cards;
 }
 
-function interleave(
-  messages: ChatMessage[],
-  tools: LiveTool[],
-): Array<
-  { kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }
-> {
-  const used = new Set<string>();
-  const out: Array<
-    { kind: "message"; message: ChatMessage } | { kind: "tool"; tool: LiveTool }
-  > = [];
-  for (const message of messages) {
-    if (message.role === "tool") continue;
-    if (
-      message.role === "assistant" &&
-      !message.content &&
-      message.toolCalls?.length
-    ) {
-      for (const tc of message.toolCalls) {
-        const tool = tools.find((t) => t.id === tc.id);
-        if (tool) {
-          out.push({ kind: "tool", tool });
-          used.add(tool.id);
-        }
-      }
-      continue;
-    }
-    if (message.role === "assistant" && message.toolCalls?.length) {
-      for (const tc of message.toolCalls) {
-        const tool = tools.find((t) => t.id === tc.id);
-        if (tool) {
-          out.push({ kind: "tool", tool });
-          used.add(tool.id);
-        }
-      }
-    }
-    if (
-      message.role === "user" ||
-      (message.role === "assistant" && message.content)
-    ) {
-      out.push({ kind: "message", message });
-    }
-  }
-  for (const tool of tools) {
-    if (!used.has(tool.id)) out.push({ kind: "tool", tool });
-  }
-  return out;
-}
-
-function compactToolHistory(items: ReturnType<typeof interleave>) {
-  const result: Array<
-    (typeof items)[number] | { kind: "tool-group"; tools: LiveTool[] }
-  > = [];
-  let completed: LiveTool[] = [];
-  const flush = () => {
-    if (completed.length === 1)
-      result.push({ kind: "tool", tool: completed[0]! });
-    else if (completed.length > 1)
-      result.push({ kind: "tool-group", tools: completed });
-    completed = [];
-  };
-  for (const item of items) {
-    if (
-      item.kind === "tool" &&
-      item.tool.done &&
-      item.tool.ok &&
-      !/^(待批准|前序变更等待|undone:|rejected:)/.test(item.tool.output || "")
-    )
-      completed.push(item.tool);
-    else {
-      flush();
-      result.push(item);
-    }
-  }
-  flush();
-  return result;
-}
-
 function TeamPipeline({
   teamName,
   members,
@@ -647,24 +546,16 @@ function TeamPipeline({
   return (
     <div className="border-b border-ink-400 bg-panel px-6 py-3">
       <div className="mb-2 flex items-center justify-between text-meta text-ink-600">
-        <span className="uppercase tracking-[0.16em]">
-          小队流水线 · {teamName}
-        </span>
+        <span className="uppercase tracking-[0.16em]">小队流水线 · {teamName}</span>
         <span>
           {done}/{members.length} 完成
           {running ? ` · ${running} 进行中` : ""}
-          {status && status !== "idle" && status !== "running"
-            ? ` · ${status}`
-            : ""}
+          {status && status !== "idle" && status !== "running" ? ` · ${status}` : ""}
         </span>
       </div>
       <ol className="flex flex-wrap gap-2">
         {members.map((member, i) => (
-          <li
-            key={`${member.expertId}-${i}`}
-            title={member.detail}
-            className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(member.status === "cancelled" ? "error" : member.status)}`}
-          >
+          <li key={`${member.expertId}-${i}`} title={member.detail} className={`flex items-center gap-2 rounded-full border px-2.5 py-1 text-meta ${tone(member.status === "cancelled" ? "error" : member.status)}`}>
             <span className="font-mono text-[12px] text-ink-600">{i + 1}</span>
             {member.name}
           </li>
@@ -678,14 +569,11 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
   if (steps.length === 0) return null;
   const running = steps.filter((s) => s.status === "running").length;
   const done = steps.filter((s) => s.status === "done").length;
-  const pending = steps.filter((s) => s.status === "pending").length;
   return (
     <details className="step-summary">
       <summary>
         <span>执行步骤</span>
-        <span>
-          {done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}
-        </span>
+        <span>{done}/{steps.length} 完成{running ? ` · ${running} 进行中` : ""}</span>
       </summary>
       <ol>
         {steps.map((step, i) => (
@@ -700,111 +588,10 @@ function StepStrip({ steps }: { steps: PlanStep[] }) {
 }
 
 function tone(status: PlanStep["status"]): string {
-  if (status === "running")
-    return "border-accent bg-accent-soft text-accent-mute";
+  if (status === "running") return "border-accent bg-accent-soft text-accent-mute";
   if (status === "done") return "border-success bg-success-soft text-success";
   if (status === "error") return "border-danger bg-danger-soft text-danger";
   return "border-ink-400 bg-panel text-ink-700";
-}
-
-function MessageBlock({ message }: { message: ChatMessage }) {
-  if (message.role === "tool") return null;
-  if (message.content.startsWith("[team]")) {
-    return (
-      <div className="flex justify-center">
-        <div className="rounded-full border border-accent bg-accent-soft px-3 py-1 text-meta text-accent-mute">
-          {message.content.replace(/^\[team\]\s*/, "")}
-        </div>
-      </div>
-    );
-  }
-  const mine = message.role === "user";
-  return (
-    <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`message-body ${mine ? "from-user" : "from-agent"}`}
-        data-streaming={message.id === "stream_live" ? "true" : undefined}
-        aria-busy={message.id === "stream_live" || undefined}
-      >
-        {mine ? (
-          <div className="whitespace-pre-wrap">{message.content}</div>
-        ) : (
-          <MarkdownView
-            text={(message.content || " ").replace(
-              "请打开「远端运行记录」审批",
-              "请在下方审批卡片中确认",
-            )}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ToolCard({
-  tool,
-  awaitingApproval = false,
-}: {
-  tool: LiveTool;
-  awaitingApproval?: boolean;
-}) {
-  const summary = summarizeArgs(tool.arguments);
-  const awaitingReview =
-    awaitingApproval ||
-    tool.output?.startsWith("待批准") ||
-    tool.output?.startsWith("前序变更等待");
-  const disposition = awaitingReview
-    ? "待批准"
-    : tool.output?.startsWith("undone:")
-      ? "已撤销"
-      : tool.output?.startsWith("rejected:")
-        ? "已拒绝"
-        : undefined;
-  return (
-    <details
-      className="rounded-xl border border-ink-300 bg-panel"
-      open={tool.done && tool.ok === false}
-    >
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-meta text-ink-700">
-        <Terminal size={13} className="text-accent-mute" />
-        <span className="font-medium text-ink-800">{toolLabel(tool.name)}</span>
-        <span className="truncate text-ink-600">{summary}</span>
-        <span className="ml-auto flex items-center gap-2 text-meta uppercase tracking-wider">
-          {tool.durationMs !== undefined && (
-            <span className="normal-case text-ink-600">
-              {formatDuration(tool.durationMs)}
-            </span>
-          )}
-          {!tool.done && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-1.5 py-0.5 font-medium text-accent-mute">
-              <Loader2 size={11} className="animate-spin" />
-              {awaitingApproval ? "待批准" : "进行中"}
-            </span>
-          )}
-          {tool.done && disposition && (
-            <span className="rounded-full bg-warning-soft px-2 py-0.5 text-warning">
-              {disposition}
-            </span>
-          )}
-          {tool.done && tool.ok && !disposition && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-1.5 py-0.5 font-medium text-success">
-              <Check size={11} />
-              成功
-            </span>
-          )}
-          {tool.done && !tool.ok && !disposition && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 font-medium text-danger">
-              <X size={11} />
-              失败
-            </span>
-          )}
-        </span>
-      </summary>
-      <pre className="max-h-56 overflow-auto border-t border-ink-400 bg-ink-100 px-3 py-2 font-mono text-[12px] text-ink-800">
-        {tool.done ? tool.output : JSON.stringify(tool.arguments, null, 2)}
-      </pre>
-    </details>
-  );
 }
 
 function Composer({
@@ -816,6 +603,7 @@ function Composer({
   onDraft,
   onSend,
   onStop,
+  contextUsage,
 }: {
   skills: SkillChoice[];
   selectedSkillIds: string[];
@@ -827,6 +615,7 @@ function Composer({
   onDraft: (v: string) => void;
   onSend: () => void;
   onStop: () => void;
+  contextUsage?: import("@pig-agent/contracts").ContextCallSnapshot;
 }) {
   const {
     picker,
@@ -912,19 +701,7 @@ function Composer({
           e.target.value = "";
         }}
       />
-      <div className="composer-box mx-auto flex max-w-3xl items-end gap-3 rounded-card border border-ink-400 bg-panel px-3 py-2 shadow-panel">
-        {available && (
-          <button
-            type="button"
-            className="btn-quiet mb-1"
-            aria-label="添加文件"
-            title="添加文件，每个不超过5MB；也可拖拽或粘贴截图"
-            disabled={disabled || streaming || blocked}
-            onClick={() => picker.current?.click()}
-          >
-            <Plus size={20} />
-          </button>
-        )}
+      <div className="composer-box composer-layers mx-auto max-w-3xl">
         <SkillComposerInput
           skills={skills}
           selectedIds={selectedSkillIds}
@@ -962,8 +739,23 @@ function Composer({
                 onSend();
             }
           }}
-          className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-body text-ink-800 placeholder:text-ink-500 disabled:cursor-not-allowed disabled:text-ink-500"
+          className="composer-field"
         />
+        <div className="composer-toolbar">
+        {available && (
+          <button
+            type="button"
+            className="btn-quiet"
+            aria-label="添加文件"
+            title="添加文件，每个不超过5MB；也可拖拽或粘贴截图"
+            disabled={disabled || streaming || blocked}
+            onClick={() => picker.current?.click()}
+          >
+            <Plus size={18} />
+          </button>
+        )}
+        <span className="composer-toolbar-note">输入 / 选择技能</span>
+        <ContextUsageButton usage={contextUsage} />
         {streaming ? (
           <button
             type="button"
@@ -988,6 +780,7 @@ function Composer({
             <ArrowUp size={18} />
           </button>
         )}
+        </div>
       </div>
       <p className="mx-auto mt-2 max-w-3xl text-meta text-ink-500">
         Enter 发送 · Shift+Enter 换行{available ? " · 拖拽文件或粘贴截图" : ""}

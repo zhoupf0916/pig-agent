@@ -770,6 +770,10 @@ export function App() {
         );
         return;
       }
+      if (event.type === "context_usage") {
+        setSession((prev) => (prev ? { ...prev, lastContextUsage: event.usage } : prev));
+        return;
+      }
       if (event.type === "team_run") {
         setSession((prev) =>
           prev ? { ...prev, teamRun: event.teamRun } : prev,

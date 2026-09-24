@@ -1,4 +1,10 @@
 import { FileEditor } from "../components/FileEditor";
+import type { CloudConversationMessage } from "@pig-agent/contracts/cloud";
+import { TurnTranscript } from "../components/TurnTranscript";
+import { ContextUsageButton } from "../components/ContextUsageButton";
+import { buildTurns, toolsFromEvents } from "../lib/conversation-turns";
+import { presentContextUsage, type ContextCallSnapshot } from "@pig-agent/contracts";
+import "../components/conversation.css";
 import { SkillComposerInput } from "../components/SkillComposerInput";
 import { createTokenBatch } from "../lib/token-batch";
 import { ApprovalPreview } from "../components/ApprovalPreview";
@@ -48,12 +54,7 @@ import "./cloud-workspace.css";
 
 type WorkspaceProject = CloudProject;
 type ProjectWorkspace = CloudProjectWorkspace;
-type Message = {
-  id: string;
-  role: string;
-  content: string;
-  author?: { id: string; name: string };
-};
+type Message = CloudConversationMessage;
 type Conversation = {
   id: string;
   title: string;
@@ -65,13 +66,14 @@ type Conversation = {
 type Run = {
   skillIds?: string[];
   attachments?: Attachment[];
+  userMessageId?: string;
   id: string;
   state: string;
   prompt: string;
   error?: string;
   author?: { name: string };
 };
-type Detail = { conversation: Conversation; runs: Run[]; messages: Message[] };
+type Detail = { conversation: Conversation; runs: Run[]; messages: Message[]; lastContextUsage?: ContextCallSnapshot };
 const labels: Record<string, string> = {
   queued: "排队中",
   preparing: "准备环境",
@@ -99,6 +101,27 @@ function workspaceHash(hash = window.location.hash) {
     path.startsWith("#/projects") ||
     path.startsWith("#/shared")
   );
+}
+function cloudTurnMessage(message: Message, runs: Run[], apiBase: string) {
+  const run = message.role === "user" ? runs.find((item) => message.id === `prompt:${item.id}` || message.id === item.userMessageId) : undefined;
+  const progress = Boolean(message.toolCalls?.length) || message.phase === "progress";
+  return {
+    id: message.id,
+    role: message.role === "user" ? "user" as const : "assistant" as const,
+    content: message.content,
+    createdAt: "",
+    phase: message.role === "assistant" ? (progress ? "progress" as const : message.phase) : undefined,
+    toolCalls: message.toolCalls,
+    outcome: message.outcome,
+    notice: message.notice,
+    author: message.role === "user" ? message.author?.name || "成员" : undefined,
+    attachments: run?.attachments?.map((file) => ({
+      id: file.id,
+      name: file.name,
+      href: `${apiBase}/v1/attachments/${file.id}/download`,
+      detail: `输入文件 · ${Math.ceil(file.size / 1024)} KB`,
+    })),
+  };
 }
 export function CloudWorkspace({
   apiBase = "",
@@ -251,6 +274,7 @@ export function CloudWorkspace({
   const [approvals, setApprovals] = useState<CloudApproval[]>([]),
     [artifacts, setArtifacts] = useState<CloudArtifactSummary[]>([]),
     [events, setEvents] = useState<AgentEvent[]>([]),
+    [contextUsage, setContextUsage] = useState<ContextCallSnapshot | undefined>(),
     [live, setLive] = useState(""),
     [liveMessages, setLiveMessages] = useState<Message[]>([]),
     [connection, setConnection] = useState(""),
@@ -420,6 +444,7 @@ export function CloudWorkspace({
     setLive("");
     setLiveMessages([]);
     setEvents([]);
+    setContextUsage(undefined);
     setPreview(null);
     setApprovals([]);
     setArtifacts([]);
@@ -450,6 +475,9 @@ export function CloudWorkspace({
         const before = snapshot?.runs.at(-1)?.id;
         snapshot = data;
         setDetail(data);
+        const fromSnapshot = presentContextUsage(data.lastContextUsage);
+        const replayed = [...journal.values()].reverse().find((row) => row.event.type === "context_usage");
+        setContextUsage(fromSnapshot ?? (replayed?.event.type === "context_usage" ? replayed.event.usage : undefined));
         setLoading(false);
         setProjectId(data.conversation.project_id || "");
         const latest = snapshot!.runs.at(-1);
@@ -471,6 +499,7 @@ export function CloudWorkspace({
       journal.set(cursor, { runId: data.runId, event });
       const latest = snapshot?.runs.at(-1);
       if (!latest || latest.id !== data.runId) return;
+      if (event.type === "context_usage") setContextUsage(event.usage);
       if (event.type === "token") {
         if (!terminal(latest.state)) liveBatch.push(event.text);
         return;
@@ -1209,56 +1238,21 @@ export function CloudWorkspace({
               )}
             </div>
           )}
-          {current?.messages
-            .filter(
-              (m) =>
-                (m.role === "user" || m.role === "assistant") &&
-                m.content.trim() &&
-                !approvalPlaceholder(m),
-            )
-            .map((m) => (
-              <article key={m.id} className={`cw-message ${m.role}`}>
-                <small>
-                  {m.role === "user" ? m.author?.name || "成员" : "Pig Agent"}
-                </small>
-                <MarkdownView text={m.content} />
-                {m.role === "user" &&
-                  current?.runs
-                    .find((r) => m.id === `prompt:${r.id}`)
-                    ?.attachments?.map((file) => (
-                      <a
-                        className="message-input-file"
-                        key={file.id}
-                        href={apiBase + `/v1/attachments/${file.id}/download`}
-                        download
-                      >
-                        <FileText size={14} />
-                        {file.name}
-                        <small>
-                          输入文件 · {Math.ceil(file.size / 1024)} KB
-                        </small>
-                      </a>
-                    ))}
-              </article>
-            ))}
-          {liveMessages
-            .filter(
-              (m) =>
-                m.content.trim() &&
-                !approvalPlaceholder(m) &&
-                !current?.messages.some((saved) => saved.id === m.id),
-            )
-            .map((m) => (
-              <article key={m.id} className="cw-message assistant">
-                <small>Pig Agent</small>
-                <MarkdownView text={m.content} />
-              </article>
-            ))}
-          {live && (
-            <article className="cw-message assistant" aria-busy="true">
-              <small>Pig Agent · 正在生成</small>
-              <MarkdownView text={live} />
-            </article>
+          {current && (
+            <TurnTranscript
+              turns={buildTurns({
+                messages: [
+                  ...current.messages.filter((message) => (message.role === "user" || message.role === "assistant") && message.content.trim() && !approvalPlaceholder(message)).map((message) => cloudTurnMessage(message, current.runs, apiBase)),
+                  ...liveMessages.filter((message) => message.content.trim() && !current.messages.some((saved) => saved.id === message.id)).map((message) => cloudTurnMessage(message, [], apiBase)),
+                  ...(live ? [{ id: "stream_live", role: "assistant" as const, content: live, createdAt: "" }] : []),
+                ],
+                tools: toolsFromEvents(events),
+                toolTitle: (name) => name,
+                streaming: Boolean(last && active && !terminal(last.state)),
+                pendingApproval: approvals.some((item) => item.state === "pending"),
+                lastError: last?.state === "failed" ? last.error || "执行失败" : undefined,
+              })}
+            />
           )}
           {approvals
             .filter((a) => a.state === "pending" && active)
@@ -1318,13 +1312,8 @@ export function CloudWorkspace({
               {last.error}
             </p>
           )}
-          {active && !live && !pendingApproval && (
-            <p role="status" className="cw-progress">
-              {approvals.some((a) => a.state === "pending")
-                ? "等待操作审批"
-                : labels[last!.state]}
-              …
-            </p>
+          {active && !live && !pendingApproval && !approvals.some((item) => item.state === "pending") && (
+            <p role="status" className="conv-current">{labels[last!.state]}</p>
           )}
           {!!artifacts.length && !active && (
             <button
@@ -1345,7 +1334,7 @@ export function CloudWorkspace({
         {(canWrite || selected) && (
           <div className="jd-compose-stack" hidden={Boolean(fileEdit)}>
           <form
-            className="cw-composer"
+            className="cw-composer conv-composer"
             onDragOver={(e) => {
               e.preventDefault();
             }}
@@ -1527,6 +1516,7 @@ export function CloudWorkspace({
                   调试正文
                 </label>
                 {project?.kind === "collaborative" && <small>团队共享</small>}
+                <ContextUsageButton usage={contextUsage} />
                 {active && canWrite ? (
                   <button
                     type="button"
