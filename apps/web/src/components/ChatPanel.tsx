@@ -1,3 +1,4 @@
+import { SkillComposerInput, type SkillChoice } from "./SkillComposerInput";
 import { InlineRemoteActivity } from "./InlineRemoteActivity";
 import type { RemoteActivity } from "../lib/remote-activity";
 import { WorkbenchPanel } from "./WorkbenchPanel";
@@ -35,6 +36,9 @@ import { MarkdownView } from "./MarkdownView";
 import { PinNoteDialog } from "./PinNoteDialog";
 
 export function ChatPanel({
+  skills,
+  selectedSkillIds,
+  onSkillsChange,
   configurationOpen = false,
   executionControls,
   workspaceRoot,
@@ -66,6 +70,9 @@ export function ChatPanel({
   onHandoffDone,
   onOpenMemory,
 }: {
+  skills: SkillChoice[];
+  selectedSkillIds: string[];
+  onSkillsChange: (ids: string[]) => void;
   configurationOpen?: boolean;
   executionControls?: ReactNode;
   workspaceRoot?: string;
@@ -172,6 +179,9 @@ export function ChatPanel({
   );
   const composer = (
     <Composer
+      skills={skills}
+      selectedSkillIds={selectedSkillIds}
+      onSkillsChange={onSkillsChange}
       attachments={attachments}
       draft={draft}
       streaming={streaming || session?.status === "running"}
@@ -798,6 +808,7 @@ function ToolCard({
 }
 
 function Composer({
+  skills, selectedSkillIds, onSkillsChange,
   attachments,
   draft,
   streaming,
@@ -806,6 +817,9 @@ function Composer({
   onSend,
   onStop,
 }: {
+  skills: SkillChoice[];
+  selectedSkillIds: string[];
+  onSkillsChange: (ids: string[]) => void;
   attachments: ReturnType<typeof useLocalAttachments>;
   draft: string;
   streaming: boolean;
@@ -911,7 +925,12 @@ function Composer({
             <Plus size={20} />
           </button>
         )}
-        <textarea
+        <SkillComposerInput
+          skills={skills}
+          selectedIds={selectedSkillIds}
+          onSkillsChange={onSkillsChange}
+          onValueChange={onDraft}
+          aria-label="任务消息"
           onPaste={(e) => {
             if (available && e.clipboardData.files.length) {
               e.preventDefault();
@@ -926,7 +945,6 @@ function Composer({
               : "描述目标，例如：整理工作区并写一份摘要 README"
           }
           rows={2}
-          onChange={(e) => onDraft(e.target.value)}
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&

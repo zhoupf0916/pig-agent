@@ -2,7 +2,7 @@ import "./resource-creator.css";
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
 
-type Draft = { name: string; description: string; instruction?: string; body?: string };
+type Draft = { name: string; displayName?: string; description: string; instruction?: string; body?: string };
 async function post(path: string, body: unknown) {
   const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const value = await response.json();
@@ -38,6 +38,7 @@ export function ResourceCreator({ kind, onCreated }: { kind: "expert" | "skill";
       {draft && <div className="resource-creator-body">
         <p className="settings-note">{model ? `${model} 生成的草稿` : "新建草稿"} · 尚未保存，可直接编辑。</p>
         <label className="block"><span>{kind === "skill" ? "技能标识（小写英文、数字、连字符）" : "专家名称"}</span><input className="field mt-1" value={draft.name} maxLength={kind === "skill" ? 80 : 120} disabled={!!busy} onChange={e => patch({ name: e.target.value })} /></label>
+        {kind === "skill" && <label className="block"><span>中文展示名称</span><input className="field mt-1" value={draft.displayName || ""} maxLength={120} disabled={!!busy} onChange={e => patch({ displayName: e.target.value })} placeholder="例如：销售数据分析" /></label>}
         <label className="block"><span>简介</span><input className="field mt-1" value={draft.description} maxLength={2000} disabled={!!busy} onChange={e => patch({ description: e.target.value })} /></label>
         <label className="block"><span>{kind === "expert" ? "专家指令" : "技能步骤"}</span><textarea className="field mt-1" rows={6} maxLength={20000} value={draft.instruction ?? draft.body ?? ""} disabled={!!busy} onChange={e => patch({ [kind === "expert" ? "instruction" : "body"]: e.target.value })} /></label>
         <button type="button" className="btn-primary" disabled={!!busy || !draft.name.trim() || !draft.description.trim() || !(draft.instruction ?? draft.body)?.trim() || (kind === "skill" && !/^[a-z0-9][a-z0-9-]{0,79}$/.test(draft.name))} onClick={() => {

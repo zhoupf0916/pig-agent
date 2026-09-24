@@ -1,0 +1,280 @@
+.skill-composer-input {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+.skill-composer-input > textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+.skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 2px;
+}
+.skill-chips > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: 20px;
+  padding: 4px 8px;
+  background: var(--accent-soft);
+  color: var(--accent-mute);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.skill-chips button {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  color: inherit;
+}
+.skill-slash-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 45;
+  width: min(100%, 520px);
+  min-width: min(280px, 100%);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px #142c5920;
+  overflow: hidden;
+}
+.skill-slash-heading {
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-default);
+}
+.skill-slash-heading small {
+  display: block;
+  margin-top: 3px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.skill-slash-menu [role="listbox"] {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.skill-slash-menu [role="option"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 10px 14px;
+  color: inherit;
+}
+.skill-slash-menu [role="option"][aria-selected="true"],
+.skill-slash-menu [role="option"]:hover {
+  background: var(--accent-soft);
+  color: var(--accent-mute);
+}
+.skill-slash-menu small,
+.skill-selection small {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-weight: 400;
+}
+.skill-slash-menu p {
+  padding: 14px;
+  font-size: 13px;
+}
+.skill-selection {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  padding: 12px;
+  border-radius: 12px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+.skill-selection > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px;
+  font-size: 13px;
+}
+.skill-selection input {
+  width: auto !important;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.skill-selection legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.skill-file-list {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 14px 0;
+}
+.skill-file-list summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.skill-file-list pre {
+  margin: 0;
+  padding: 12px;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--code-bg);
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .skill-slash-menu [role="listbox"] {
+    max-height: 210px;
+  }
+}
+.resource-page > .cloud-tabs {
+  display: flex;
+  gap: 24px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.resource-page > .cloud-tabs button {
+  padding: 12px 4px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: 14px;
+}
+.resource-page > .cloud-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent-mute);
+}
+.local-skills-library {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 28px 32px;
+}
+.local-skills-library .resource-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.local-skills-library .resource-toolbar input {
+  width: min(100%, 360px);
+}
+.local-skills-library .cloud-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 18px;
+  max-width: 1180px;
+  margin: 24px auto;
+}
+.local-skills-library .cloud-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-default);
+  background: var(--bg-panel);
+  border-radius: 16px;
+  padding: 22px;
+  gap: 12px;
+}
+.local-skills-library .cloud-card h3 {
+  font-weight: 600;
+  font-size: 16px;
+}
+.local-skills-library .cloud-card p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.7;
+  flex: 1;
+}
+.local-skills-library .cloud-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.local-skills-library button.primary-button,
+.skill-importer > button {
+  background: var(--accent-soft);
+  color: var(--accent-mute);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.local-skills-library .cloud-actions button:not(.primary-button) {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px;
+}
+.local-skills-library .resource-creator {
+  margin: 16px 0;
+}
+.local-skills-library .resource-dialog h2 {
+  font-weight: 600;
+}
+.local-skills-library .resource-dialog h3 {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.skill-importer {
+  margin: 12px 0;
+}
+.skill-importer .cloud-note {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.skill-importer .cloud-note button {
+  margin: 8px 12px 0 0;
+}
+@media (max-width: 600px) {
+  .local-skills-library {
+    padding: 20px 16px;
+  }
+  .local-skills-library .cloud-resource-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .resource-page > .cloud-tabs {
+    padding: 0 16px;
+  }
+}
+.skill-slash-menu {
+  width: min(480px, calc(100vw - 48px));
+  left: 50%;
+  transform: translateX(-50%);
+}
+.skill-slash-menu [role="option"] > svg {
+  flex-shrink: 0;
+}
+.skill-slash-menu [role="option"] > span {
+  min-width: 0;
+}
+.skill-slash-menu [role="option"] small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}

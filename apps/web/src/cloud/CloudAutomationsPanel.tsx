@@ -1,3 +1,4 @@
+import { SkillSelection, type SkillChoice } from "../components/SkillComposerInput";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Clock3, X } from "lucide-react";
 import "./cloud-automations.css";
@@ -13,6 +14,7 @@ type Automation = {
   id: string;
   name: string;
   prompt: string;
+  skillIds?: string[];
   enabled: boolean;
   requireApproval: boolean;
   networkPolicy: "ask" | "blocked";
@@ -30,6 +32,7 @@ const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 const fresh = () => ({
   name: "",
   prompt: "",
+  skillIds: [] as string[],
   planKind: "daily" as Plan["kind"],
   time: "09:00",
   cron: "",
@@ -67,6 +70,8 @@ export function CloudAutomationsPanel({
 }: {
   onRun: (id: string) => void;
 }) {
+  const [skills, setSkills] = useState<SkillChoice[]>([]);
+  useEffect(() => { let valid = true; void request("/v1/skills").then(result => { if (valid) setSkills(result.skills.map((s: SkillChoice & { displayName?: string }) => ({ ...s, name: s.displayName || s.name }))); }).catch(e => { if (valid) setError(String(e)); }); return () => { valid = false; }; }, []);
   const [rows, setRows] = useState<Automation[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -169,6 +174,7 @@ export function CloudAutomationsPanel({
         ? {
             name: row.name,
             prompt: row.prompt,
+            skillIds: row.skillIds || [],
             planKind: editPlan(row.plan || cronToPlan(row.schedule)).kind,
             cron:
               row.plan?.kind === "custom" ? row.plan.cron : row.schedule || "",
@@ -448,6 +454,7 @@ export function CloudAutomationsPanel({
                   {
                     name: draft.name,
                     prompt: draft.prompt,
+                    skillIds: draft.skillIds,
                     timezone: draft.timezone,
                     misfirePolicy: draft.misfirePolicy,
                     enabled: draft.enabled,
@@ -503,6 +510,7 @@ export function CloudAutomationsPanel({
                 onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
               />
             </label>
+            <SkillSelection skills={skills} value={draft.skillIds} onChange={skillIds => setDraft({ ...draft, skillIds })} disabled={busy} />
             <label className="ca-half">
               计划
               <select

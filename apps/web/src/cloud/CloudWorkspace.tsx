@@ -1,3 +1,4 @@
+import { SkillComposerInput } from "../components/SkillComposerInput";
 import { createTokenBatch } from "../lib/token-batch";
 import { ApprovalPreview } from "../components/ApprovalPreview";
 import { DeveloperPanel } from "../components/DeveloperPanel";
@@ -61,6 +62,7 @@ type Conversation = {
   can_write?: boolean;
 };
 type Run = {
+  skillIds?: string[];
   attachments?: Attachment[];
   id: string;
   state: string;
@@ -178,18 +180,21 @@ export function CloudWorkspace({
     [debugContent, setDebugContent] = useState(false);
   const [expertId, setExpertId] = useState(taskOptions?.expertId || ""),
     [skillIds, setSkillIds] = useState<string[]>(taskOptions?.skillIds || []);
+  const [skillsChanged, setSkillsChanged] = useState(false);
+  useEffect(() => { const latest = detail?.runs.at(-1); if (selected && latest && !skillsChanged) setSkillIds(latest.skillIds || []); }, [detail?.runs.at(-1)?.id, selected, skillsChanged]);
+  useEffect(() => { setSkillsChanged(false); setSkillIds(taskOptions?.skillIds || []); }, [selected]);
   const [experts, setExperts] = useState<Array<{ id: string; name: string }>>(
       [],
     ),
-    [skills, setSkills] = useState<Array<{ id: string; name: string }>>([]);
+    [skills, setSkills] = useState<Array<{ id: string; name: string; description?: string }>>([]);
   useEffect(() => {
-    if (!me || apiBase) return;
+    if (!me) return;
     let valid = true;
-    void Promise.all([request("/v1/experts"), request("/v1/skills")])
+    void Promise.all([apiBase ? Promise.resolve({ experts: [] }) : request("/v1/experts"), request("/v1/skills")])
       .then(([a, b]) => {
         if (valid) {
           setExperts(a.experts);
-          setSkills(b.skills);
+          setSkills(b.skills.map((s: { id: string; name: string; displayName?: string; description?: string }) => ({ ...s, name: s.displayName || s.name })));
         }
       })
       .catch(() => {});
@@ -665,6 +670,8 @@ export function CloudWorkspace({
         last?.id,
         text,
         attachments.ids,
+        skillIds,
+        expertId,
       ]);
       if (sendKey.current.signature !== signature)
         sendKey.current = { signature, key: crypto.randomUUID() };
@@ -672,7 +679,7 @@ export function CloudWorkspace({
         last ? `/v1/runs/${last.id}/follow-ups` : "/v1/runs",
         "POST",
         last
-          ? { prompt: text, attachmentIds: attachments.ids, ...(debugContent ? { debugContent: true } : {}) }
+          ? { prompt: text, ...(skillsChanged ? { skillIds } : {}), attachmentIds: attachments.ids, ...(debugContent ? { debugContent: true } : {}) }
           : {
               prompt: text,
               attachmentIds: attachments.ids,
@@ -688,6 +695,7 @@ export function CloudWorkspace({
       );
       const run = await request("/v1/runs/" + result.id);
       attachments.clear();
+      setSkillsChanged(false);
       setSelected(run.conversation_id);
       setPrompt("");
       setLive("");
@@ -1287,7 +1295,12 @@ export function CloudWorkspace({
               value={attachments}
               disabled={!canWrite || active}
             />
-            <textarea
+            <SkillComposerInput
+              skills={skills}
+              selectedIds={skillIds}
+              onSkillsChange={ids => { setSkillIds(ids); setSkillsChanged(true); }}
+              onValueChange={setPrompt}
+              skillsDisabled={active}
               ref={promptInput}
               aria-label="任务消息"
               placeholder={
@@ -1302,7 +1315,6 @@ export function CloudWorkspace({
                       : "当前项目为只读权限"
               }
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
               disabled={!canWrite}
               maxLength={32000}
               onKeyDown={(e) => {

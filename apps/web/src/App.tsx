@@ -157,6 +157,9 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [skills, setSkills] = useState<SkillMeta[]>([]);
+  const [skillSaving, setSkillSaving] = useState(false);
+  const [pendingSkillIds, setPendingSkillIds] = useState<string[]>([]);
+  const skillSavingRef = useRef(false);
   const [tree, setTree] = useState<WorkspaceNode | null>(null);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [preview, setPreview] = useState<WorkspaceFilePreview | null>(null);
@@ -612,7 +615,7 @@ export function App() {
       setTaskActionError(null);
       try {
         const created = await api.createSession(
-          projectId ? { projectId, workspaceId } : undefined,
+          { ...(projectId ? { projectId, workspaceId } : {}), skillIds: pendingSkillIds },
         );
         await refreshSessions();
         await refreshProjects();
@@ -630,7 +633,7 @@ export function App() {
         setCreatingSession(false);
       }
     },
-    [goWorkstation, loadSession, refreshProjects, refreshSessions],
+    [goWorkstation, loadSession, refreshProjects, refreshSessions, pendingSkillIds],
   );
 
   const removeSession = useCallback(
@@ -812,6 +815,7 @@ export function App() {
       loadingSessionRef.current ||
       creatingSessionRef.current ||
       savingExecutionRef.current ||
+      skillSavingRef.current ||
       streaming ||
       controllersRef.current.has(session?.id || "__new__") ||
       session?.status === "running" ||
@@ -830,7 +834,8 @@ export function App() {
       if (!target) {
         creatingSessionRef.current = true;
         setCreatingSession(true);
-        target = await api.createSession();
+        target = await api.createSession({ skillIds: pendingSkillIds });
+        setPendingSkillIds([]);
         controllersRef.current.delete(originalKey);
         controllersRef.current.set(target.id, controller);
         seenSeqRef.current = new Set();
@@ -906,7 +911,7 @@ export function App() {
       if (!target || activeIdRef.current === target.id) setStreaming(false);
       void refreshSessions();
     }
-  }, [applyEvent, draft, goWorkstation, refreshSessions, session, streaming]);
+  }, [applyEvent, draft, goWorkstation, refreshSessions, session, streaming, pendingSkillIds]);
 
   const stop = useCallback(async () => {
     if (!session) return;
@@ -1136,6 +1141,29 @@ export function App() {
     },
     [refreshSessions, session],
   );
+
+  const bindSkills = useCallback(async (skillIds: string[]) => {
+    if (skillSavingRef.current || streaming) return;
+    if (!session) { setPendingSkillIds(skillIds); return; }
+    skillSavingRef.current = true;
+    setSkillSaving(true);
+    try {
+      const target = session || await createSession();
+      if (!target) throw new Error("任务正在初始化，请稍后重试");
+      const next = await api.patchSession(target.id, { skillIds });
+      if (activeIdRef.current === target.id) setSession(next);
+    } catch (error) { setTaskActionError(error instanceof Error ? error.message : String(error)); }
+    finally { skillSavingRef.current = false; setSkillSaving(false); }
+  }, [session, createSession, streaming]);
+
+  const startSkillTask = useCallback(async (skillId: string) => {
+    try {
+      const next = await api.createSession({ skillIds: [skillId] });
+      await refreshSessions();
+      await loadSession(next.id);
+      goWorkstation(next.id);
+    } catch (error) { setTaskActionError(error instanceof Error ? error.message : String(error)); }
+  }, [refreshSessions, loadSession, goWorkstation]);
 
   const bindTeam = useCallback(
     async (expertTeamId: string | null) => {
@@ -1616,6 +1644,8 @@ export function App() {
             <ExpertsPanel
               selectedId={route.expertId}
               skills={skills}
+              onUseSkill={(id) => void startSkillTask(id)}
+              onRefreshSkills={() => { void api.skills().then(result => setSkills(result.skills)); }}
               onSelectExpert={(id) => goExperts(id)}
               onPinExpert={(id) => void pinExpertToSession(id)}
               onPinTeam={(id) => void pinTeamToSession(id)}
@@ -1624,6 +1654,7 @@ export function App() {
             <AutomationsPanel
               onOpenRemoteRun={(id) => openRemote(id)}
               selectedId={route.automationId}
+              skills={skills}
               experts={experts}
               teams={expertTeams}
               projects={projects}
@@ -1636,6 +1667,9 @@ export function App() {
           ) : (
             <>
               <ChatPanel
+                skills={skills.map(s => ({ id: s.name, name: s.displayName || s.name, description: s.description }))}
+                selectedSkillIds={session?.skillIds || pendingSkillIds}
+                onSkillsChange={(ids) => void bindSkills(ids)}
                 remoteActivity={remoteActivity}
                 configurationOpen={configurationOpen}
                 executionControls={executionControls}
@@ -1648,7 +1682,7 @@ export function App() {
                   bootLoading ||
                   loadingSession ||
                   creatingSession ||
-                  savingExecution
+                  savingExecution || skillSaving
                 }
                 executionSurface={executionSurface}
                 onOpenRemote={() => openRemote(session?.remoteRunId || "")}

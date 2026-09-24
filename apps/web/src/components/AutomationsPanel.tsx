@@ -1,3 +1,4 @@
+import { SkillSelection, type SkillChoice } from "./SkillComposerInput";
 import { useDialog } from "../lib/use-dialog";
 import { Play, Plus, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -12,10 +13,11 @@ import {
   shouldFetchAutomationDetail,
   startAutomationsListSync,
 } from "../lib/automations-list-sync";
-import type { Automation, Expert, ExpertTeam, ProjectSummary } from "../types";
+import type { Automation, Expert, ExpertTeam, ProjectSummary, SkillMeta } from "../types";
 
 export function AutomationsPanel({
   selectedId,
+  skills,
   experts,
   teams,
   projects,
@@ -24,6 +26,7 @@ export function AutomationsPanel({
   onOpenRemoteRun,
 }: {
   selectedId?: string;
+  skills: SkillMeta[];
   experts: Expert[];
   teams: ExpertTeam[];
   projects: ProjectSummary[];
@@ -40,6 +43,8 @@ export function AutomationsPanel({
   useEffect(() => { if (selectedId) setCatalogOpen(false); }, [selectedId]);
   const [items, setItems] = useState<Automation[]>([]);
   const [detail, setDetail] = useState<Automation | null>(null);
+  const [remoteSkills, setRemoteSkills] = useState<SkillChoice[]>([]);
+  const [createSkillIds, setCreateSkillIds] = useState<string[]>([]);
   const [target, setTarget] = useState<"local" | "remote">("local");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -53,7 +58,16 @@ export function AutomationsPanel({
     expertId: "",
     expertTeamId: "",
     projectId: "",
+    skillIds: [] as string[],
   });
+
+  useEffect(() => {
+    if (target !== "remote" && detail?.executionTarget !== "remote") return;
+    let valid = true;
+    void fetch("/api/remote/v1/skills").then(async response => { const result = await response.json(); if (!response.ok) throw Error(result.error); if (valid) setRemoteSkills(result.skills.map((s: SkillChoice & { displayName?: string }) => ({ ...s, name: s.displayName || s.name }))); }).catch(e => { if (valid) setError(`远端技能暂不可用：${String(e)}`); });
+    return () => { valid = false; };
+  }, [target, detail?.executionTarget]);
+  const localChoices = skills.map(s => ({ id: s.name, name: s.displayName || s.name, description: s.description }));
 
   const refreshList = async () => {
     const { automations, remoteError } = await api.automations();
@@ -78,6 +92,7 @@ export function AutomationsPanel({
       expertId: automation.expertId ?? "",
       expertTeamId: automation.expertTeamId ?? "",
       projectId: automation.projectId ?? "",
+      skillIds: automation.skillIds || [],
     });
   };
 
@@ -122,7 +137,7 @@ export function AutomationsPanel({
 
   useEffect(() => {
     if (!detail) return;
-    const incoming = JSON.stringify({ name: detail.name, prompt: detail.prompt, schedule: detail.schedule ?? "", expertId: detail.expertId ?? "", expertTeamId: detail.expertTeamId ?? "", projectId: detail.projectId ?? "" });
+    const incoming = JSON.stringify({ name: detail.name, prompt: detail.prompt, schedule: detail.schedule ?? "", expertId: detail.expertId ?? "", expertTeamId: detail.expertTeamId ?? "", projectId: detail.projectId ?? "", skillIds: detail.skillIds || [] });
     if (draftBaseline.current.id === detail.id && JSON.stringify(draft) !== draftBaseline.current.value && JSON.stringify(draft) !== incoming) return;
     draftBaseline.current = { id: detail.id, value: incoming };
     setDraft({
@@ -132,6 +147,7 @@ export function AutomationsPanel({
       expertId: detail.expertId ?? "",
       expertTeamId: detail.expertTeamId ?? "",
       projectId: detail.projectId ?? "",
+      skillIds: detail.skillIds || [],
     });
   }, [
     detail?.id,
@@ -141,6 +157,7 @@ export function AutomationsPanel({
     detail?.expertId,
     detail?.expertTeamId,
     detail?.projectId,
+    detail?.skillIds,
   ]);
 
   const expertName = useMemo(
@@ -203,6 +220,7 @@ export function AutomationsPanel({
                   prompt: prompt.trim(),
                   schedule: null,
                   executionTarget: target,
+                  skillIds: createSkillIds,
                   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                 };
                 const signature = JSON.stringify(input);
@@ -219,6 +237,7 @@ export function AutomationsPanel({
                 setError(null);
                 setName("");
                 setPrompt("");
+                setCreateSkillIds([]);
                 await refreshList();
                 onSelect(created.id);
               } catch (err) {
@@ -245,11 +264,12 @@ export function AutomationsPanel({
             aria-label="自动化执行位置"
             className="field"
             value={target}
-            onChange={(e) => setTarget(e.target.value as "local" | "remote")}
+            onChange={(e) => (setTarget(e.target.value as "local" | "remote"), setCreateSkillIds([]))}
           >
             <option value="local">本地执行</option>
             <option value="remote">远端容器 · 控制面调度</option>
           </select>
+          <SkillSelection skills={target === "remote" ? remoteSkills : localChoices} value={createSkillIds} onChange={setCreateSkillIds} disabled={creating} />
           <button
             type="submit"
             className="btn-primary w-full"
@@ -525,6 +545,7 @@ export function AutomationsPanel({
                   </button>
                 </div>
               )}
+            <SkillSelection skills={detail.executionTarget === "remote" ? remoteSkills : localChoices} value={draft.skillIds} onChange={skillIds => { setDraft(d => ({ ...d, skillIds })); void savePatch({ skillIds }); }} />
             {detail.executionTarget !== "remote" && (
               <>
                 <div className="grid gap-4 sm:grid-cols-3">

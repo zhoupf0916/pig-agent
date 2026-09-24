@@ -78,6 +78,7 @@ export const api = {
           projectId?: string;
           workspaceId?: string;
           expertId?: string;
+          skillIds?: string[];
           expertTeamId?: string;
         }
       | string,
@@ -89,6 +90,7 @@ export const api = {
             ...(input?.projectId ? { projectId: input.projectId } : {}),
             ...(input?.workspaceId ? { workspaceId: input.workspaceId } : {}),
             ...(input?.expertId ? { expertId: input.expertId } : {}),
+            ...(input?.skillIds ? { skillIds: input.skillIds } : {}),
             ...(input?.expertTeamId
               ? { expertTeamId: input.expertTeamId }
               : {}),
@@ -105,6 +107,7 @@ export const api = {
     patch: {
       projectId?: string | null;
       expertId?: string | null;
+      skillIds?: string[];
       expertTeamId?: string | null;
       title?: string;
       remoteRequireApproval?: boolean;
@@ -421,6 +424,7 @@ export const api = {
       prompt: string;
       enabled?: boolean;
       schedule?: string | null;
+      skillIds?: string[];
       expertId?: string;
       expertTeamId?: string;
       projectId?: string;
@@ -449,6 +453,7 @@ export const api = {
       prompt?: string;
       enabled?: boolean;
       schedule?: string | null;
+      skillIds?: string[];
       expertId?: string | null;
       expertTeamId?: string | null;
       projectId?: string | null;

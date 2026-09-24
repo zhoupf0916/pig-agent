@@ -1,3 +1,5 @@
+import { SkillsLibrary } from "./SkillsLibrary";
+import { SkillSelection } from "./SkillComposerInput";
 import { ResourceCreator } from "./ResourceCreator";
 import { useDialog } from "../lib/use-dialog";
 import { Sparkles, Trash2, Users, ArrowUpRight, Search } from "lucide-react";
@@ -26,16 +28,22 @@ const KIND_LABEL: Record<ExpertKind, string> = {
 export function ExpertsPanel({
   selectedId,
   skills,
+  onUseSkill,
+  onRefreshSkills,
   onSelectExpert,
   onPinExpert,
   onPinTeam,
 }: {
   selectedId?: string;
   skills: SkillMeta[];
+  onUseSkill: (id: string) => void;
+  onRefreshSkills: () => void;
   onSelectExpert: (id?: string) => void;
   onPinExpert: (expertId: string) => void;
   onPinTeam: (teamId: string) => void;
 }) {
+  const [libraryKind, setLibraryKind] = useState<"expert" | "skill">("expert");
+  const [bindingBusy, setBindingBusy] = useState(false);
   const draftBaseline = useRef({ id: "", value: "" });
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState("");
@@ -142,6 +150,8 @@ export function ExpertsPanel({
     [teams, detail?.id],
   );
 
+  const tabs = <div className="cloud-tabs" role="tablist" aria-label="专家与技能"><button type="button" role="tab" aria-selected={libraryKind === "expert"} onClick={() => setLibraryKind("expert")}>专家</button><button type="button" role="tab" aria-selected={libraryKind === "skill"} onClick={() => setLibraryKind("skill")}>技能</button></div>;
+  if (libraryKind === "skill") return <section className="resource-page"><header className="resource-header"><h2>专家与技能</h2></header>{tabs}<SkillsLibrary skills={skills} onUse={onUseSkill} onRefresh={onRefreshSkills}/></section>;
   return (
     <section className="resource-page" aria-label="专家">
       <header className="resource-header">
@@ -158,6 +168,7 @@ export function ExpertsPanel({
           专家目录 <span>{experts.length}</span>
         </button>
       </header>
+      {tabs}
       {catalogOpen && (
         <button
           className="resource-scrim"
@@ -493,26 +504,10 @@ export function ExpertsPanel({
                 可使用内置、本机创建或已启用插件提供的技能。实现专家默认带{" "}
                 <code>coding-helper</code>。
               </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {(detail.skillIds.length ? detail.skillIds : ["（无）"]).map(
-                  (id) => (
-                    <span
-                      key={id}
-                      className="rounded-full border border-ink-300 bg-panel px-2 py-0.5 text-meta text-ink-600"
-                    >
-                      {id}
-                    </span>
-                  ),
-                )}
-                {skills
-                  .filter((s) => !detail.skillIds.includes(s.name))
-                  .slice(0, 4)
-                  .map((s) => (
-                    <span key={s.name} className="text-meta text-ink-400">
-                      {s.name}
-                    </span>
-                  ))}
-              </div>
+              <SkillSelection skills={skills.map(s => ({ id: s.name, name: s.displayName || s.name, description: s.description }))} value={detail.skillIds} disabled={detail.bundled || bindingBusy} onChange={ids => {
+                setBindingBusy(true); setError(null);
+                void api.patchExpert(detail.id, { skillIds: ids }).then(next => { setDetail(next); void refreshList(); }).catch(e => setError(String(e))).finally(() => setBindingBusy(false));
+              }} />
             </div>
           </div>
         )}

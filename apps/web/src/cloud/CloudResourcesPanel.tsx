@@ -1,3 +1,5 @@
+import { SkillPackFiles, SkillPackImporter } from "../components/SkillPackView";
+import type { SkillPackFile } from "@pig-agent/contracts";
 import { useEffect, useState, useRef } from "react";
 import {
   Search,
@@ -18,6 +20,8 @@ type Resource = {
   body?: string;
   bundled?: boolean;
   skillIds?: string[];
+  displayName?: string;
+  files?: SkillPackFile[];
 };
 export function CloudResourcesPanel({
   onNewTask,
@@ -124,6 +128,7 @@ export function CloudResourcesPanel({
           技能
         </button>
       </div>
+      {kind === "skill" && <SkillPackImporter onImport={async files => { await api("/v1/skill-packs", "POST", { files }); setFeedback("技能包已导入，可以开始对话。"); await refresh(); }} />}
       <div className="resource-toolbar">
         <div className="resource-filters" aria-label="资源分类">
           {[
@@ -165,7 +170,7 @@ export function CloudResourcesPanel({
             aria-modal="true"
             aria-label={
               preview
-                ? preview.name
+                ? (preview.displayName || preview.name)
                 : `创建${kind === "expert" ? "专家" : "技能"}`
             }
             className="resource-dialog"
@@ -177,7 +182,7 @@ export function CloudResourcesPanel({
                 </span>
                 <h2>
                   {preview
-                    ? preview.name
+                    ? (preview.displayName || preview.name)
                     : `${edit?.id ? "编辑" : "创建"}${kind === "expert" ? "专家" : "技能"}`}
                 </h2>
               </div>
@@ -247,6 +252,8 @@ export function CloudResourcesPanel({
                   <h3>{kind === "expert" ? "工作方式" : "技能指引"}</h3>
                   <pre>{preview.instruction || preview.body}</pre>
                 </div>
+                {kind === "skill" && <SkillPackFiles files={preview.files} />}
+                {kind === "expert" && !!preview.skillIds?.length && <p>已绑定技能：{preview.skillIds.map(id => { const skill = skills.find(s => s.id === id); return skill?.displayName || skill?.name || id; }).join("、")}</p>}
                 <button
                   className="primary-button"
                   onClick={() =>
@@ -277,7 +284,7 @@ export function CloudResourcesPanel({
                             instruction: edit.instruction,
                             skillIds: edit.skillIds || [],
                           }
-                        : { body: edit.body }),
+                        : { body: edit.body, ...(edit.files ? { files: edit.files } : {}) }),
                     };
                     await api(
                       `/v1/${kind === "expert" ? "experts" : "skills"}${edit.id ? "/" + edit.id : ""}`,
@@ -353,7 +360,7 @@ export function CloudResourcesPanel({
                             })
                           }
                         />
-                        {s.name}
+                        {s.displayName || s.name}
                       </label>
                     ))}
                   </fieldset>
@@ -386,7 +393,7 @@ export function CloudResourcesPanel({
               (item) =>
                 (filter === "all" ||
                   (filter === "bundled" ? item.bundled : !item.bundled)) &&
-                `${item.name} ${item.description}`
+                `${item.displayName || item.name} ${item.description}`
                   .toLowerCase()
                   .includes(query.toLowerCase()),
             )
@@ -400,7 +407,7 @@ export function CloudResourcesPanel({
                   )}
                 </div>
                 <h3>
-                  {item.name}
+                  {item.displayName || item.name}
                   {item.bundled && <small> · 内置</small>}
                 </h3>
                 <p>{item.description || "暂无简介"}</p>
@@ -437,7 +444,7 @@ export function CloudResourcesPanel({
           (item) =>
             (filter === "all" ||
               (filter === "bundled" ? item.bundled : !item.bundled)) &&
-            `${item.name} ${item.description}`
+            `${item.displayName || item.name} ${item.description}`
               .toLowerCase()
               .includes(query.toLowerCase()),
         ) && (
