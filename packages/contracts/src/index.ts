@@ -66,6 +66,8 @@ export type Session = {
   steps: PlanStep[];
   artifacts: Artifact[];
   lastError?: string;
+  /** Latest model-call character estimate. Absent means not collected. */
+  lastContextUsage?: import("./context.js").ContextCallSnapshot;
   /**
    * After a remote-cloud failure, how 重试 should reconnect (Milestone L).
    * `follow-up` keeps `remoteRunId`; `create-run` allocates a new run;
@@ -573,6 +575,7 @@ export type AgentEvent =
   | { type: "artifact"; artifact: Artifact }
   | { type: "status"; status: SessionStatus }
   | { type: "error"; message: string }
+  | { type: "context_usage"; usage: import("./context.js").ContextCallSnapshot }
   | { type: "team_run"; teamRun: TeamRun }
   | { type: "done"; session: Session }
   /**
@@ -632,6 +635,9 @@ export {
   DEFAULT_CONTEXT_BUDGET_CHARS,
   ContextBudgetExceededError,
   assembleModelContext,
+  contextUsageFromMetrics,
+  presentContextUsage,
+  unknownContextUsage,
   continuationTranscript,
   durableMessages,
   authoritativeTranscript,
@@ -641,5 +647,5 @@ export {
   recallTranscript,
   selectInjectableMemory,
 } from "./context.js";
-export type { AssembledContext, ContextMetrics, MemoryCandidate } from "./context.js";
+export type { AssembledContext, ContextCallSnapshot, ContextMetrics, MemoryCandidate } from "./context.js";
 export type { WorkspaceFileEdit, WorkspaceFileVersion } from "./workspace-file.js";

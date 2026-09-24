@@ -1,3 +1,4 @@
+import { presentContextUsage } from "@pig-agent/contracts";
 import type { AgentEvent, Artifact, ChatMessage, PlanStep, SessionStatus } from "../../types.ts";
 import { newId, nowIso } from "../../util.ts";
 
@@ -102,6 +103,11 @@ export function mapCloudEvent(raw: unknown): AgentEvent[] {
       ? (ev.status as SessionStatus)
       : undefined;
     return status ? [{ type: "status", status }] : [];
+  }
+
+  if (type === "context_usage") {
+    const usage = presentContextUsage(ev.usage);
+    return usage ? [{ type: "context_usage", usage }] : [];
   }
 
   if (type === "error" || type === "run.error") {

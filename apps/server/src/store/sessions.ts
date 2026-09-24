@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { DATA_DIR, ensureDir } from "../config.ts";
+import { presentContextUsage } from "@pig-agent/contracts";
 import type { Session, SessionSummary } from "../types.ts";
 import { normalizeTeamRun } from "./team-run-state.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
@@ -160,6 +161,7 @@ async function readSessionFile(file: string): Promise<Session> {
     remoteRetry: parseRemoteRetry(raw.remoteRetry),
     localRetry: parseLocalRetry(raw.localRetry),
     teamRun: normalizeTeamRun(raw.teamRun),
+    lastContextUsage: presentContextUsage(raw.lastContextUsage),
   };
 }
 

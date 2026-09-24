@@ -220,6 +220,7 @@ try {
     }),
     signal: deadline,
     emit: (event) => emit({ kind: "event", event }),
+    contextEngine: "cloud",
     memoryPins: [],
     authorizeTool: async (call) => {
       const gate = cloudToolGate(call.tool, input.requireApproval !== false);

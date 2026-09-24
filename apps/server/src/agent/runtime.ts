@@ -22,7 +22,7 @@ import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { nativeSandboxStatus } from "./native-sandbox.ts";
 import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
-import { assembleModelContext, parseMcpToolName, type ContextMetrics } from "@pig-agent/contracts";
+import { assembleModelContext, contextUsageFromMetrics, parseMcpToolName, type ContextMetrics } from "@pig-agent/contracts";
 import { requireMcpTarget } from "../store/mcp-servers.ts";
 import { executeTool, sandboxFromError, summarizeToolArgs, type ToolContext, type ToolSandboxFact, TOOL_DEFINITIONS } from "./tools.ts";
 import { cancelRunningDebugSpans, debugDetail, recordDebugSpan } from "./debug-trace.ts";
@@ -142,6 +142,8 @@ export async function runAgent(options: {
   networkFetch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
   authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
+  /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
+  contextEngine?: "pig" | "cloud";
   /** When false, ordinary mutations skip authorizeTool. MCP tools still use it. */
   authorizeMutations?: boolean;
   mcpTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
@@ -297,7 +299,7 @@ export async function runAgent(options: {
         : [];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
-      const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0);
+      const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0, options.contextEngine ?? "pig");
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
       if (forceSummary) {
@@ -317,6 +319,10 @@ export async function runAgent(options: {
         else if (workbench.policy.outputPrice > 0) remaining = Math.min(remaining, Math.floor(moneyLeft * 1000000 / workbench.policy.outputPrice));
       }
       if (workbench && (workbench.usage.calls >= workbench.policy.maxCalls || remaining < 128)) throw new Error("任务预算已到上限。请在执行设置中增加调用或 token 预算后继续。");
+      if (assembled.usage) {
+        session.lastContextUsage = assembled.usage;
+        emit({ type: "context_usage", usage: assembled.usage });
+      }
       let reported: { prompt_tokens: number; completion_tokens: number } | undefined;
       const modelStarted = Date.now();
       if (workbench) { workbench.usage.calls++; await saveWorkbench(session.id, workbench); }
@@ -825,7 +831,7 @@ function createReadonlyWindow(
 }
 
 
-function trimHistory(messages: ChatMessage[], toolSchemaChars: number, reservedChars = 0): { messages: ChatMessage[]; estimate: Record<string, unknown> } {
+function trimHistory(messages: ChatMessage[], toolSchemaChars: number, reservedChars = 0, engine: "pig" | "cloud" = "pig"): { messages: ChatMessage[]; estimate: Record<string, unknown>; usage?: ReturnType<typeof contextUsageFromMetrics> } {
   const [system, ...rest] = messages;
   if (!system) return { messages, estimate: { unit: "estimated_chars", measuredTokens: false, note: "字符估算，不是实测 token" } };
   const assembled = assembleModelContext({
@@ -838,6 +844,12 @@ function trimHistory(messages: ChatMessage[], toolSchemaChars: number, reservedC
   const metrics: ContextMetrics = assembled.metrics;
   return {
     messages: [system, ...assembled.messages],
+    usage: contextUsageFromMetrics({
+      metrics,
+      capturedAt: new Date().toISOString(),
+      callId: newId("ctx"),
+      engine,
+    }),
     estimate: {
       unit: "estimated_chars",
       measuredTokens: false,

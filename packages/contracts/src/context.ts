@@ -25,6 +25,127 @@ export type ContextMetrics = {
   retrievalHits: number;
 };
 
+/** One model call's character-budget estimate. Never a provider window or billed tokens. */
+export type ContextCallSnapshot = {
+  availability: "collected" | "not_collected" | "unknown";
+  unit: "estimated_chars";
+  measuredTokens: false;
+  scope: "last_call";
+  note: string;
+  capturedAt: string;
+  callId: string;
+  engine: "pig" | "codex" | "cloud";
+  unknownReason?: string;
+  usedChars?: number;
+  budgetChars?: number;
+  ratio?: number;
+  systemChars?: number;
+  toolSchemaChars?: number;
+  messageChars?: number;
+  omittedMessages?: number;
+  trimmedToolResults?: number;
+  modelMessages?: number;
+  transcriptMessages?: number;
+};
+
+const COLLECTED_NOTE = "字符估算，最近一次模型调用。不是供应商 token 窗口，也不是累计计费 token。";
+const UNKNOWN_NOTE = "Codex 不回传本次模型调用的输入构成，上下文占比未知。";
+const MISSING_NOTE = "尚未采集最近一次调用的字符估算。";
+
+function countOf(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 50_000_000) return undefined;
+  return Math.round(value);
+}
+
+function safeStamp(value: unknown): string | undefined {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value) && value.length <= 40
+    ? value
+    : undefined;
+}
+
+function safeId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[\w:-]{1,80}$/.test(value) ? value : undefined;
+}
+
+/** Keep counts only. Drops prompt text, secrets, and billing token fields. */
+export function presentContextUsage(raw: unknown): ContextCallSnapshot | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const engine = row.engine === "pig" || row.engine === "codex" || row.engine === "cloud" ? row.engine : undefined;
+  const availability = row.availability === "collected" || row.availability === "unknown" || row.availability === "not_collected"
+    ? row.availability
+    : undefined;
+  const callId = safeId(row.callId);
+  const capturedAt = safeStamp(row.capturedAt);
+  if (!engine || !availability || !callId || !capturedAt) return undefined;
+  const snapshot: ContextCallSnapshot = {
+    availability,
+    unit: "estimated_chars",
+    measuredTokens: false,
+    scope: "last_call",
+    note: availability === "unknown" ? UNKNOWN_NOTE : availability === "collected" ? COLLECTED_NOTE : MISSING_NOTE,
+    capturedAt,
+    callId,
+    engine,
+  };
+  if (typeof row.unknownReason === "string" && row.unknownReason.length > 0 && row.unknownReason.length <= 80 && !/key|secret|bearer|sk-/i.test(row.unknownReason)) {
+    snapshot.unknownReason = row.unknownReason;
+  }
+  if (availability !== "collected") return snapshot;
+  const usedChars = countOf(row.usedChars);
+  const budgetChars = countOf(row.budgetChars);
+  if (usedChars === undefined || budgetChars === undefined || budgetChars <= 0) {
+    return { ...snapshot, availability: "not_collected", note: MISSING_NOTE };
+  }
+  snapshot.usedChars = usedChars;
+  snapshot.budgetChars = budgetChars;
+  snapshot.ratio = Math.min(1, usedChars / budgetChars);
+  for (const key of ["systemChars", "toolSchemaChars", "messageChars", "omittedMessages", "trimmedToolResults", "modelMessages", "transcriptMessages"] as const) {
+    const count = countOf(row[key]);
+    if (count !== undefined) snapshot[key] = count;
+  }
+  return snapshot;
+}
+
+export function contextUsageFromMetrics(input: {
+  metrics: ContextMetrics;
+  capturedAt: string;
+  callId: string;
+  engine: ContextCallSnapshot["engine"];
+}): ContextCallSnapshot {
+  const messageChars = Math.max(0, input.metrics.usedChars - input.metrics.systemChars - input.metrics.toolSchemaChars);
+  return presentContextUsage({
+    availability: "collected",
+    capturedAt: input.capturedAt,
+    callId: input.callId,
+    engine: input.engine,
+    usedChars: input.metrics.usedChars,
+    budgetChars: input.metrics.budgetChars,
+    systemChars: input.metrics.systemChars,
+    toolSchemaChars: input.metrics.toolSchemaChars,
+    messageChars,
+    omittedMessages: input.metrics.omittedMessages,
+    trimmedToolResults: input.metrics.trimmedToolResults,
+    modelMessages: input.metrics.modelMessages,
+    transcriptMessages: input.metrics.transcriptMessages,
+  })!;
+}
+
+export function unknownContextUsage(input: {
+  capturedAt: string;
+  callId: string;
+  engine: ContextCallSnapshot["engine"];
+  reason: string;
+}): ContextCallSnapshot {
+  return presentContextUsage({
+    availability: "unknown",
+    capturedAt: input.capturedAt,
+    callId: input.callId,
+    engine: input.engine,
+    unknownReason: input.reason,
+  })!;
+}
+
 export type AssembledContext = {
   messages: ChatMessage[];
   metrics: ContextMetrics;

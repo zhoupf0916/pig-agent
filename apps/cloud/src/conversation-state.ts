@@ -1,5 +1,6 @@
+import { presentContextUsage } from "@pig-agent/contracts";
 import { db } from "./db.ts";
-import { conversationTranscript } from "./transcript.ts";
+import { attachRunOutcomes, conversationTranscript } from "./transcript.ts";
 
 type Principal = { id: string; role: string };
 export async function conversationFor(id: string, p: Principal) {
@@ -37,20 +38,27 @@ export async function conversationSnapshot(conversation: any, callerId?: string)
   const authors = new Map<string, { id: string; name: string }>();
   for (const run of runs) {
     authors.set("prompt:" + run.id, run.author);
-    const last = run.input.messages?.at(-1);
-    if (
-      last?.role === "user" &&
-      last.content === run.input.prompt &&
-      !authors.has(last.id)
-    )
-      authors.set(last.id, run.author);
+    const lastUser = [...(run.input.messages ?? [])].reverse().find((item: { id?: string; role?: string }) => item?.role === "user" && item.id);
+    if (lastUser?.id && !authors.has(lastUser.id)) authors.set(lastUser.id, run.author);
   }
-  const messages = conversationTranscript(runs, history).map((message) => ({
+  const pendingApprovals = (
+    await db.query(
+      `SELECT run_id FROM approvals WHERE state='pending' AND run_id IN (SELECT id FROM runs WHERE conversation_id=$1)`,
+      [conversation.id],
+    )
+  ).rows;
+  const messages = attachRunOutcomes(conversationTranscript(runs, history), runs, pendingApprovals.map((row: { run_id: string }) => row.run_id)).map((message) => ({
     ...message,
     ...(message.role === "user" && authors.has(message.id)
       ? { author: authors.get(message.id) }
       : {}),
   }));
+  const usageRow = (
+    await db.query(
+      `SELECT event->'usage' AS usage FROM events e JOIN runs r ON r.id=e.run_id WHERE r.conversation_id=$1 AND e.event->>'type'='context_usage' ORDER BY e.seq DESC LIMIT 1`,
+      [conversation.id],
+    )
+  ).rows[0];
   const versions = (
     await db.query(
       "SELECT run_id,created_at,snapshot-'data' AS manifest FROM workspace_versions WHERE conversation_id=$1 ORDER BY created_at DESC",
@@ -61,6 +69,7 @@ export async function conversationSnapshot(conversation: any, callerId?: string)
     conversation,
     runs: runs.map(({ input, ...run }) => ({
       ...run,
+      userMessageId: [...(input?.messages ?? [])].reverse().find((item: { id?: string; role?: string }) => item?.role === "user" && item.id)?.id || `prompt:${run.id}`,
       ...callerSkillView(input, run.author, callerId),
       attachments: (input.attachments || [])
         .filter((a: any) => (input.attachmentIds || []).includes(a.id))
@@ -75,6 +84,7 @@ export async function conversationSnapshot(conversation: any, callerId?: string)
         })),
     })),
     messages,
+    lastContextUsage: presentContextUsage(usageRow?.usage),
     versions,
   };
 }

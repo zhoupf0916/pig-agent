@@ -2,6 +2,7 @@ import { codexEnvironment } from "./environment.ts";
 import { existsSync, readdirSync, readFileSync, lstatSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { AgentEvent, Artifact, ChatMessage, Session, Settings } from "../../types.ts";
+import { unknownContextUsage } from "@pig-agent/contracts";
 import { capText, newId, nowIso } from "../../util.ts";
 import { CreateRunProgress } from "../cloud/create-run-progress.ts";
 import { deliverableSummary } from "../runtime.ts";
@@ -38,6 +39,14 @@ export async function runCodexAgent(options: {
     updatedAt: nowIso(),
   };
   emit({ type: "status", status: "running" });
+  const contextUsage = unknownContextUsage({
+    capturedAt: nowIso(),
+    callId: newId("ctx"),
+    engine: "codex",
+    reason: "codex_runtime",
+  });
+  session.lastContextUsage = contextUsage;
+  emit({ type: "context_usage", usage: contextUsage });
 
   const progress = new CreateRunProgress(session, emit);
   let handedOff = false;

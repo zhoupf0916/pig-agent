@@ -60,6 +60,7 @@ describe("runtime context request", () => {
       messages.push({ id: `t${i}`, role: "tool", content: "数据".repeat(4000), toolCallId: `c${i}`, createdAt: now });
     }
     const snapshot = messages.map((message) => ({ id: message.id, content: message.content }));
+    const events: import("../types.ts").AgentEvent[] = [];
     let sent = "";
     const llm = await listen((raw) => { sent = raw; });
     const session: Session = {
@@ -77,7 +78,7 @@ describe("runtime context request", () => {
         session,
         settings: settings(mkdtempSync(join(tmpdir(), "pig-ctx-")), llm.url),
         signal: new AbortController().signal,
-        emit: () => {},
+        emit: (event) => { events.push(event); },
         memoryPins: [],
       });
       const body = JSON.parse(sent) as { messages: Array<{ role: string; content?: string; tool_calls?: Array<{ id: string }> }> };
@@ -98,6 +99,12 @@ describe("runtime context request", () => {
       expect(estimate?.measuredTokens).toBe(false);
       expect(estimate?.note).toContain("不是实测 token");
       expect(JSON.stringify(estimate)).not.toContain("test-key");
+      const usage = events.find((event) => event.type === "context_usage");
+      expect(usage && usage.type === "context_usage" && usage.usage.scope).toBe("last_call");
+      expect(result.lastContextUsage).toMatchObject({ unit: "estimated_chars", measuredTokens: false, availability: "collected" });
+      expect(result.lastContextUsage?.callId).toBe(usage && usage.type === "context_usage" ? usage.usage.callId : "");
+      expect(JSON.stringify(result.lastContextUsage)).not.toContain("prompt_tokens");
+      expect(JSON.stringify(result.lastContextUsage)).not.toContain("test-key");
       expect(JSON.stringify(span?.detail)).not.toContain("数据数据数据");
     } finally {
       dropDebugSession(session.id);

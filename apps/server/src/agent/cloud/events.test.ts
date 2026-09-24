@@ -57,6 +57,22 @@ describe("mapCloudEvent", () => {
   });
 
   it("drops unknown frames so a richer plane cannot break the UI", () => {
+    const usage = mapCloudEvent({
+      type: "context_usage",
+      usage: {
+        availability: "collected",
+        capturedAt: "2026-09-24T09:00:00.000Z",
+        callId: "ctx_remote",
+        engine: "cloud",
+        usedChars: 10,
+        budgetChars: 100,
+        systemPrompt: "SECRET_SYSTEM_PROMPT",
+        prompt_tokens: 9,
+      },
+    });
+    expect(usage).toMatchObject([{ type: "context_usage", usage: { scope: "last_call", usedChars: 10, budgetChars: 100 } }]);
+    expect(JSON.stringify(usage)).not.toContain("SECRET_SYSTEM_PROMPT");
+    expect(mapCloudEvent({ type: "context_usage", usage: { engine: "cloud" } })).toEqual([]);
     expect(mapCloudEvent({ type: "neo.internal.heartbeat" })).toEqual([]);
     expect(mapCloudEvent(null)).toEqual([]);
     expect(mapCloudEvent("nope")).toEqual([]);

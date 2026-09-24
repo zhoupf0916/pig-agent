@@ -4,6 +4,18 @@ import type {
   PlanStep,
   SessionStatus,
 } from "./index.ts";
+import type { ContextCallSnapshot } from "./context.js";
+
+/** Display metadata survives refresh without exposing tool arguments in stored transcripts. */
+export type CloudConversationMessage = Pick<ChatMessage, "id" | "role" | "content"> & {
+  createdAt?: string;
+  author?: { id: string; name: string };
+  /** Present on live assistant messages; stored display transcripts omit these. */
+  toolCalls?: ChatMessage["toolCalls"];
+  phase?: "progress" | "answer";
+  outcome?: "running" | "approval" | "failed" | "cancelled";
+  notice?: string;
+};
 
 /**
  * Minimal control-plane contract (OpenAPI-ish).
@@ -123,7 +135,8 @@ export type CloudInboundEvent =
     }
   | { type: "status" | "run.started"; status?: SessionStatus }
   | { type: "error" | "run.error"; message: string }
-  | { type: "done" | "run.idle"; session?: import("./index.ts").Session };
+  | { type: "done" | "run.idle"; session?: import("./index.ts").Session }
+  | { type: "context_usage"; usage: ContextCallSnapshot };
 
 export type CloudRemoteErrorCode =
   | "missing_url"

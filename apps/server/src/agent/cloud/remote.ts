@@ -425,6 +425,10 @@ export function applyRemoteEvent(session: Session, event: AgentEvent): void {
     session.status = event.status;
     return;
   }
+  if (event.type === "context_usage") {
+    session.lastContextUsage = event.usage;
+    return;
+  }
   if (event.type === "error") {
     session.lastError = event.message;
     session.status = "error";
@@ -440,6 +444,7 @@ export function applyRemoteEvent(session: Session, event: AgentEvent): void {
       source: artifact.source ?? { kind: "remote", runId: keep ?? event.session.remoteRunId ?? "" },
     }));
     session.lastError = event.session.lastError;
+    session.lastContextUsage = event.session.lastContextUsage ?? session.lastContextUsage;
     session.remoteRunId = keep ?? event.session.remoteRunId;
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { modelHistory, conversationTranscript } from "./transcript.ts";
+import { modelHistory, conversationTranscript, displayHistory, attachRunOutcomes } from "./transcript.ts";
 describe("authoritative conversation history", () => {
   it("does not send orphaned tool calls to providers", () => {
     expect(
@@ -60,5 +60,39 @@ describe("authoritative conversation history", () => {
     );
     expect(messages.map((m) => m.content)).toEqual(["取消后的请求"]);
     expect(messages.some((m) => m.content.includes("sk-secret"))).toBe(false);
+  });
+  it("keeps progress phase after tool calls are stripped and does not copy tool arguments", () => {
+    const done = [
+      { id: "u", role: "user", content: "检查项目", createdAt: "2026-01-01" },
+      { id: "preamble", role: "assistant", content: "我先读取项目说明。", createdAt: "2026-01-01", toolCalls: [{ id: "c", name: "read_file", arguments: "{\"path\":\"SECRET_PATH\"}" }] },
+      { id: "tool", role: "tool", content: "正文", toolCallId: "c" },
+    ];
+    const shown = displayHistory(done);
+    expect(shown.find((message) => message.id === "preamble")).toMatchObject({ phase: "progress" });
+    expect(shown.find((message) => message.id === "preamble")).not.toHaveProperty("toolCalls");
+    expect(JSON.stringify(shown)).not.toContain("SECRET_PATH");
+    expect(modelHistory(done).find((message) => message.id === "preamble")).toEqual({
+      id: "preamble", role: "assistant", content: "我先读取项目说明。", createdAt: "2026-01-01",
+    });
+    const transcript = conversationTranscript(
+      [{ id: "run_old", input: { prompt: "检查项目" }, created_at: "2026-01-01" }, { id: "run_new", input: { prompt: "继续" }, created_at: "2026-01-02" }],
+      [{ run_id: "run_old", messages: done }],
+    );
+    const labeled = attachRunOutcomes(transcript, [
+      { id: "run_old", state: "failed", error: "本轮执行失败", prompt: "检查项目" },
+      { id: "run_new", state: "cancelled", error: null, prompt: "继续" },
+    ], []);
+    expect(labeled.find((message) => message.id === "preamble")?.phase).toBe("progress");
+    expect(labeled.find((message) => message.content === "检查项目")).toMatchObject({ outcome: "failed", notice: "本轮执行失败" });
+    expect(labeled.find((message) => message.id === "prompt:run_new")).toMatchObject({ outcome: "cancelled" });
+  });
+  it("marks a waiting approval on the historical run that still needs it", () => {
+    const labeled = attachRunOutcomes(
+      [{ id: "prompt:run_a", role: "user", content: "改文件", createdAt: "2026-01-01" }, { id: "prompt:run_b", role: "user", content: "另一轮", createdAt: "2026-01-02" }],
+      [{ id: "run_a", state: "running", prompt: "改文件" }, { id: "run_b", state: "succeeded", prompt: "另一轮" }],
+      ["run_a"],
+    );
+    expect(labeled[0]).toMatchObject({ outcome: "approval" });
+    expect(labeled[1]?.outcome).toBeUndefined();
   });
 });
