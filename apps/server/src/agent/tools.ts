@@ -406,8 +406,14 @@ async function executeUnsandboxed(name: string, rawArgs: unknown, ctx: ToolConte
       return httpFetchTool(ctx, args);
     case "list_skills":
       return { output: JSON.stringify(await listSkills(), null, 2) };
-    case "load_skill":
-      return { output: formatSkill(await loadSkill(String(args.name ?? ""))) };
+    case "load_skill": {
+      const { skillToSnapshot } = await import("./skills.ts");
+      const { materializeSkillSnapshots } = await import("./skill-pack.ts");
+      const { skillActivationPrompt } = await import("@pig-agent/contracts");
+      const snapshot = skillToSnapshot(await loadSkill(String(args.name ?? "")));
+      await materializeSkillSnapshots(ctx.workspaceRoot, [snapshot]);
+      return { output: skillActivationPrompt([snapshot]) };
+    }
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -910,10 +916,6 @@ async function readTextIfPossible(path: string): Promise<string | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function formatSkill(skill: { name: string; description: string; body: string }): string {
-  return `# Skill: ${skill.name}\n\n${skill.description}\n\n${skill.body}`;
 }
 
 function clamp(n: number, min: number, max: number): number {

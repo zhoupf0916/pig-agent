@@ -2,7 +2,7 @@ import { pluginExperts } from "./plugins.ts";
 import { existsSync } from "node:fs";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
-import { listSkills } from "../agent/skills.ts";
+import { assertKnownSkillIds, listSkills } from "../agent/skills.ts";
 import { DATA_DIR, ensureDir } from "../config.ts";
 import type { Expert, ExpertKind, ExpertTeam, ExpertTeamMode } from "../types.ts";
 import { atomicWriteJson, newId, nowIso } from "../util.ts";
@@ -190,6 +190,8 @@ export async function createExpert(input: {
   if (!name) throw new Error("name is required");
   const instruction = input.instruction.trim();
   if (!instruction) throw new Error("instruction is required");
+  const skillIds = (input.skillIds ?? []).map((s) => s.trim()).filter(Boolean);
+  await assertKnownSkillIds(skillIds);
   const ts = nowIso();
   const expert: Expert = {
     id: newId("exp"),
@@ -197,7 +199,7 @@ export async function createExpert(input: {
     description: (input.description ?? "").trim(),
     instruction,
     kind: input.kind && KINDS.has(input.kind) ? input.kind : "custom",
-    skillIds: (input.skillIds ?? []).map((s) => s.trim()).filter(Boolean),
+    skillIds,
     bundled: false,
     createdAt: ts,
     updatedAt: ts,
@@ -223,7 +225,9 @@ export async function updateExpert(
   if (typeof patch.instruction === "string") expert.instruction = patch.instruction;
   if (patch.kind && KINDS.has(patch.kind)) expert.kind = patch.kind;
   if (Array.isArray(patch.skillIds)) {
-    expert.skillIds = patch.skillIds.map((s) => s.trim()).filter(Boolean);
+    const skillIds = patch.skillIds.map((s) => s.trim()).filter(Boolean);
+    await assertKnownSkillIds(skillIds);
+    expert.skillIds = skillIds;
   }
   return writeExpert(expert);
 }

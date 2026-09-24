@@ -79,6 +79,7 @@ export async function runAutomation(
       projectId: current.projectId,
       expertId: current.expertId,
       expertTeamId: current.expertTeamId,
+      skillIds: current.skillIds,
     });
     if (current.projectId) await recordSessionBound(current.projectId, session.id);
     const userMsg = prepareUserMessage(session, current.prompt);

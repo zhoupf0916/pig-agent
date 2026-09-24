@@ -115,6 +115,10 @@ export async function runSessionTurn(
   };
 
   try {
+    if (session.executionTarget !== "remote" && session.skillSnapshots?.length) {
+      const { materializeSkillSnapshots } = await import("./skill-pack.ts");
+      await materializeSkillSnapshots(settings.workspaceRoot, session.skillSnapshots);
+    }
     const runner = pickRunner(runtime);
     const playbook = await resolveExpertPlaybook({
       expertId: session.expertId,

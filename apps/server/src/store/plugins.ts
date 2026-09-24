@@ -17,6 +17,10 @@ const skillSchema = z
     name: z.string().trim().min(1).max(100),
     description: z.string().trim().min(1).max(2000),
     body: z.string().trim().min(1).max(20000),
+    files: z.array(z.object({
+      path: z.string().min(1).max(120),
+      content: z.string().max(65536),
+    })).max(32).optional(),
   })
   .strict();
 export const pluginSchema = z
@@ -118,9 +122,12 @@ export async function pluginSkills(): Promise<Skill[]> {
     .flatMap((p) =>
       p.manifest.skills.map((s) => ({
         name: `plugin_${p.manifest.id}_${s.id}`,
+        displayName: s.name,
+        machineName: s.id,
         description: `${s.name} · ${s.description}`,
         filename: `plugin_${p.manifest.id}_${s.id}.md`,
         body: s.body,
+        files: s.files,
       })),
     );
 }

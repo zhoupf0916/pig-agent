@@ -238,6 +238,8 @@ export function registerRemoteRoutes(app: Hono): void {
       (c.req.method === "POST" && /^\/v1\/mcp\/servers\/m_[a-f0-9]{16}\/test$/.test(path)) ||
       (c.req.method === "GET" &&
         /^\/v1\/projects\/[a-zA-Z0-9_-]+\/workspace$/.test(path)) ||
+      (c.req.method === "GET" && path === "/v1/skills") ||
+      (c.req.method === "GET" && /^\/v1\/skills\/[a-zA-Z0-9_-]+$/.test(path)) ||
       (c.req.method === "GET" && path === "/v1/me") ||
       (c.req.method === "GET" &&
         /^\/v1\/conversations\/[a-zA-Z0-9_-]+\/events$/.test(path)) ||

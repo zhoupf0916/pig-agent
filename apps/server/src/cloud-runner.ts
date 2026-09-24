@@ -49,6 +49,7 @@ try {
       networkPolicy?: "ask" | "blocked";
       projectContext?: string;
       capabilityContext?: string;
+      skillSnapshots?: import("@pig-agent/contracts").SkillSnapshot[];
       privateMemoryContext?: string;
       files?: Array<{ path: string; content: string }>;
       projectFiles?: Array<{ path: string; content: string }>;
@@ -69,15 +70,12 @@ try {
     }, 200);
   });
   immutableAttachmentPaths = (input.attachments || []).flatMap(a => [a.workspacePath, a.workspacePath + ".txt"]);
-  if (input.workspace?.snapshot)
-    extractWorkspaceSnapshot(input.workspace.snapshot, workspaceRoot, "cloud-result");
-  if (!input.workspace?.snapshot) for (const file of input.projectFiles || []) {
-    const target=resolveInWorkspace(workspaceRoot,file.path);
-    await mkdir(dirname(target),{recursive:true});
-    await writeFile(target,file.content);
-  }
-  for (const file of input.files || [])
-    await writeFile(resolveInWorkspace(workspaceRoot, file.path), file.content);
+  const { stageCloudWorkspace } = await import("./agent/cloud/stage-workspace.ts");
+  await stageCloudWorkspace(workspaceRoot, {
+    workspace: input.workspace,
+    projectFiles: input.projectFiles,
+    files: input.files,
+  });
   const attachmentContext: string[] = [];
   for (const file of input.attachments || []) {
     const target = resolveInWorkspace(workspaceRoot, file.workspacePath);
@@ -89,6 +87,10 @@ try {
       attachmentContext.push(`Extracted text: ${JSON.stringify(file.workspacePath + ".txt")}`);
     }
     if (file.warning) attachmentContext.push(`Attachment limitation: ${file.warning}`);
+  }
+  if (input.skillSnapshots?.length) {
+    const { materializeSkillSnapshots } = await import("./agent/skill-pack.ts");
+    await materializeSkillSnapshots(workspaceRoot, input.skillSnapshots);
   }
   const now = new Date().toISOString();
   const messages = input.messages || [];

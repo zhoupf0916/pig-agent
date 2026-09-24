@@ -38,6 +38,9 @@ function normalizeAutomation(raw: Automation): Automation {
     runtime,
     expertId:
       typeof raw.expertId === "string" && raw.expertId.trim() ? raw.expertId.trim() : undefined,
+    skillIds: Array.isArray(raw.skillIds)
+      ? raw.skillIds.map((id) => String(id).trim()).filter(Boolean)
+      : undefined,
     expertTeamId:
       typeof raw.expertTeamId === "string" && raw.expertTeamId.trim()
         ? raw.expertTeamId.trim()
@@ -81,6 +84,7 @@ export type AutomationInput = {
   schedule?: string | null;
   expertId?: string | null;
   expertTeamId?: string | null;
+  skillIds?: string[] | null;
   projectId?: string | null;
   runtime?: AgentRuntime;
   saveArtifactsToProject?: boolean;
@@ -133,6 +137,12 @@ export async function createAutomation(input: AutomationInput): Promise<Automati
     updatedAt: ts,
   };
   applyPins(automation, input);
+  if (input.skillIds) {
+    const { assertKnownSkillIds } = await import("../agent/skills.ts");
+    const skillIds = input.skillIds.map((id) => id.trim()).filter(Boolean);
+    await assertKnownSkillIds(skillIds);
+    if (skillIds.length) automation.skillIds = skillIds;
+  }
   return writeAutomation(automation);
 }
 
@@ -180,6 +190,14 @@ export async function updateAutomation(
     automation.saveArtifactsToProject = patch.saveArtifactsToProject;
   }
   applyPins(automation, patch);
+  if (patch.skillIds === null) delete automation.skillIds;
+  else if (Array.isArray(patch.skillIds)) {
+    const { assertKnownSkillIds } = await import("../agent/skills.ts");
+    const skillIds = patch.skillIds.map((id) => id.trim()).filter(Boolean);
+    await assertKnownSkillIds(skillIds);
+    if (skillIds.length) automation.skillIds = skillIds;
+    else delete automation.skillIds;
+  }
   if (patch.remoteScheduleId) automation.remoteScheduleId = patch.remoteScheduleId;
   if (patch.lastRunAt === null) delete automation.lastRunAt;
   else if (typeof patch.lastRunAt === "string" && patch.lastRunAt.trim()) {

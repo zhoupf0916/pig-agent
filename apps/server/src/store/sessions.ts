@@ -11,7 +11,7 @@ import { dropDebugSession } from "../agent/debug-trace.ts";
 const DIR = join(DATA_DIR, "sessions");
 
 export async function createSession(
-  input: { workspaceId?: string; projectId?: string; expertId?: string; expertTeamId?: string } = {},
+  input: { workspaceId?: string; projectId?: string; expertId?: string; expertTeamId?: string; skillIds?: string[] } = {},
 ): Promise<Session> {
   ensureDir(DIR);
   const ts = nowIso();
@@ -27,6 +27,8 @@ export async function createSession(
     artifacts: [],
     eventCheckpointSeq: 0,
   };
+  const skillIds = (input.skillIds ?? []).map((id) => id.trim()).filter(Boolean);
+  if (skillIds.length) session.skillIds = skillIds;
   if (input.workspaceId && !input.projectId) throw new Error("工作区必须属于项目");
   if (input.projectId) {
     session.projectId = input.projectId;
@@ -43,8 +45,32 @@ export async function createSession(
   }
   if (input.expertId) session.expertId = input.expertId;
   if (input.expertTeamId) session.expertTeamId = input.expertTeamId;
+  if (input.skillIds || input.expertId || input.expertTeamId) await freezeSessionSkills(session, input.skillIds);
   await writeSession(session);
   return session;
+}
+
+/** Capture explicit skills plus the expert's current bindings. Later library edits do not change this snapshot. */
+export async function freezeSessionSkills(session: Session, explicit?: string[]): Promise<void> {
+  if (explicit) {
+    const ids = explicit.map((id) => id.trim()).filter(Boolean);
+    const { assertKnownSkillIds } = await import("../agent/skills.ts");
+    await assertKnownSkillIds(ids);
+    if (ids.length) session.skillIds = ids;
+    else delete session.skillIds;
+  }
+  const { resolveExpertPlaybook } = await import("./experts.ts");
+  const playbook = await resolveExpertPlaybook({
+    expertId: session.expertId,
+    expertTeamId: session.expertTeamId,
+  });
+  const ids = [...new Set([...(session.skillIds ?? []), ...playbook.skillIds])];
+  if (!ids.length) {
+    delete session.skillSnapshots;
+    return;
+  }
+  const { snapshotSkills } = await import("../agent/skills.ts");
+  session.skillSnapshots = await snapshotSkills(ids);
 }
 
 export async function listSessionRecords(): Promise<Session[]> {

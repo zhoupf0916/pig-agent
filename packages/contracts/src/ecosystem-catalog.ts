@@ -1,8 +1,14 @@
 import { CURATED_CATALOG } from "./curated-catalog.js";
 import type { EcosystemPlugin } from "./ecosystem.ts";
 
-function skill(id: string, name: string, description: string, body: string) {
-  return { id, name, description, body };
+function skill(
+  id: string,
+  name: string,
+  description: string,
+  body: string,
+  files?: EcosystemPlugin["skills"][number]["files"],
+) {
+  return { id, name, description, body, ...(files ? { files } : {}) };
 }
 
 function expert(id: string, name: string, description: string, instruction: string, skillIds: string[]) {
@@ -45,7 +51,48 @@ const tables = skill(
     "步骤：1. 确认列和空值。2. 给出计算式再给结果。3. 标出样本太小或列冲突的地方。",
     "交付：汇总表、计算过程和不能下结论的项。",
     "验证：用同一输入重算关键合计；对不上就说明差异。",
+    "需要明细时再读 references/metrics.md，并用 scripts/profile_csv.py 对 CSV 做标准库汇总。",
   ].join("\n"),
+  [
+    {
+      path: "scripts/profile_csv.py",
+      content: [
+        "import csv, sys",
+        "from collections import Counter",
+        "from pathlib import Path",
+        "def main():",
+        "    if len(sys.argv) != 2:",
+        "        print('用法: python profile_csv.py <file.csv>', file=sys.stderr)",
+        "        return 2",
+        "    path = Path(sys.argv[1])",
+        "    with path.open(newline='', encoding='utf-8') as handle:",
+        "        rows = list(csv.DictReader(handle))",
+        "    if not rows:",
+        "        print('没有数据行')",
+        "        return 1",
+        "    print(f'行数 {len(rows)}')",
+        "    for column in rows[0]:",
+        "        values = [row.get(column, '') for row in rows]",
+        "        blank = sum(value == '' for value in values)",
+        "        nums = []",
+        "        for value in values:",
+        "            try: nums.append(float(value))",
+        "            except ValueError: pass",
+        "        if nums and len(nums) == len(values) - blank:",
+        "            print(f'{column}: 数值 {len(nums)} 空 {blank} 最小 {min(nums)} 最大 {max(nums)} 合计 {sum(nums)}')",
+        "        else:",
+        "            print(f'{column}: 文本 空 {blank} 常见 {Counter(v for v in values if v).most_common(3)}')",
+        "    return 0",
+        "if __name__ == '__main__':",
+        "    raise SystemExit(main())",
+        "",
+      ].join("\n"),
+    },
+    {
+      path: "references/metrics.md",
+      content: "口径：先确认列名和单位。数值列报告个数、空值、最小、最大、合计。文本列只报告空值和出现最多的三项。不把样本外趋势写成结论。\n",
+    },
+  ],
 );
 
 const sources = skill(

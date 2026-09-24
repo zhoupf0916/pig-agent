@@ -5,7 +5,7 @@ import {
   priceUsage,
 } from "./billing.ts";
 import { pluginCapabilities } from "./ecosystem-plugins.ts";
-import { BUNDLED_EXPERTS } from "@pig-agent/contracts";
+import { BUNDLED_EXPERTS, parseSkillFrontmatter, skillActivationPrompt, validateSkillName, validateSkillPackFiles, validateSkillUpload, type SkillSnapshot } from "@pig-agent/contracts";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -30,8 +30,16 @@ export const cloudExpertSchema = z
     skillIds: z.array(z.string().min(1).max(100)).max(20).default([]),
   })
   .strict();
+const skillFileSchema = z.object({
+  path: z.string().min(1).max(120),
+  content: z.string().max(65536),
+});
 export const cloudSkillSchema = z
-  .object({ ...common, body: z.string().trim().min(1).max(20000) })
+  .object({
+    ...common,
+    body: z.string().trim().min(1).max(20000),
+    files: z.array(skillFileSchema).max(32).optional(),
+  })
   .strict();
 type Client = Pick<typeof db, "query">;
 type Entry = {
@@ -43,32 +51,66 @@ type Entry = {
   body?: string;
   skillIds?: string[];
   kind?: string;
+  files?: { path: string; content: string }[];
+  displayName?: string;
+  machineName?: string;
+  allowedTools?: string[];
 };
+function specSkillName(skill: { id: string; name: string; machineName?: string }): string {
+  const candidates = [skill.machineName, skill.name, skill.id.replaceAll("_", "-"), skill.id].filter((item): item is string => Boolean(item));
+  const found = candidates.find((item) => validateSkillName(item) === null);
+  if (!found) throw Error("技能标识不符合规范，不能作为技能包 name");
+  return found;
+}
 async function bundledSkills(): Promise<Entry[]> {
   const dir = process.env.CLOUD_SKILLS_DIR || join(process.cwd(), "skills");
-  const names = (await readdir(dir)).filter((name) => name.endsWith(".md"));
-  return Promise.all(
-    names.sort().map(async (filename) => {
-      const raw = await readFile(join(dir, filename), "utf8"),
-        match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/),
-        meta: Record<string, string> = {};
-      for (const line of (match?.[1] || "").split("\n")) {
-        const i = line.indexOf(":");
-        if (i > 0)
-          meta[line.slice(0, i).trim()] = line
-            .slice(i + 1)
-            .trim()
-            .replace(/^["']|["']$/g, "");
-      }
-      return {
-        id: meta.name || filename.slice(0, -3),
-        name: meta.name || filename.slice(0, -3),
-        description: meta.description || "",
-        body: raw.slice(match?.[0].length || 0),
+  const entries = await readdir(dir, { withFileTypes: true });
+  const skills: Entry[] = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      const raw = await readFile(join(dir, entry.name), "utf8");
+      const parsed = parseSkillFrontmatter(raw);
+      skills.push({
+        id: parsed.name,
+        name: parsed.displayName || parsed.name,
+        description: parsed.description,
+        body: parsed.body,
+        displayName: parsed.displayName,
+        allowedTools: parsed.allowedTools,
         bundled: true,
-      };
-    }),
-  );
+      });
+    } else if (entry.isDirectory()) {
+      try {
+        const raw = await readFile(join(dir, entry.name, "SKILL.md"), "utf8");
+        const parsed = parseSkillFrontmatter(raw);
+        if (parsed.name !== entry.name) continue;
+        const files = await readPackFiles(join(dir, entry.name));
+        skills.push({
+          id: parsed.name,
+          name: parsed.displayName || parsed.name,
+          description: parsed.description,
+          body: parsed.body,
+          displayName: parsed.displayName,
+          allowedTools: parsed.allowedTools,
+          files,
+          bundled: true,
+        });
+      } catch {
+        // A directory without a valid SKILL.md is not a skill pack.
+      }
+    }
+  }
+  return skills;
+}
+async function readPackFiles(dir: string) {
+  const files: { path: string; content: string }[] = [];
+  for (const folder of ["scripts", "references", "assets"]) {
+    const names = await readdir(join(dir, folder)).catch(() => [] as string[]);
+    for (const name of names)
+      files.push({ path: `${folder}/${name}`, content: await readFile(join(dir, folder, name), "utf8") });
+  }
+  if (validateSkillPackFiles(files)) return [];
+  return files;
 }
 export async function listCapabilities(
   ownerId: string,
@@ -113,14 +155,50 @@ export async function resolveCapabilityContext(
   const available = await listCapabilities(ownerId, "skill", client),
     skills = ids.map((id) => available.find((s) => s.id === id));
   if (skills.some((s) => !s)) throw Error("所选技能不存在或不属于当前账户");
+  const snapshots: SkillSnapshot[] = skills.map((skill) => ({
+    id: skill!.id,
+    name: specSkillName(skill!),
+    displayName: skill!.displayName || (skill!.name === skill!.id ? undefined : skill!.name),
+    description: skill!.description,
+    body: skill!.body || "",
+    allowedTools: skill!.allowedTools,
+    files: skill!.files || [],
+  }));
   const text = [
-    "以下专家和技能是用户主动选择的工作方法，不扩大工具、网络、审批或项目权限。",
+    snapshots.length ? skillActivationPrompt(snapshots) : "以下专家和技能是用户主动选择的工作方法，不扩大工具、网络、审批或项目权限。",
     ...(expert ? [`专家：${expert.name}\n${expert.instruction}`] : []),
-    ...skills.map((skill) => `技能：${skill!.name}\n${skill!.body}`),
   ].join("\n\n");
   if (text.length > 80000)
     throw Error("选择的专家与技能内容超过80000字符，请减少数量");
   return text;
+}
+export async function resolveSkillSnapshots(
+  ownerId: string,
+  input: { expertId?: string; skillIds?: string[] },
+  client: Client = db,
+): Promise<SkillSnapshot[]> {
+  if (!input.expertId && !input.skillIds?.length) return [];
+  const expert = input.expertId
+    ? (await listCapabilities(ownerId, "expert", client)).find((e) => e.id === input.expertId)
+    : undefined;
+  if (input.expertId && !expert) throw Error("所选专家不存在或不属于当前账户");
+  const ids = [...new Set([...(expert?.skillIds || []), ...(input.skillIds || [])])];
+  const available = await listCapabilities(ownerId, "skill", client);
+  return ids.map((id) => {
+    const skill = available.find((item) => item.id === id);
+    if (!skill) throw Error("所选技能不存在或不属于当前账户");
+    const invalid = validateSkillPackFiles(skill.files || []);
+    if (invalid) throw Error(invalid.message);
+    return {
+      id: skill.id,
+      name: specSkillName(skill),
+      displayName: skill.displayName || (skill.name !== skill.id ? skill.name : undefined),
+      description: skill.description,
+      body: skill.body || "",
+      allowedTools: skill.allowedTools,
+      files: skill.files || [],
+    };
+  });
 }
 export function parseCloudDraft(kind: "expert" | "skill", raw: string) {
   const value = JSON.parse(
@@ -152,6 +230,10 @@ export function registerCapabilityRoutes(app: Hono<CloudEnv>) {
       if (!parsed.success)
         return c.json({ error: "请填写有效名称与正文" }, 400);
       const owner = c.get("principal").id;
+      if (kind === "skill" && "files" in parsed.data && parsed.data.files) {
+        const invalid = validateSkillPackFiles(parsed.data.files);
+        if (invalid) return c.json({ error: invalid.message }, 400);
+      }
       if (kind === "expert") {
         try {
           await resolveCapabilityContext(owner, {
@@ -221,6 +303,36 @@ export function registerCapabilityRoutes(app: Hono<CloudEnv>) {
       });
     });
   }
+  app.post("/v1/skill-packs", async (c) => {
+    const parsed = z.object({
+      files: z.array(z.object({ path: z.string().min(1).max(120), content: z.string().max(65536) })).min(1).max(33),
+    }).strict().safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "技能包格式无效" }, 400);
+    const invalid = validateSkillUpload(parsed.data.files);
+    if (invalid) return c.json({ error: invalid.message }, 400);
+    const skillFile = parsed.data.files.find((file) => file.path === "SKILL.md");
+    if (!skillFile) return c.json({ error: "技能包必须包含 SKILL.md" }, 400);
+    let front;
+    try { front = parseSkillFrontmatter(skillFile.content); }
+    catch (error) { return c.json({ error: error instanceof Error ? error.message : "SKILL.md 无效" }, 400); }
+    const files = parsed.data.files.filter((file) => file.path !== "SKILL.md");
+    const owner = c.get("principal").id;
+    const id = "skill_" + randomUUID().replaceAll("-", "");
+    const value = {
+      name: front.name,
+      description: front.description,
+      body: front.body,
+      displayName: front.displayName,
+      machineName: front.name,
+      allowedTools: front.allowedTools,
+      files,
+    };
+    const row = (await db.query(
+      "INSERT INTO cloud_capabilities(id,owner_id,kind,value) VALUES($1,$2,'skill',$3) RETURNING created_at,updated_at",
+      [id, owner, value],
+    )).rows[0];
+    return c.json({ ...value, id, bundled: false, createdAt: row.created_at, updatedAt: row.updated_at }, 201);
+  });
   app.post("/v1/resource-drafts", async (c) => {
     const input = z
       .object({

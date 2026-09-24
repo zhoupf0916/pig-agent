@@ -6,6 +6,7 @@ import { loadSettings } from "../store/settings.ts";
 
 export const skillDraftSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/),
+  displayName: z.string().trim().min(1).max(40).optional(),
   description: z.string().trim().min(1).max(2_000),
   body: z.string().trim().min(1).max(20_000),
 });
@@ -27,7 +28,7 @@ export function registerResourceDraftRoutes(app: Hono): void {
     const kind = input.data.kind;
     try {
       const result = await complete(settings, [
-        { id: "draft-system", createdAt: new Date().toISOString(), role: "system", content: `根据用户描述起草可复用的${kind === "expert" ? "专家指令" : "技能操作指南"}。只输出 JSON，不调用工具、不执行任务。字段为 ${kind === "expert" ? 'name, description, instruction' : 'name, description, body'}，全部字符串。${kind === "skill" ? "name 必须为 1–80 位小写英文数字连字符标识。" : "name 简洁易读，不超过120字符。"} description 不超过2000字符；正文不超过20000字符。使用用户语言，正文包含适用场景、工作步骤、输入缺失时的处理、交付与验证标准。不得声称具备不存在的工具或绕过审批、权限、数据边界。` },
+        { id: "draft-system", createdAt: new Date().toISOString(), role: "system", content: `根据用户描述起草可复用的${kind === "expert" ? "专家指令" : "技能操作指南"}。只输出 JSON，不调用工具、不执行任务。字段为 ${kind === "expert" ? "name, description, instruction" : "name, displayName, description, body"}，全部字符串。${kind === "skill" ? "name 必须为 1–80 位小写英文数字连字符标识。displayName 是给用户看的中文名，不超过40字。" : "name 简洁易读，不超过120字符。"} description 不超过2000字符；正文不超过20000字符。使用用户语言，正文包含适用场景、工作步骤、输入缺失时的处理、交付与验证标准。不得声称具备不存在的工具或绕过审批、权限、数据边界。` },
         { id: "draft-user", createdAt: new Date().toISOString(), role: "user", content: input.data.prompt },
       ], { allowTools: false, signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90_000)]), maxOutputTokens: 4_000 });
       return c.json({ draft: parseResourceDraft(kind, result.content), model: settings.llmModel });

@@ -1,26 +1,13 @@
 ---
 name: doc-writing
-description: Write or rewrite documentation from workspace sources. Use when the user asks for a README, guide, changelog, or polished docs.
-keywords: docs, documentation, README, guide, 文档, 说明书, changelog
+description: 把材料写成可核对的说明。用户要求文档、步骤或变更记录时使用。
+metadata:
+  display-name: 文档写作
+keywords: doc, documentation, 文档, 说明
 ---
 
-# Documentation writing
+# 文档写作
 
-Write **reviewable docs** from files that already exist in the workspace.
-
-## Procedure
-1. `search_files` / `list_dir` to find existing notes, READMEs, and source comments.
-2. Read the important files. Do not invent APIs, dates, or owners that are not on disk.
-3. Draft the document with `write_file` (new path) or `apply_patch` / `edit_file` (existing).
-4. Re-read the result and fix headings, lists, and broken relative links.
-5. Tell the user the exact path to review.
-
-## Suggested shape
-- Title + one-paragraph purpose
-- How to use / how to run
-- Layout of the workspace
-- Known gaps pulled from the files themselves
-
-## Rules
-- Prefer the path the user named. Otherwise `docs/` or a root `README.md`.
-- Keep the user's language.
+1. 先读现有材料，不编造来源。
+2. 按读者要执行的顺序写步骤。
+3. 每条结论都能指回读过的文件。

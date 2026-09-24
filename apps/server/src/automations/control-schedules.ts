@@ -1,3 +1,4 @@
+import type { SkillSnapshot } from "@pig-agent/contracts";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
@@ -7,7 +8,12 @@ import { planeJson } from "../control-plane/client.ts";
 import { createSession, saveSession } from "../store/sessions.ts";
 import { newId, nowIso } from "../util.ts";
 
-type Delivery = { scheduleId: string; prompt: string; scheduledAt: string };
+export type LocalScheduleDelivery = {
+  scheduleId: string;
+  prompt: string;
+  scheduledAt: string;
+  skillSnapshots?: SkillSnapshot[];
+};
 
 export async function deviceId(): Promise<string> {
   const file = join(DATA_DIR, "device-id");
@@ -21,21 +27,27 @@ export async function deviceId(): Promise<string> {
   return id;
 }
 
-async function runLocalPrompt(prompt: string): Promise<void> {
+async function runLocalDelivery(item: LocalScheduleDelivery): Promise<void> {
   const session = await createSession();
   session.executionTarget = "local";
   session.engine = "pig";
-  session.title = prompt.slice(0, 40);
-  session.messages.push({ id: newId("msg"), role: "user", content: prompt, createdAt: nowIso() });
+  session.title = item.prompt.slice(0, 40);
+  if (item.skillSnapshots?.length) {
+    session.skillSnapshots = item.skillSnapshots;
+    session.skillIds = item.skillSnapshots.map((skill) => skill.id);
+  }
+  session.messages.push({ id: newId("msg"), role: "user", content: item.prompt, createdAt: nowIso() });
   await saveSession(session);
   await runSessionTurn(session, { runtime: "pig" });
 }
 
 /** Control plane decides which device runs a local schedule. A lost claim is left for another device. */
-export async function pullLocalSchedules(run: (prompt: string) => Promise<void> = runLocalPrompt): Promise<number> {
-  let deliveries: Delivery[] = [];
+export async function pullLocalSchedules(
+  run: (item: LocalScheduleDelivery) => Promise<void> = runLocalDelivery,
+): Promise<number> {
+  let deliveries: LocalScheduleDelivery[] = [];
   try {
-    deliveries = (await planeJson<{ deliveries: Delivery[] }>("/v1/schedule-deliveries")).deliveries || [];
+    deliveries = (await planeJson<{ deliveries: LocalScheduleDelivery[] }>("/v1/schedule-deliveries")).deliveries || [];
   } catch {
     return 0;
   }
@@ -52,7 +64,7 @@ export async function pullLocalSchedules(run: (prompt: string) => Promise<void> 
       continue;
     }
     try {
-      await run(item.prompt);
+      await run(item);
       await planeJson(`/v1/schedules/${item.scheduleId}/device-result`, {
         method: "POST",
         body: JSON.stringify({ deviceId: device, scheduledAt, ok: true }),

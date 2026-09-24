@@ -16,6 +16,7 @@ import { executionPolicy } from "./execution-policy.ts";
 import {
   registerCapabilityRoutes,
   resolveCapabilityContext,
+  resolveSkillSnapshots,
 } from "./capabilities.ts";
 import {
   registerUserDataRoutes,
@@ -264,6 +265,7 @@ app.post("/v1/runs", async (c) => {
             : await loadProjectFiles(effectiveInput.projectId, p.id, client),
           requestInput: parsed.data,
           capabilityContext,
+          skillSnapshots: await resolveSkillSnapshots(p.id, effectiveInput, client),
           privateMemoryContext,
           projectContext: await sharedProjectContext(
             parsed.data.projectId,

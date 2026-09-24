@@ -101,6 +101,10 @@ export type Session = {
   remoteDebugContent?: boolean;
   /** Optional local expert / playbook pinned to this session. */
   expertId?: string;
+  /** Skills chosen for this task. Unknown ids are rejected at creation. */
+  skillIds?: string[];
+  /** Frozen skill instructions and pack files. Later library edits do not change this. */
+  skillSnapshots?: import("./skill-pack.js").SkillSnapshot[];
   /** Optional expert-team metadata (chain/parallel). Instruction comes from expertId, or the whole team if unset. */
   expertTeamId?: string;
   /**
@@ -393,6 +397,8 @@ export type Automation = {
   schedule: string | null;
   expertId?: string;
   expertTeamId?: string;
+  /** Skill names captured when the automation is saved and passed into each run. */
+  skillIds?: string[];
   projectId?: string;
   /** Default pig. Stored per automation; does not change global settings. */
   runtime: AgentRuntime;
@@ -516,11 +522,17 @@ export type SkillMeta = {
   name: string;
   description: string;
   filename: string;
+  displayName?: string;
   keywords?: string[];
+  filePaths?: string[];
 };
 
 export type Skill = SkillMeta & {
   body: string;
+  allowedTools?: string[];
+  /** Spec name when the lookup id is a plugin or cloud entity id. */
+  machineName?: string;
+  files?: import("./skill-pack.js").SkillPackFile[];
 };
 
 export type WorkspaceNode = {
@@ -594,4 +606,16 @@ export type { EcosystemPlugin, EcosystemSkill, EcosystemExpert, McpServerView, M
 export { MCP_TOOL_PREFIX, mcpToolName, parseMcpToolName, exposedMcpToolName, redactConfiguredSecret, redactSecretValue, mcpDefinitions } from "./ecosystem.js";
 export { presentDebugTrace, closeTerminalDebugTrace } from "./debug-trace.js";
 export type { DebugSpan, DebugSpanKind, DebugSpanStatus, DebugTraceView } from "./debug-trace.js";
-export type { PluginManifest, InstalledPlugin } from "./plugins.ts";
+export type { PluginManifest, InstalledPlugin } from "./plugins.js";
+export {
+  validateSkillName,
+  validateSkillPackFiles,
+  validateSkillRelativePath,
+  parseSkillFrontmatter,
+  skillActivationPrompt,
+  skillContentDigest,
+  skillMaterialPrefix,
+  validateSkillUpload,
+  SKILL_PACK_LIMITS,
+} from "./skill-pack.js";
+export type { SkillPackFile, SkillSnapshot } from "./skill-pack.js";

@@ -18,6 +18,19 @@ describe("shared conversation state", () => {
     expect(JSON.stringify(result)).not.toContain("PRIVATE_BYTES");
     expect(JSON.stringify(result)).not.toContain("PRIVATE_TEXT");
   });
+  it("returns only the caller's skill ids and display names", async () => {
+    const runs = [
+      { id: "r1", created_at: "2026-01-01", input: { prompt: "first", skillIds: ["skill_private"], skillSnapshots: [{ id: "skill_private", name: "sales-check", displayName: "销售检查", body: "PRIVATE_SKILL_BODY" }] }, author: { id: "owner", name: "Owner" } },
+      { id: "r2", created_at: "2026-01-02", input: { prompt: "second", skillIds: ["skill_other"], skillSnapshots: [{ id: "skill_other", name: "other-pack", displayName: "别人的技能", body: "OTHER_SKILL_BODY" }] }, author: { id: "editor", name: "Editor" } },
+    ];
+    query.mockResolvedValueOnce({ rows: runs }).mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+    const result = await conversationSnapshot({ id: "conv", can_write: true }, "owner");
+    expect(result.runs[0]).toMatchObject({ skillIds: ["skill_private"], skills: [{ id: "skill_private", displayName: "销售检查" }] });
+    expect(result.runs[1]).not.toHaveProperty("skillIds");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_SKILL_BODY");
+    expect(JSON.stringify(result)).not.toContain("OTHER_SKILL_BODY");
+    expect(JSON.stringify(result)).not.toContain("别人的技能");
+  });
   it("loads shared project context only through permission-filtered query and marks it as user context",async()=>{
     query.mockResolvedValueOnce({rows:[{name:"Sales",description:"Compare invoices"}]}).mockResolvedValueOnce({rows:[]});
     expect(await sharedProjectContext("project1","owner")).toContain("用户提供的任务背景");

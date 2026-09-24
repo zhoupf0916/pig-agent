@@ -44,5 +44,8 @@ describe("resource drafts", () => {
     expect((await post("/api/skills", skill)).status).toBe(409);
     expect((await post("/api/skills", { ...skill, name: "coding-helper" })).status).toBe(409);
     expect((await post("/api/skills", { ...skill, name: "../escape" })).status).toBe(400);
+    const named = await post("/api/skills", { name: "sales-check-named", displayName: "销售检查", description: "销售分析", body: "检查输入；标记异常；核对总额。" });
+    expect(named.status).toBe(201);
+    expect((await loadSkill("sales-check-named")).displayName).toBe("销售检查");
   });
 });

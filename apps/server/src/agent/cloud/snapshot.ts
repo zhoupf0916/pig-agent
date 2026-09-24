@@ -19,6 +19,7 @@ const USTAR_NAME_MAX = 100;
 
 /** Directory names never copied into a remote snapshot or local-stub isolate. */
 export const CLOUD_HANDOFF_SKIP_DIRS = new Set([
+  ".pig", // Runtime skill snapshots are private inputs, not shared task outputs.
   "node_modules",
   ".git",
   "data",

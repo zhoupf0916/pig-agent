@@ -5,6 +5,8 @@ export type EcosystemSkill = {
   name: string;
   description: string;
   body: string;
+  /** Optional pack files. Contents are materialized, not inlined into the prompt. */
+  files?: import("./skill-pack.js").SkillPackFile[];
 };
 
 export type EcosystemExpert = {

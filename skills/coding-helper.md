@@ -1,21 +1,15 @@
 ---
 name: coding-helper
-description: Inspect workspace code, make a small patch, and verify with read-back or a bounded shell command. Use for coding, bugfix, or refactor help.
+description: 查看工作区代码，做小范围修改，并用读回或有限命令核对。用于编码、缺陷修复或重构。
+metadata:
+  display-name: 编码协助
 keywords: code, coding, bug, refactor, patch, 代码, 修复, 重构
 ---
 
-# Coding helper
+# 编码协助
 
-Help with **small, reviewable code changes** in the sandbox.
-
-## Procedure
-1. `search_files` / `read_file` to locate the relevant symbols. Do not guess APIs.
-2. `update_plan` with inspect → patch → verify.
-3. Change files with `edit_file` or `apply_patch`. Avoid wholesale `write_file` rewrites of large files.
-4. Verify: re-read the hunk, or `run_shell` a short command (`python -m py_compile`, `node --check`) if the workspace already has that tool.
-5. Summarize the patch (paths + what to review). Mention if you could not run tests.
-
-## Rules
-- No secrets in new files. Do not print env keys.
-- If a command fails, read stderr and try a smaller check — do not loop the same command.
-- Stay inside the workspace; do not `git push` or contact remotes unless the user asked.
+1. 用 `search_files` 和 `read_file` 定位符号，不要猜接口。
+2. 用 `update_plan` 列出查看、修改、核对。
+3. 用 `edit_file` 或 `apply_patch` 做小改动。
+4. 重新阅读改动，或在工作区已有工具时用 `run_shell` 做短检查。
+5. 汇总路径和待核对点。不要把密钥写进新文件，不要主动推送远程。

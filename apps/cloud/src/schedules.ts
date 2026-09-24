@@ -1,4 +1,5 @@
 import { cronToPlan, describePlan, localLeaseDecision, planToCron, type SchedulePlan, SchedulePlanError } from "@pig-agent/contracts";
+import { resolveCapabilityContext, resolveSkillSnapshots } from "./capabilities.ts";
 import { executionPolicy } from "./execution-policy.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import type { Hono } from "hono";
@@ -26,6 +27,7 @@ const schema = z.object({
   plan: planSchema.optional(),
   timezone: z.string().min(1).max(80).default("Asia/Shanghai"),
   misfirePolicy: z.enum(["skip", "once"]).default("skip"),
+  skillIds: z.array(z.string().min(1).max(100)).max(20).optional(),
   executionTarget: z.enum(["cloud", "local", "remote"]).optional().transform((value) => value === "remote" ? "cloud" as const : value),
   engine: z.literal("pig").optional(),
   runtime: z.enum(["cloud", "pig"]).optional(),
@@ -34,7 +36,7 @@ type Row = {
   id: string;
   owner_id: string;
   name: string;
-  input: { prompt: string; messages: unknown[]; requireApproval?: boolean; networkPolicy?: "ask"|"blocked"; plan?: SchedulePlan; executionTarget?: "cloud" | "local" };
+  input: { prompt: string; messages: unknown[]; skillIds?: string[]; requireApproval?: boolean; networkPolicy?: "ask"|"blocked"; plan?: SchedulePlan; executionTarget?: "cloud" | "local" };
   enabled: boolean;
   cron: string | null;
   timezone: string;
@@ -55,6 +57,7 @@ const view = (r: Row) => ({
   id: r.id,
   name: r.name,
   prompt: r.input.prompt,
+  skillIds: r.input.skillIds || [],
   requireApproval: r.input.requireApproval ?? true,
   networkPolicy: r.input.networkPolicy ?? "ask",
   enabled: r.enabled,
@@ -118,6 +121,8 @@ async function enqueue(c: PoolClient, row: Row, key: string): Promise<string> {
       row.owner_id,
       {
         ...row.input,
+        capabilityContext: await resolveCapabilityContext(row.owner_id, row.input, c),
+        skillSnapshots: await resolveSkillSnapshots(row.owner_id, row.input, c),
         privateMemoryContext: await buildUserContext(
           row.owner_id,
           undefined,
@@ -237,7 +242,9 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
     const key = c.req.header("Idempotency-Key");
     if (!key || key.length > 100)
       return c.json({ error: "需要有效的 Idempotency-Key" }, 400);
-    const result = await transaction(c.get("principal").id, async (client) => {
+    let result;
+    try {
+      result = await transaction(c.get("principal").id, async (client) => {
       const old = (
         await client.query(
           "SELECT * FROM schedules WHERE owner_id=$1 AND request_key=$2",
@@ -251,6 +258,7 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
       );
       if (Number(count.rows[0].count) >= 100) return null;
       const defaults = await loadUserSettings(c.get("principal").id, client);
+      await resolveSkillSnapshots(c.get("principal").id, { skillIds: p.skillIds }, client);
       return (
         await client.query(
           "INSERT INTO schedules(id,owner_id,request_key,name,input,cron,timezone,enabled,misfire,next_fire_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *",
@@ -262,6 +270,7 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
             {
               prompt: p.prompt,
               messages: [],
+              skillIds: p.skillIds,
               plan: compiled.plan,
               executionTarget: p.executionTarget ?? "cloud",
               ...executionPolicy(p,defaults),
@@ -275,6 +284,9 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
         )
       ).rows[0];
     });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "计划无法保存" }, 400);
+    }
     if (!result) return c.json({ error: "最多保留 100 个远端计划" }, 429);
     if (
       result.deleted_at ||
@@ -327,13 +339,15 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
             : null
           : old.next_fire_at;
         nextFire(compiled.cron, p.timezone, new Date());
+        const skillIds = parsed.data.skillIds ?? old.input.skillIds;
+        await resolveSkillSnapshots(c.get("principal").id, { skillIds }, client);
         return (
           await client.query(
             "UPDATE schedules SET name=$2,input=$3,cron=$4,timezone=$5,enabled=$6,misfire=$7,next_fire_at=$8,updated_at=now() WHERE id=$1 RETURNING *",
             [
               old.id,
               p.name,
-              { ...old.input, prompt: p.prompt, plan: compiled.plan, executionTarget: parsed.data.executionTarget ?? (old.input.executionTarget === "local" ? "local" : "cloud"), requireApproval:p.requireApproval, networkPolicy:p.networkPolicy },
+              { ...old.input, prompt: p.prompt, skillIds, plan: compiled.plan, executionTarget: parsed.data.executionTarget ?? (old.input.executionTarget === "local" ? "local" : "cloud"), requireApproval:p.requireApproval, networkPolicy:p.networkPolicy },
               compiled.cron,
               p.timezone,
               p.enabled,
@@ -345,7 +359,7 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
       });
       return row ? c.json(view(row)) : c.json({ error: "计划不存在" }, 404);
     } catch (e) {
-      if (e instanceof InvalidScheduleError)
+      if (e instanceof InvalidScheduleError || e instanceof Error)
         return c.json({ error: e.message }, 400);
       throw e;
     }
@@ -430,17 +444,21 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
   });
   app.get("/v1/schedule-deliveries", async (c) => {
     const rows = await db.query(
-      "SELECT s.id,s.name,s.input->>'prompt' AS prompt,f.scheduled_at,f.outcome,f.device_id,f.lease_until FROM schedule_firings f JOIN schedules s ON s.id=f.schedule_id WHERE s.owner_id=$1 AND s.deleted_at IS NULL AND coalesce(s.input->>'executionTarget','cloud')='local' AND (f.outcome='waiting_device' OR (f.outcome='leased' AND f.lease_until<=now())) ORDER BY f.scheduled_at LIMIT 20",
+      "SELECT s.id,s.name,s.input,f.scheduled_at FROM schedule_firings f JOIN schedules s ON s.id=f.schedule_id WHERE s.owner_id=$1 AND s.deleted_at IS NULL AND coalesce(s.input->>'executionTarget','cloud')='local' AND (f.outcome='waiting_device' OR (f.outcome='leased' AND f.lease_until<=now())) ORDER BY f.scheduled_at LIMIT 20",
       [c.get("principal").id],
     );
-    return c.json({
-      deliveries: rows.rows.map((row) => ({
+    const deliveries = [];
+    for (const row of rows.rows) {
+      const skillIds = Array.isArray(row.input?.skillIds) ? row.input.skillIds : [];
+      deliveries.push({
         scheduleId: row.id,
         name: row.name,
-        prompt: row.prompt,
+        prompt: row.input?.prompt,
         scheduledAt: row.scheduled_at,
-      })),
-    });
+        skillSnapshots: await resolveSkillSnapshots(c.get("principal").id, { skillIds }),
+      });
+    }
+    return c.json({ deliveries });
   });
   app.post("/v1/schedules/:id/claim-device", async (c) => {
     const body = z.object({ deviceId: z.string().trim().min(1).max(80), scheduledAt: z.string().refine((value) => !Number.isNaN(Date.parse(value)), "时间无效") }).strict().safeParse(await c.req.json().catch(() => null));

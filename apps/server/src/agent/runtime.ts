@@ -204,18 +204,29 @@ export async function runAgent(options: {
     await saveWorkbench(session.id, workbench);
   }
   const { suggested, loaded } = await loadSuggestedSkills(lastUser?.content ?? "");
-  const loadedBodies = loaded.map((s) => ({ name: s.name, body: s.body }));
-  const seenSkills = new Set(loadedBodies.map((s) => s.name));
+  const { skillActivationPrompt } = await import("@pig-agent/contracts");
+  const { skillToSnapshot } = await import("./skills.ts");
+  const { materializeSkillSnapshots } = await import("./skill-pack.ts");
+  const frozen = new Set((session.skillSnapshots ?? []).flatMap((skill) => [skill.id, skill.name]));
+  const activated = [...(session.skillSnapshots ?? [])];
+  for (const skill of loaded) {
+    const snapshot = skillToSnapshot(skill);
+    if (frozen.has(snapshot.id) || frozen.has(snapshot.name)) continue;
+    activated.push(snapshot);
+  }
   for (const skillId of preferredSkillIds ?? []) {
-    if (seenSkills.has(skillId)) continue;
+    if (frozen.has(skillId) || activated.some((skill) => skill.id === skillId || skill.name === skillId)) continue;
     try {
-      const skill = await loadSkill(skillId);
-      loadedBodies.push({ name: skill.name, body: skill.body });
-      seenSkills.add(skill.name);
+      activated.push(skillToSnapshot(await loadSkill(skillId)));
     } catch {
       // unknown local skill id — skip
     }
   }
+  if (activated.length && session.executionTarget !== "remote")
+    await materializeSkillSnapshots(settings.workspaceRoot, activated);
+  const loadedBodies = activated.length
+    ? [{ name: "selected-skills", body: skillActivationPrompt(activated) }]
+    : [];
 
   const system: ChatMessage = {
     id: newId("msg"),

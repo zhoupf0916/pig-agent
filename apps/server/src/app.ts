@@ -42,7 +42,7 @@ import { clearAutomationLastSessionId } from "./store/automations.ts";
 import { clearInboxSessionRefs } from "./store/inbox.ts";
 import { clearMemoryRefs } from "./store/memory.ts";
 import { clearProjectSessionRefs, recordSessionBound, getProject } from "./store/projects.ts";
-import { deleteSession, createSession, getSession, listSessions, saveSession } from "./store/sessions.ts";
+import { deleteSession, createSession, freezeSessionSkills, getSession, listSessions, saveSession } from "./store/sessions.ts";
 import { loadSettings, publicSettings, saveSettings } from "./store/settings.ts";
 import type { Session } from "./types.ts";
 import { buildTree, readWorkspaceText } from "./workspace.ts";
@@ -126,6 +126,25 @@ export function createApp(): Hono {
   });
 
   app.get("/api/skills", async (c) => c.json({ skills: await listSkills() }));
+  app.get("/api/skills/:name", async (c) => {
+    try {
+      const { loadSkill } = await import("./agent/skills.ts");
+      return c.json(await loadSkill(c.req.param("name")));
+    } catch {
+      return c.json({ error: "技能不存在" }, 404);
+    }
+  });
+  app.post("/api/skill-packs", async (c) => {
+    const body = await c.req.json().catch(() => null) as { files?: unknown } | null;
+    if (!Array.isArray(body?.files) || body.files.some((file) => !file || typeof file !== "object" || typeof (file as { path?: unknown }).path !== "string" || typeof (file as { content?: unknown }).content !== "string"))
+      return c.json({ error: "技能包包含无效文件" }, 400);
+    try {
+      const { importSkillPack } = await import("./agent/skills.ts");
+      return c.json(await importSkillPack(body.files as { path: string; content: string }[]), 201);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : "技能包无效" }, 400);
+    }
+  });
 
   registerProjectRoutes(app);
   registerExpertRoutes(app);
@@ -144,6 +163,7 @@ export function createApp(): Hono {
       workspaceId?: string;
       expertId?: string;
       expertTeamId?: string;
+      skillIds?: string[];
     };
     const projectId = typeof body.projectId === "string" && body.projectId.trim() ? body.projectId.trim() : undefined;
     const expertId = typeof body.expertId === "string" && body.expertId.trim() ? body.expertId.trim() : undefined;
@@ -152,7 +172,8 @@ export function createApp(): Hono {
     if (projectId && !(await getProject(projectId))) return c.json({error:"项目不存在"},404);
     if (body.workspaceId !== undefined && (typeof body.workspaceId !== "string" || !body.workspaceId.trim() || body.workspaceId.length > 120)) return c.json({error:"工作区参数无效"},400);
     let session;
-    try { session = await createSession({ projectId, expertId, expertTeamId, workspaceId: body.workspaceId }); }
+    const skillIds = Array.isArray(body.skillIds) ? body.skillIds.filter((id) => typeof id === "string") : undefined;
+    try { session = await createSession({ projectId, expertId, expertTeamId, workspaceId: body.workspaceId, skillIds }); }
     catch(err) { return c.json({error: err instanceof Error ? err.message : "任务创建失败"},400); }
     const defaults = await loadSettings();
     // Retain the legacy stub only when explicitly chosen in global settings.
@@ -203,7 +224,11 @@ export function createApp(): Hono {
       engine?: "pig" | "codex";
       remoteRequireApproval?: boolean;
       remoteDebugContent?: boolean;
+      skillIds?: string[];
     };
+    if (Array.isArray(body.skillIds) && (runningTurns.has(session.id) || session.status === "running")) {
+      return c.json({ error: "运行期间不能修改技能" }, 409);
+    }
     if (body.executionTarget !== undefined || body.engine !== undefined || body.remoteRequireApproval !== undefined) {
       if (runningTurns.has(session.id) || session.status === "running") return c.json({error:"运行期间不能切换执行配置"},409);
       if (session.remoteState && isRemoteActive(session.remoteState)) {
@@ -259,6 +284,13 @@ export function createApp(): Hono {
       else {
         delete session.expertTeamId;
         delete session.teamRun;
+      }
+    }
+    if (Array.isArray(body.skillIds) || body.expertId !== undefined || body.expertTeamId !== undefined) {
+      try {
+        await freezeSessionSkills(session, Array.isArray(body.skillIds) ? body.skillIds : undefined);
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : "技能无效" }, 400);
       }
     }
     await saveSession(session);

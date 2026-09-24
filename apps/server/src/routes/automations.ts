@@ -33,6 +33,7 @@ const createSchema = z.object({
   engine: z.enum(["pig", "codex"]).optional(),
   timezone: z.string().max(80).optional(),
   misfirePolicy: z.enum(["skip", "once"]).optional(),
+  skillIds: z.array(z.string().min(1).max(80)).max(20).optional(),
   saveArtifactsToProject: z.boolean().optional(),
 });
 
@@ -49,6 +50,7 @@ const patchSchema = z.object({
   engine: z.enum(["pig", "codex"]).optional(),
   timezone: z.string().max(80).optional(),
   misfirePolicy: z.enum(["skip", "once"]).optional(),
+  skillIds: z.array(z.string().min(1).max(80)).max(20).optional(),
   saveArtifactsToProject: z.boolean().optional(),
 });
 

@@ -58,6 +58,8 @@ export async function pluginCapabilities(
     manifest.skills.map((skill) => ({
       ...skill,
       id: `plugin_${manifest.id}_${skill.id}`,
+      machineName: skill.id,
+      displayName: skill.name,
       description: `${manifest.name} · ${skill.description}`,
       bundled: true,
       createdAt: installedAt,

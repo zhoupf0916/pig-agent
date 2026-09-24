@@ -11,7 +11,16 @@ export async function conversationFor(id: string, p: Principal) {
     )
   ).rows[0];
 }
-export async function conversationSnapshot(conversation: any) {
+function callerSkillView(input: { skillIds?: string[]; skillSnapshots?: Array<{ id?: string; name?: string; displayName?: string; body?: string }> }, author: { id?: string } | undefined, callerId?: string) {
+  if (!callerId || author?.id !== callerId) return {};
+  const snapshots = Array.isArray(input.skillSnapshots) ? input.skillSnapshots : [];
+  const skillIds = Array.isArray(input.skillIds) ? input.skillIds : snapshots.map((skill) => skill.id).filter((id): id is string => Boolean(id));
+  return {
+    skillIds,
+    skills: snapshots.filter((skill) => skill.id).map((skill) => ({ id: skill.id, displayName: skill.displayName || skill.name || skill.id })),
+  };
+}
+export async function conversationSnapshot(conversation: any, callerId?: string) {
   const runs = (
     await db.query(
       `SELECT r.id,r.parent_run_id,r.state,r.error,r.input,r.input->>'prompt' AS prompt,r.created_at,r.updated_at,
@@ -52,6 +61,7 @@ export async function conversationSnapshot(conversation: any) {
     conversation,
     runs: runs.map(({ input, ...run }) => ({
       ...run,
+      ...callerSkillView(input, run.author, callerId),
       attachments: (input.attachments || [])
         .filter((a: any) => (input.attachmentIds || []).includes(a.id))
         .map(({ id, name, size, mime, kind, warning, workspacePath }: any) => ({

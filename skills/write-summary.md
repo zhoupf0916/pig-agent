@@ -1,20 +1,14 @@
 ---
 name: write-summary
-description: Read the workspace and write a concise summary README or report. Use when the user asks for a summary, overview, or documentation of what is on disk.
+description: 阅读工作区并写一份简洁的 README 或报告。用户要求摘要、概述或说明现状时使用。
+metadata:
+  display-name: 工作区摘要
 keywords: summary, overview, README, 摘要, 总结, 概述
 ---
 
-# Write a workspace summary
+# 写工作区摘要
 
-## Procedure
-1. `list_dir` the workspace (recurse one or two levels as needed).
-2. Read the most important text files (notes, drafts, existing README).
-3. Write or update `README.md` (or a path the user named) with:
-   - one-paragraph purpose
-   - inventory of key files
-   - suggested next actions pulled from the files themselves
-4. Keep the tone factual. Quote dates and names that already appear in the workspace.
-
-## Rules
-- Prefer updating an existing README over creating a parallel `SUMMARY.md` unless the user asked for a separate file.
-- Do not invent project facts that are not in the files.
+1. 用 `list_dir` 查看工作区。
+2. 阅读最重要的文本，包括已有 README。
+3. 更新 `README.md`，写明用途、关键文件和建议的下一步。
+4. 只写文件里已经出现的事实。

@@ -1,6 +1,6 @@
 import { attachmentIdsSchema, resolveAttachments, bindAttachments } from "./attachments.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
-import { resolveCapabilityContext } from "./capabilities.ts";
+import { resolveCapabilityContext, resolveSkillSnapshots } from "./capabilities.ts";
 import { getRequestCredential } from "./web-auth.ts";
 import { streamSSE } from "hono/streaming";
 import { conversationFor, conversationSnapshot } from "./conversation-state.ts";
@@ -16,8 +16,19 @@ const followSchema = z
     prompt: z.string().trim().min(1).max(32000),
     attachmentIds: attachmentIdsSchema,
     debugContent: z.boolean().optional(),
+    /** Omitted keeps the caller's previous snapshot. An array replaces it, including []. */
+    skillIds: z.array(z.string().min(1).max(100)).max(20).optional(),
   })
   .strict();
+
+export function followUpSkillPlan(input: {
+  sameOwner: boolean;
+  explicitSkillIds?: string[];
+}): "reuse" | "clear" | "replace" {
+  if (input.explicitSkillIds !== undefined) return "replace";
+  if (!input.sameOwner) return "clear";
+  return "reuse";
+}
 export function registerConversationRoutes(app: Hono<CloudEnv>) {
   app.get("/v1/conversations", async (c) =>
     c.json({
@@ -35,7 +46,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
     const p = c.get("principal");
     const conversation = await conversationFor(c.req.param("id"),p);
     if (!conversation) return c.json({error:"会话不存在"},404);
-    return c.json(await conversationSnapshot(conversation));
+    return c.json(await conversationSnapshot(conversation, p.id));
   });
   app.get("/v1/conversations/:id/events", async c => {
     const id=c.req.param("id");
@@ -57,7 +68,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
           (SELECT max(seq) FROM events WHERE run_id=r.id AND event->>'type' IN ('done','approval')) AS terminal_event FROM runs r WHERE conversation_id=$1 ORDER BY r.created_at,r.id`,[id])).rows;
         const next=JSON.stringify([conversation,stamp]);
         if(next!==revision){
-          await stream.writeSSE({data:JSON.stringify({type:"conversation_snapshot",...await conversationSnapshot(conversation)})});
+          await stream.writeSSE({data:JSON.stringify({type:"conversation_snapshot",...await conversationSnapshot(conversation, principal.id)})});
           revision=next;
         }
         const events=(await db.query(`SELECT e.seq,e.run_id,e.event FROM events e JOIN runs r ON r.id=e.run_id WHERE r.conversation_id=$1 AND e.seq>$2 ORDER BY e.seq LIMIT 200`,[id,after])).rows;
@@ -113,7 +124,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       }
       const old = (
         await client.query(
-          "SELECT id,state,parent_run_id,input->>'prompt' AS prompt,input->'attachmentIds' AS attachment_ids FROM runs WHERE owner_id=$1 AND request_key=$2",
+          "SELECT id,state,parent_run_id,input->>'prompt' AS prompt,input->'attachmentIds' AS attachment_ids,input->'skillIds' AS skill_ids FROM runs WHERE owner_id=$1 AND request_key=$2",
           [p.id, key],
         )
       ).rows[0];
@@ -122,7 +133,8 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         if (
           old.parent_run_id !== parent.id ||
           old.prompt !== parsed.data.prompt ||
-          JSON.stringify(old.attachment_ids || []) !== JSON.stringify(parsed.data.attachmentIds || [])
+          JSON.stringify(old.attachment_ids || []) !== JSON.stringify(parsed.data.attachmentIds || []) ||
+          (parsed.data.skillIds !== undefined && JSON.stringify(old.skill_ids || []) !== JSON.stringify(parsed.data.skillIds))
         )
           return c.json({ error: "请求标识已用于其他任务" }, 409);
         return c.json({ id: old.id, status: old.state });
@@ -223,9 +235,24 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
         if(input.attachments.reduce((sum:number,a:{size:number})=>sum+a.size,0)>8*1024*1024) throw Error("此会话附件累计超过 8 MiB，请新建会话处理更多附件");
       } catch(error) {await client.query("ROLLBACK");return c.json({error:(error as Error).message},400);}
       delete input.requestInput;
-      if(parent.owner_id !== p.id) { delete input.expertId; delete input.skillIds; }
+      const sameOwner = parent.owner_id === p.id;
+      if (!sameOwner) { delete input.expertId; delete input.skillIds; delete input.skillSnapshots; delete input.capabilityContext; }
       if (input.projectId && (await client.query("SELECT space_id FROM shared_projects WHERE id=$1",[input.projectId])).rows[0]?.space_id) input.requireApproval = true;
-      try { input.capabilityContext=parent.owner_id===p.id && parent.input.capabilityContext ? parent.input.capabilityContext : await resolveCapabilityContext(p.id,input,client); }
+      const skillPlan = followUpSkillPlan({ sameOwner, explicitSkillIds: parsed.data.skillIds });
+      try {
+        if (skillPlan === "replace") {
+          input.skillIds = parsed.data.skillIds;
+          input.skillSnapshots = await resolveSkillSnapshots(p.id, { expertId: sameOwner ? input.expertId : undefined, skillIds: parsed.data.skillIds }, client);
+          input.capabilityContext = await resolveCapabilityContext(p.id, { expertId: sameOwner ? input.expertId : undefined, skillIds: parsed.data.skillIds }, client);
+        } else if (skillPlan === "clear") {
+          input.skillIds = [];
+          input.skillSnapshots = [];
+          input.capabilityContext = "";
+        } else {
+          input.skillSnapshots = parent.input.skillSnapshots ?? [];
+          input.capabilityContext = parent.input.capabilityContext ?? "";
+        }
+      }
       catch(e) { await client.query("ROLLBACK");return c.json({error:(e as Error).message},400); }
       input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);
       if (checkpoint) { input.workspace = { snapshot: checkpoint.snapshot }; delete input.projectFiles; }

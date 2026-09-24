@@ -1,21 +1,13 @@
 ---
 name: data-cleanup
-description: Clean messy notes, CSVs, or logs: normalize names, drop empty junk, and leave a change list. Use for cleanup, normalize, or tidy data tasks.
-keywords: cleanup, clean, csv, normalize, 清洗, 清理, 去重, tidy
+description: 清理表格或文本里的空值、重复和明显格式问题。用户要求清洗数据时使用。
+metadata:
+  display-name: 数据清理
+keywords: data, cleanup, csv, 数据, 清理
 ---
 
-# Data cleanup
+# 数据清理
 
-Normalize messy **text/data files** inside the sandbox.
-
-## Procedure
-1. `search_files` and `list_dir` to find csv/tsv/log/txt dumps and duplicate names.
-2. Read samples before rewriting. Keep a copy via `move_file` into `archive/` if you will overwrite.
-3. Prefer `apply_patch` / `edit_file` for small fixes; `write_file` for a cleaned export (`*.clean.csv` or `notes/cleaned-…`).
-4. Do not delete originals unless the user explicitly asked. `delete_file` is last resort for empty junk you created.
-5. Write a short `CLEANUP.md` listing before → after paths.
-
-## Rules
-- Stay inside the workspace.
-- Do not invent rows. If a field is missing, leave it blank and mention it.
-- Quote exact filenames in the final summary.
+1. 先看列名、空值和重复行。
+2. 只改能解释的格式问题，保留原始副本。
+3. 写明改了什么，以及没有处理的缺口。

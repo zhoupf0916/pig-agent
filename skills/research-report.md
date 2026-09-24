@@ -1,24 +1,13 @@
 ---
 name: research-report
-description: Research a topic from the workspace and optional public URLs, then write a cited report artifact. Use for research, 调研, or report tasks.
-keywords: research, report, 调研, 报告, fetch, web, cite
+description: 根据笔记整理一份中文调研报告，区分事实和推断。用户要求调研、报告或综述时使用。
+metadata:
+  display-name: 调研报告
+keywords: research, report, 调研, 报告, 笔记
 ---
 
-# Research → report
+# 调研报告
 
-Turn a question into a **cited report file**.
-
-## Procedure
-1. Search the workspace first (`search_files`, `read_file`). Local notes beat the network.
-2. If the user asked for outside context, `http_fetch` public http(s) pages only. Private IPs are blocked; do not fight the SSRF guard.
-3. Take short quotes and URLs. If a fetch fails, say so and continue with local sources.
-4. Write `reports/YYYY-topic.md` (or the path they named) with:
-   - Question
-   - Findings (bullets)
-   - Sources (workspace paths + URLs)
-   - Open questions
-5. Re-read the report and list the artifact path in your user-facing summary.
-
-## Rules
-- Label speculation. Prefer quoting files you actually read.
-- One report file, not a pile of scratch notes, unless the user wants both.
+1. 只根据工作区里读到的笔记写结论。
+2. 分开事实、推断和缺口。
+3. 输出一份中文调研报告，并标明来源文件。
