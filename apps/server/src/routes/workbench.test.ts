@@ -278,3 +278,25 @@ describe("delivery review and recovery", () => {
     await locked("lock-test",async()=>{ await expect(locked("lock-test",async()=>{})).rejects.toThrow("另一项操作"); });
   });
 });
+
+it("persists an explicit upload receipt without representing it as a new question", async () => {
+  const session = await createSession();
+  const form = new FormData(); form.append('file',new File(['evidence'],'input.txt',{type:'text/plain'}));
+  const response = await createApp().request(`/api/sessions/${session.id}/upload`,{method:'POST',body:form});
+  expect(response.status).toBe(200);
+  const saved=await getSession(session.id);
+  expect(saved?.messages.at(-1)).toMatchObject({synthetic:'attachment',role:'user'});
+  expect(saved?.messages.at(-1)?.content).toContain('input.txt');
+});
+
+it('records a durable cancellation answer once when stopping a waiting approval', async () => {
+  const session=await createSession();
+  const policy=await loadWorkbench(session.id,root);policy.policy.review=true;await saveWorkbench(session.id,policy);
+  nextBatch=[{id:'cancel-answer',name:'write_file',args:{path:'cancel-answer.txt',content:'no'}}];
+  const app=createApp();
+  await (await app.request(`/api/sessions/${session.id}/messages`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:'取消等待审批'})})).text();
+  await app.request(`/api/sessions/${session.id}/abort`,{method:'POST'});
+  await app.request(`/api/sessions/${session.id}/abort`,{method:'POST'});
+  expect((await getSession(session.id))?.messages.filter(m=>m.role==='assistant'&&m.content.startsWith('已停止'))).toHaveLength(1);
+  await expect(readFile(join(root,'cancel-answer.txt'))).rejects.toThrow();
+});

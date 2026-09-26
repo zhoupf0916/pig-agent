@@ -132,3 +132,5 @@
   }
   .conv-user { max-width: 100%; }
 }
+
+.conv-alert.cancelled { background: #f5f7fa; color: #64748b; border-color: #e2e8f0; }

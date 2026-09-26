@@ -28,6 +28,7 @@ export function sanitizeSkillMeta(skill: SkillMeta): SkillMeta {
     description: normalizeSkillText(skill.description),
     filename: normalizeSkillText(skill.filename),
   };
+  if (skill.displayName) clean.displayName = normalizeSkillText(skill.displayName);
   const keywords = normalizeKeywords(skill.keywords);
   if (keywords) clean.keywords = keywords;
   return clean;
@@ -36,6 +37,7 @@ export function sanitizeSkillMeta(skill: SkillMeta): SkillMeta {
 export function skillSyncKey(skill: SkillMeta): string {
   return [
     normalizeSkillText(skill.name),
+    normalizeSkillText(skill.displayName),
     normalizeSkillText(skill.description),
     normalizeSkillText(skill.filename),
     (skill.keywords ?? []).map((kw) => normalizeSkillText(kw)).join("\u0002"),

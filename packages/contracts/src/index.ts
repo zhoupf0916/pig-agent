@@ -16,8 +16,8 @@ export type ChatMessage = {
   toolOk?: boolean;
   toolDurationMs?: number;
   createdAt: string;
-  /** Assembler-built excerpt. Never inferred from message text. */
-  synthetic?: "context-compact";
+  /** Server-generated context excerpt or upload receipt; never inferred from user text. */
+  synthetic?: "context-compact" | "attachment";
 };
 
 export type PlanStep = {

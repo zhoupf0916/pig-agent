@@ -87,6 +87,7 @@ export function WorkbenchPanel({
   onResume,
   onRefresh,
   onDraft,
+  onApprovalChange,
 }: {
   sessionId: string;
   remote?: boolean;
@@ -96,9 +97,11 @@ export function WorkbenchPanel({
   onResume: () => void;
   onRefresh: () => void;
   onDraft: (text: string) => void;
+  onApprovalChange?: (sessionId: string, pending: boolean) => void;
 }) {
   const [sandboxStatus, setSandboxStatus] = useState("");
   const [state, setState] = useState<State | null>(null);
+  useEffect(() => { onApprovalChange?.(sessionId, !!state?.operations.some(op => op.status === "pending")); }, [sessionId, state, onApprovalChange]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -463,7 +466,7 @@ export function WorkbenchPanel({
                 <Upload size={13} />
                 上传资料
               </button>
-              {(state.busy || busy) && (
+              {(state.busy || busy || pending.length > 0) && (
                 <button
                   className="btn-ghost"
                   onClick={() =>

@@ -48,7 +48,7 @@ export function TurnTranscript({ turns, extras }: { turns: TurnView[]; extras?: 
           {turn.current && <p className="conv-current" role="status">{turn.current.title}{turn.current.detail ? ` · ${turn.current.detail}` : ""}</p>}
           {turn.visible.map((row) => (
             <div key={row.id} className={`conv-alert ${row.state}`} role={row.state === "failed" ? "alert" : "status"}>
-              <strong>{row.state === "approval" ? "等待批准" : row.state === "failed" ? "失败" : row.title}</strong>
+              <strong>{row.state === "cancelled" ? "未执行" : row.state === "approval" ? "等待批准" : row.state === "failed" ? "失败" : row.title}</strong>
               <span>{row.title}{row.detail ? ` · ${row.detail}` : ""}</span>
               {row.output && <pre className="conv-log">{row.output}</pre>}
             </div>

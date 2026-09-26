@@ -18,7 +18,7 @@ import {
   StickyNote,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { streamingStatusLabel } from "../lib/create-run-progress";
 import { toolLabel } from "../lib/format";
@@ -69,6 +69,7 @@ export function ChatPanel({
   onBindTeam,
   onHandoffDone,
   onOpenMemory,
+  onApprovalStatus,
 }: {
   skills: SkillChoice[];
   selectedSkillIds: string[];
@@ -103,13 +104,24 @@ export function ChatPanel({
   onBindTeam: (teamId: string | null) => void;
   onHandoffDone?: () => void;
   onOpenMemory?: (noteId?: string) => void;
+  onApprovalStatus?: (id: string, pending: boolean) => void;
 }) {
+  const [localApproval, setLocalApproval] = useState<{id: string; pending: boolean} | null>(null);
+  const approvalChanged = useCallback((id: string, pending: boolean) => {
+    setLocalApproval(prev => prev?.id === id && prev.pending === pending ? prev : {id, pending});
+    onApprovalStatus?.(id, pending);
+  }, [onApprovalStatus]);
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [memoryStatus, setMemoryStatus] = useState<string | null>(null);
   const [recapBusy, setRecapBusy] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (localApproval?.id === session?.id && localApproval?.pending) {
+      transcriptRef.current?.querySelector('[aria-label="本机操作审批"]')?.scrollIntoView({block: "start"});
+    }
+  }, [localApproval, session?.id]);
   const followLatest = useRef(true);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   useEffect(() => {
@@ -408,6 +420,7 @@ export function ChatPanel({
                   onResume={onResume}
                   onRefresh={onRefresh}
                   onDraft={onDraft}
+                  onApprovalChange={approvalChanged}
                 />
               )}
             </div>
@@ -420,7 +433,7 @@ export function ChatPanel({
                 tools,
                 toolTitle: toolLabel,
                 streaming: streaming || session?.status === "running",
-                pendingApproval: Boolean(remoteActivity?.approvals.some((item) => item.state === "pending")),
+                pendingApproval: Boolean(remoteActivity?.approvals.some((item) => item.state === "pending")) || (localApproval?.id === session?.id && !!localApproval?.pending),
                 lastError: session?.status === "error" ? session.lastError : undefined,
               })}
             />
@@ -440,14 +453,14 @@ export function ChatPanel({
             <button className="result-summary" onClick={onOpenArtifacts}>
               <FileText size={19} />
               <span>
-                <strong>{session.artifacts.length} 项成果可核验</strong>
+                <strong>{session.artifacts.length} 项文件与变更</strong>
                 <small>
                   {session.remoteRunId
                     ? "远端版本 · 预览、下载或显式导入"
                     : "本机工作区 · 文件与变更"}
                 </small>
               </span>
-              <span>查看成果 →</span>
+              <span>查看文件 →</span>
             </button>
           )}
           <div ref={endRef} />

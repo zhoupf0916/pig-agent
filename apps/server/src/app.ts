@@ -329,11 +329,14 @@ export function createApp(): Hono {
       await locked(id, async () => {
         const state = await loadWorkbench(id, session.workspaceRoot || (await loadSettings()).workspaceRoot);
         if (state.checkpoint) {
+          const firstStop = !state.checkpoint.stopped;
           for (const op of state.operations) if (op.status === "pending") op.status = "rejected";
           state.checkpoint = { ...state.checkpoint, calls: [], stopped: true };
           const answered = new Set(session.messages.filter((m) => m.role === "tool").map((m) => m.toolCallId));
           for (const message of [...session.messages]) for (const call of message.toolCalls ?? []) if (!answered.has(call.id)) session.messages.push({ id: newId("msg"), role: "tool", toolCallId: call.id, toolOk: false, content: "用户已取消本轮，操作未执行。", createdAt: new Date().toISOString() });
+          if (firstStop) session.messages.push({ id: newId("msg"), role: "assistant", content: "已停止。本轮未批准的操作不会执行；已完成的修改请在文件与变更中核对。", createdAt: new Date().toISOString() });
           await saveWorkbench(id, state); await saveSession(session);
+          if (firstStop) await publishPersistedEvent(id, { type: "done", session });
           cancelRunningDebugSpans(id, "用户已取消本轮，操作未执行。");
         }
       });

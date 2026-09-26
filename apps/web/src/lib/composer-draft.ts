@@ -191,3 +191,10 @@ export function startComposerDraftSync(opts: {
     bus.removeListener("focus", refresh);
   };
 }
+
+/** Called only after the server confirms the submitted message was not accepted. */
+export function restoreUnsentComposerDraft(sessionId: string, sent: string, storage?: DraftStorage | null): string {
+  const next = loadComposerDraft(sessionId, storage) || sent;
+  persistComposerDraft(sessionId, next, storage);
+  return next;
+}

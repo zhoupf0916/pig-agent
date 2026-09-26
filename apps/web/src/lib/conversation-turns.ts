@@ -11,7 +11,7 @@ export type TurnMessage = ChatMessage & {
   attachments?: TurnAttachment[];
 };
 
-export type ActivityState = "running" | "ok" | "failed" | "approval";
+export type ActivityState = "running" | "ok" | "failed" | "approval" | "cancelled";
 
 export type ActivityRow = {
   id: string;
@@ -42,13 +42,14 @@ const APPROVAL = /^(待批准|前序变更等待)/;
 
 function rowFromTool(tool: LiveTool, title: string): ActivityRow {
   const approval = APPROVAL.test(tool.output || "");
+  const cancelled = tool.done && tool.ok === false && tool.output === "用户已取消本轮，操作未执行。";
   const failed = tool.done && tool.ok === false && !approval;
   const detail = typeof tool.arguments === "string" ? tool.arguments : summarize(tool.arguments);
   return {
     id: tool.id,
     title,
     detail: detail.slice(0, 160),
-    state: approval ? "approval" : !tool.done ? "running" : failed ? "failed" : "ok",
+    state: cancelled ? "cancelled" : approval ? "approval" : !tool.done ? "running" : failed ? "failed" : "ok",
     output: tool.output,
   };
 }
@@ -111,14 +112,17 @@ export function buildTurns(input: {
   lastError?: string;
 }): TurnView[] {
   const visible = input.messages.filter((message) => message.role !== "system" && !message.content.startsWith("[harness]"));
-  const turns: Array<{ id: string; user?: TurnMessage; assistants: TurnMessage[]; toolIds: string[] }> = [];
+  const turns: Array<{ id: string; user?: TurnMessage; assistants: TurnMessage[]; toolIds: string[]; uploads: string[] }> = [];
+  let uploads: string[] = [];
   for (const message of visible) {
+    if (message.synthetic === "attachment") { uploads.push(message.content); continue; }
     if (message.role === "tool" || message.content.startsWith("[team]")) continue;
     if (message.role === "user") {
-      turns.push({ id: message.id, user: message, assistants: [], toolIds: [] });
+      turns.push({ id: message.id, user: message, assistants: [], toolIds: [], uploads });
+      uploads = [];
       continue;
     }
-    const turn = turns.at(-1) ?? { id: message.id, assistants: [], toolIds: [] };
+    const turn = turns.at(-1) ?? { id: message.id, assistants: [], toolIds: [], uploads: [] };
     if (!turns.length) turns.push(turn);
     if (message.content.trim() || message.id === "stream_live") turn.assistants.push(message);
     for (const call of message.toolCalls ?? []) turn.toolIds.push(call.id);
@@ -176,7 +180,7 @@ export function buildTurns(input: {
       current,
       outcome,
       notice,
-      notes: turn.assistants.filter((message) => isProgress(message) && message.content.trim()).map((message) => message.content),
+      notes: [...turn.uploads, ...turn.assistants.filter((message) => isProgress(message) && message.content.trim()).map((message) => message.content)],
     };
   });
 }

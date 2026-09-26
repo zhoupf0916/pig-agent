@@ -255,3 +255,11 @@ describe("skills list cross-tab sync (Milestone AJ)", () => {
     stop();
   });
 });
+
+it('keeps Chinese display names after polling and picks up a renamed skill', () => {
+  const meta={...skill({name:'plugin_data-quality_guide'}),displayName:'CSV 数据质量'};
+  const first=applySkillsListSnapshot([], [meta]);
+  expect(first[0]?.displayName).toBe('CSV 数据质量');
+  const next=applySkillsListSnapshot(first,[{...meta,displayName:'CSV 质量核验'}]);
+  expect(next[0]?.displayName).toBe('CSV 质量核验');
+});

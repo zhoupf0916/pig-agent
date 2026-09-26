@@ -194,7 +194,7 @@ export function registerWorkbenchRoutes(app: Hono) {
       await saveWorkbench(id, state);
       session.deliveryMode = true;
       session.artifacts.push({ path, action: "created", updatedAt: nowIso() });
-      session.messages.push({ id: newId("msg"), role: "user", content: `已上传资料：${path}（${upload.size} 字节）。${data.includes(0) ? "这是二进制资料，需要相应解析工具。" : "可使用文件工具读取。"}`, createdAt: nowIso() });
+      session.messages.push({ id: newId("msg"), role: "user", synthetic: "attachment", content: `已上传资料：${path}（${upload.size} 字节）。${data.includes(0) ? "这是二进制资料，需要相应解析工具。" : "可使用文件工具读取。"}`, createdAt: nowIso() });
       await publishPersistedEvent(id, { type: "done", session });
       await saveSession(session);
       return c.json({ path, session });

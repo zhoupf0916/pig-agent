@@ -44,3 +44,14 @@ describe("context v2 observable input", () => {
   });
 
 });
+
+it("keeps the user's goal instead of treating an upload receipt as the original goal", () => {
+  const input: ChatMessage[] = [
+    {...m('upload','已上传资料：uploads/receipt.csv'),synthetic:'attachment'},
+    m('goal','实际目标：只检查数据，不修改源文件。'),
+    m('noise','无关日志'.repeat(3000),'assistant'),m('now','继续核对'),
+  ];
+  const result=assemble(input);
+  expect(text(result.messages)).toContain('[原始目标] 来源 goal');
+  expect(text(result.messages)).not.toContain('[原始目标] 来源 upload');
+});

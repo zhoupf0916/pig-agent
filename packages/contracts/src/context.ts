@@ -197,7 +197,7 @@ function cloneMessage(message: ChatMessage): ChatMessage {
 }
 
 function isRealUser(message: ChatMessage): boolean {
-  return message.role === "user" && !message.content.startsWith("[harness]") && !isContextCompact(message);
+  return message.role === "user" && message.synthetic !== "attachment" && !message.content.startsWith("[harness]") && !isContextCompact(message);
 }
 
 function approvalText(text: string): boolean {
@@ -610,6 +610,7 @@ export function durableMessages(raw: unknown): ChatMessage[] {
       content: message.content,
       createdAt: typeof message.createdAt === "string" ? message.createdAt : new Date(0).toISOString(),
     };
+    if (message.synthetic === "attachment") next.synthetic = "attachment";
     if (Array.isArray(message.toolCalls)) {
       next.toolCalls = message.toolCalls.filter((call) => call && typeof call.id === "string" && typeof call.name === "string" && typeof call.arguments === "string");
     }

@@ -264,3 +264,21 @@ describe("composer draft cross-tab sync (Milestone S)", () => {
     stop();
   });
 });
+
+describe("rejected message draft recovery", () => {
+  it("restores rejected text for refresh without changing another conversation", async () => {
+    const { restoreUnsentComposerDraft } = await import('./composer-draft');
+    const storage = memoryStorage();
+    persistComposerDraft('ses_b', '其他对话', storage);
+    expect(restoreUnsentComposerDraft('ses_a', '未发出的内容', storage)).toBe('未发出的内容');
+    expect(loadComposerDraft('ses_a', storage)).toBe('未发出的内容');
+    expect(loadComposerDraft('ses_b', storage)).toBe('其他对话');
+  });
+  it("keeps a newer draft instead of overwriting it with an older rejected message", async () => {
+    const { restoreUnsentComposerDraft } = await import('./composer-draft');
+    const storage = memoryStorage();
+    persistComposerDraft('ses_a', '后来输入的草稿', storage);
+    expect(restoreUnsentComposerDraft('ses_a', '旧发送内容', storage)).toBe('后来输入的草稿');
+    expect(loadComposerDraft('ses_a', storage)).toBe('后来输入的草稿');
+  });
+});

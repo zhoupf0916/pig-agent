@@ -16,7 +16,7 @@ export const recoverInterruptedSql = `UPDATE runs SET
  WHERE state IN ('preparing','running','cancelling') AND `;
 const message = z.object({ id: z.string().max(120), role: z.enum(["user", "assistant", "tool"]), content: z.string().max(500000), createdAt: z.string().max(40),
   toolCallId: z.string().max(120).optional(), toolCalls: z.array(z.object({ id: z.string().max(120), name: z.string().max(160), arguments: z.string().max(200000) })).max(100).optional(),
-  synthetic: z.literal("context-compact").optional(),
+  synthetic: z.enum(["context-compact", "attachment"]).optional(),
 });
 const checkpointSchema = z.object({ messages: z.array(message).max(4000), snapshot: inputSchema.shape.workspace.unwrap().shape.snapshot.unwrap().refine(s => !s.truncated, "Incomplete snapshot") });
 export function registerRecoveryRoutes(app: Hono<CloudEnv>) {

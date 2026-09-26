@@ -135,3 +135,24 @@ describe("conversation activity grouping", () => {
     expect(empty[0]?.notice).toBe("本轮没有最终回答");
   });
 });
+
+it("attaches upload receipts to the following turn without inventing an unanswered user request", () => {
+  const turns = buildTurns({messages:[
+    {id:'upload',role:'user',content:'已上传资料：uploads/input.txt',createdAt:at,synthetic:'attachment'},
+    {id:'question',role:'user',content:'请核对附件',createdAt:at},
+    {id:'answer',role:'assistant',content:'核对完成',createdAt:at},
+  ],tools:[],toolTitle:title,streaming:false,pendingApproval:false});
+  expect(turns).toHaveLength(1);
+  expect(turns[0]).toMatchObject({userText:'请核对附件',answer:'核对完成',outcome:'answered'});
+  expect(turns[0]?.notes).toContain('已上传资料：uploads/input.txt');
+});
+
+it('presents an unexecuted cancelled tool as cancelled rather than a tool failure', () => {
+  const turns=buildTurns({messages:[
+    {id:'u',role:'user',content:'写文件',createdAt:at},
+    {id:'a',role:'assistant',content:'',createdAt:at,toolCalls:[{id:'c',name:'write_file',arguments:'{}'}]},
+    {id:'stop',role:'assistant',content:'已停止。本轮未批准的操作不会执行。',createdAt:at},
+  ],tools:[tool({id:'c',name:'write_file',ok:false,output:'用户已取消本轮，操作未执行。'})],toolTitle:title,streaming:false,pendingApproval:false});
+  expect(turns[0]?.outcome).toBe('cancelled');
+  expect(turns[0]?.visible[0]?.state).toBe('cancelled');
+});

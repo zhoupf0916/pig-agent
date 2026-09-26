@@ -55,6 +55,7 @@ import {
   clearComposerDraft,
   loadComposerDraft,
   persistComposerDraft,
+  restoreUnsentComposerDraft,
   startComposerDraftSync,
 } from "./lib/composer-draft";
 import { redactSecretsForDisplay, retryActionLabel } from "./lib/remote-retry";
@@ -156,6 +157,8 @@ export function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [localApprovalId, setLocalApprovalId] = useState<string | null>(null);
+  const onApprovalStatus = useCallback((id: string, pending: boolean) => setLocalApprovalId(prev => pending ? id : prev === id ? null : prev), []);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [skills, setSkills] = useState<SkillMeta[]>([]);
   const [skillSaving, setSkillSaving] = useState(false);
@@ -749,7 +752,7 @@ export function App() {
           !sessionRef.current?.remoteRunId
         ) {
           void refreshTree();
-          void openFile(event.artifact.path);
+          // Keep the conversation visible while tools produce files. Open on user selection.
         }
         return;
       }
@@ -842,6 +845,7 @@ export function App() {
       !draft.trim()
     )
       return;
+    setTaskActionError(null);
     const content = draft.trim();
     const clientMessageId = crypto.randomUUID();
     const controller = new AbortController();
@@ -901,6 +905,22 @@ export function App() {
         clientMessageId,
       );
     } catch (err) {
+      // A rejected request must not lose the draft or leave a phantom user message.
+      // Reconcile first: an interrupted SSE response may already have been accepted.
+      if (target && !controller.signal.aborted) {
+        try {
+          const snapshot = await api.session(target.id);
+          if (snapshot.status !== "running" && !snapshot.messages.some(m => m.id === clientMessageId)) {
+            const restored = restoreUnsentComposerDraft(target.id, content, browserDraftStorage());
+            if (activeIdRef.current === target.id) {
+              setDraft(prev => prev || restored);
+              setSession(snapshot);
+              setTaskActionError("消息未发送，草稿已保留。" + redactSecretsForDisplay(err instanceof Error ? err.message : String(err)));
+            }
+            return;
+          }
+        } catch { /* State is unknown: retain the existing run recovery path, never auto-resend. */ }
+      }
       if (!target)
         setBootError(err instanceof Error ? err.message : String(err));
       else if (controller.signal.aborted)
@@ -1515,9 +1535,9 @@ export function App() {
             <div className="task-header-actions">
               {session && (
                 <span
-                  className={`status-label ${remoteStatus === "等待审批" ? "is-waiting" : session.lastError ? "is-error" : streaming || session.status === "running" ? "is-running" : ""}`}
+                  className={`status-label ${(remoteStatus === "等待审批" || localApprovalId === session.id) ? "is-waiting" : session.lastError ? "is-error" : streaming || session.status === "running" ? "is-running" : ""}`}
                 >
-                  {remoteStatus ||
+                  {(localApprovalId === session.id ? "等待审批" : remoteStatus) ||
                     (session.lastError
                       ? "需要处理"
                       : streaming || session.status === "running"
@@ -1723,6 +1743,7 @@ export function App() {
               )}
               <div className="local-conversation-pane" hidden={Boolean(previewPath && preview)}>
               <ChatPanel
+                onApprovalStatus={onApprovalStatus}
                 skills={skills.map(s => ({ id: s.name, name: s.displayName || s.name, description: s.description }))}
                 selectedSkillIds={session?.skillIds || pendingSkillIds}
                 onSkillsChange={(ids) => void bindSkills(ids)}
