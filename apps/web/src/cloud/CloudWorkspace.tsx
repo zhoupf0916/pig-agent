@@ -24,6 +24,8 @@ import {
 } from "react";
 import {
   Menu,
+  SlidersHorizontal,
+  ArrowUp,
   ShieldCheck,
   ChevronDown,
   Plus,
@@ -1204,8 +1206,7 @@ export function CloudWorkspace({
           {loading && <p role="status">正在读取会话…</p>}
           {!selected && (
             <div className="jd-home">
-              <h1>Pig Agent</h1>
-              <p>沙箱执行任务，结果由你核对。</p>
+              {!project && <><h2>从一个想法开始</h2><p>描述任务，或拖入文件一起处理。</p></>}
               {project && (
                 <>
                   <h2>{project.name}</h2>
@@ -1390,6 +1391,47 @@ export function CloudWorkspace({
                 }
               }}
             />
+            {!selected && canWrite && <div className="composer-project-context">
+              <div className="jd-picks">
+                <label>
+                  <select
+                    aria-label="选择项目"
+                    value={projectId}
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      if (!leaveFile()) return;
+                      setSelected("");
+                    }}
+                  >
+                    <option value="">选择项目</option>
+                    {projects.filter((item) => item.kind === "personal").length >
+                      0 && (
+                      <optgroup label="我的项目">
+                        {projects
+                          .filter((item) => item.kind === "personal")
+                          .map((item) => (
+                            <option value={item.id} key={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                    {projects.filter((item) => item.kind === "collaborative")
+                      .length > 0 && (
+                      <optgroup label="协作项目">
+                        {projects
+                          .filter((item) => item.kind === "collaborative")
+                          .map((item) => (
+                            <option value={item.id} key={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </label>
+              </div>
+            </div>}
             <div className="cw-composer-controls" ref={composerControls}>
               {!selected && canWrite && !apiBase && (
                 <details
@@ -1399,7 +1441,7 @@ export function CloudWorkspace({
                 >
                   <summary>
                     <Users size={14} />
-                    技能
+                    专家与技能
                     {skillIds.length ? ` · ${skillIds.length} 个技能` : ""}
                     <ChevronDown size={13} />
                   </summary>
@@ -1506,6 +1548,10 @@ export function CloudWorkspace({
                 </details>
               )}
               <footer>
+                <details className="composer-advanced" onToggle={closeOtherCapsules} onKeyDown={closeCapsuleOnEscape}>
+                  <summary aria-label="更多对话选项" title="更多对话选项"><SlidersHorizontal size={16} /></summary>
+                  <div className="cw-capsule-popover">
+                    <strong>开发者选项</strong>
                 <label>
                   <input
                     type="checkbox"
@@ -1515,6 +1561,9 @@ export function CloudWorkspace({
                   />
                   调试正文
                 </label>
+                    <p>仅为本次任务记录调试正文。</p>
+                  </div>
+                </details>
                 {project?.kind === "collaborative" && <small>团队共享</small>}
                 <ContextUsageButton usage={contextUsage} />
                 {active && canWrite ? (
@@ -1537,8 +1586,8 @@ export function CloudWorkspace({
                       busy || !prompt.trim() || !canWrite || attachments.blocked
                     }
                   >
-                    <Send size={17} />
-                    {busy ? "发送中" : "发送"}
+                    <ArrowUp size={18} />
+                    <span className="sr-only">{busy ? "发送中" : "发送"}</span>
                   </button>
                 )}
               </footer>
@@ -1546,61 +1595,6 @@ export function CloudWorkspace({
           </form>
           {!selected && canWrite && (
             <>
-              <div className="jd-picks">
-                <label>
-                  <select
-                    aria-label="选择项目"
-                    value={projectId}
-                    onChange={(e) => {
-                      setProjectId(e.target.value);
-                      if (!leaveFile()) return;
-                      setSelected("");
-                    }}
-                  >
-                    <option value="">选择项目</option>
-                    {projects.filter((item) => item.kind === "personal").length >
-                      0 && (
-                      <optgroup label="我的项目">
-                        {projects
-                          .filter((item) => item.kind === "personal")
-                          .map((item) => (
-                            <option value={item.id} key={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    )}
-                    {projects.filter((item) => item.kind === "collaborative")
-                      .length > 0 && (
-                      <optgroup label="协作项目">
-                        {projects
-                          .filter((item) => item.kind === "collaborative")
-                          .map((item) => (
-                            <option value={item.id} key={item.id}>
-                              {item.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    )}
-                  </select>
-                </label>
-                {!apiBase && (
-                  <label>
-                    <select
-                      aria-label="选择专家"
-                      value={expertId}
-                      onChange={(e) => setExpertId(e.target.value)}
-                    >
-                      <option value="">选择专家</option>
-                      {experts.map((item) => (
-                        <option value={item.id} key={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
               <div className="jd-starters">
                 {[
                   {
