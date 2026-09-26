@@ -43,3 +43,13 @@ docker compose -p pig-recovery --env-file data/recovery-test/stack.env -f infra/
 已知边界：恢复单元是完成的一组工具调用，而不是任意机器指令；工具执行中、审批中发生故障仍需人工核验。没有跨机器复制沙箱进程，也不复活旧审批。最多两次自动接续；原模型调用额度和截止时间继续有效。大于协议体积上限或不完整工作区检查点会阻止继续执行。服务端时间不包括浏览器往返；崩溃前尚未送达的 span 可能缺失，因此保留 partial 标记。
 
 正式部署前已执行服务器备份：`backups/daily/20260926T101656Z.dump` 和配套配置归档。发布结果将在部署后追加。回滚必须先停止新 Runner 领取、核对所有仍在排队/执行的恢复任务，不能让旧版本直接从初始输入重放这些任务；迁移只有新增列，回滚不恢复数据库、不删除新数据。
+
+## 正式发布与真实模型验证
+
+已发布至 `https://193.112.22.18`，release `20260926-runtime-b1d7a71`；数据库与现有账号、配额、模型渠道保留。正式控制面、网关和四个 Runner 已更新；数据库未重启。新增列迁移完成，四个节点心跳正常、均启用单槽。旧镜像标记 `before-runtime-b1d7a71`，旧源码 release 保留。
+
+[真实模型验证](evidence/recovery-2026-09-26/production.json)：运行 `run_b22b56ea7ab741fcacb0998ee6cbc2a7` 成功，safe 检查点已确认，没有调用工具。控制面整体1.137秒，排队215ms、准备17ms、模型调用517ms、模型首字510ms；供应商返回输入2565/output4 tokens。记录完整（partial=false）。仅一条短回复，不代表生产容量或新旧模型性能对照。
+
+运维可执行 `VERIFY_ENV=/home/ubuntu/pig-agent/data/cloud-local/stack.env node scripts/verify-runtime-deployment.mjs` 复验；**它会调用当前真实模型渠道并使用额度**，常规测试仍应运行隔离模拟栈。失败时脚本取消自己创建的验收任务，不处理其他任务。
+
+公网健康检查200，HTML引用的 JS/CSS 与本地构建一致。临时故障注入栈在验收后关闭，本机没有启动 Docker。

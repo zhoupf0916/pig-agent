@@ -1,0 +1,25 @@
+{
+  "at": "2026-09-26T10:21:32.883Z",
+  "runId": "run_b22b56ea7ab741fcacb0998ee6cbc2a7",
+  "conversationId": "conv_36fafa5dade8484db50a767b59a9ffe0",
+  "state": "succeeded",
+  "checkpointConfirmed": true,
+  "toolCalls": 0,
+  "timing": {
+    "runId": "run_b22b56ea7ab741fcacb0998ee6cbc2a7",
+    "queueMs": 215,
+    "preparationMs": 17,
+    "elapsedMs": 1137,
+    "attempts": 1,
+    "recoveries": 0,
+    "modelMs": 517,
+    "toolMs": 0,
+    "approvalMs": 0,
+    "contextMs": 1.93,
+    "modelCallsObserved": 1,
+    "modelTtftMs": 510,
+    "inputTokens": 2565,
+    "outputTokens": 4,
+    "partial": false
+  }
+}

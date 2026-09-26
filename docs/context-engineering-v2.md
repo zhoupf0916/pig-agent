@@ -102,3 +102,5 @@ pnpm eval:context --model --trials 3 --max-calls 180
 - Web 构建通过；既有 Vite 主包超过 500 kB 警告仍存在，与本轮上下文变更无关。
 - Cloud / Gateway / Worker / Pig Runner 打包通过，无 Docker 启动。
 - `git diff --check` 通过；没有修改已有用户未提交工作（开始时工作区干净），没有提交、推送或线上部署。
+
+2026-09-26 后续发布：本页记录的实现与评测已按功能提交推送，并随 `20260926-runtime-b1d7a71` 发布。后续恢复/观测验证包含一条真实模型短回复，但**没有补跑本页的真实模型A/B评测**；离线18/30→30/30的指标含义不变。部署记录见[恢复与观测](recovery-observability-2026-09-26.md)。
