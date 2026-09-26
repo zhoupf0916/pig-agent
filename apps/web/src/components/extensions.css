@@ -465,3 +465,16 @@
     align-items: flex-start;
   }
 }
+
+.ecosystem-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--eco-border);
+  margin-bottom: 16px;
+}
+.ecosystem-detail-actions span { color: #65738b; font-size: 12px; }
+.ecosystem-detail-actions a { color: #2563eb; text-underline-offset: 3px; }
+.ecosystem-detail .skill-file-list pre { max-height: 320px; overflow: auto; }

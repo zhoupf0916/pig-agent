@@ -79,6 +79,9 @@ export function CloudResourcesPanel({
   }, [initialKind]);
   useEffect(() => {
     setEdit(null);
+    setPreview(null);
+    setCreating(false);
+    setPrompt("");
     setFeedback("");
     void refresh();
     return () => {

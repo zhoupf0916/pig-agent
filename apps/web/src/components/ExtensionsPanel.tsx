@@ -1,3 +1,4 @@
+import { SkillPackFiles } from "./SkillPackView";
 import { McpPanel } from "./McpPanel";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -28,10 +29,11 @@ async function localRequest(path: string, method = "GET", body?: unknown) {
     throw Error(typeof value.error === "string" ? value.error : "操作失败");
   return value;
 }
-type Props = { mode?: "local" | "cloud"; request?: typeof localRequest };
+type Props = { mode?: "local" | "cloud"; request?: typeof localRequest; onBrowseResources?: () => void };
 export function ExtensionsPanel({
   mode = "local",
   request = localRequest,
+  onBrowseResources,
 }: Props) {
   const preview = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLElement>(null);
@@ -118,10 +120,11 @@ export function ExtensionsPanel({
       [
         pack.name,
         pack.description,
-        ...pack.skills.map((s) => s.name),
-        ...pack.experts.map((e) => e.name),
+        ...pack.skills.map((s) => `${s.name} ${s.description}`),
+        ...pack.experts.map((e) => `${e.name} ${e.description}`),
       ].join(" "),
     );
+  const selectedInstall = plugins.find(p => p.manifest.id === selected?.id);
   const visibleCatalog = catalog.filter(matches),
     visibleInstalled = plugins.filter((p) => matches(p.manifest));
   return (
@@ -133,7 +136,7 @@ export function ExtensionsPanel({
           <p>
             {tab === "mcp"
               ? "先测试连接，再按任务需要启用。"
-              : "精选工作方法，安装后按需启用。"}
+              : "专家、操作指南、脚本与参考资料，先查看再启用。"}
             {mode === "cloud" ? "仅属于当前云账号。" : "保存在当前工作台。"}
           </p>
         </div>
@@ -350,7 +353,7 @@ export function ExtensionsPanel({
               </>
             )}
             <p className="ecosystem-scope">
-              扩展包提供可查看的专家指令与技能，不安装脚本，也不增加工具权限。启用后，所选内容可能发送给当前模型提供商。外部工具通过
+              扩展包提供专家、技能及可审阅的脚本与参考资料，不自动运行脚本、不安装依赖，也不增加工具权限。启用后，所选内容可能发送给当前模型提供商。外部工具通过
               MCP 单独连接与审批。
             </p>
             {mode === "local" && (
@@ -412,8 +415,19 @@ export function ExtensionsPanel({
             </button>
           </header>
           <p>{selected.description}</p>
+          {error && <p className="ecosystem-error" role="alert">{error}</p>}
+          {feedback && <p className="ecosystem-feedback" role="status">{feedback}</p>}
+          {!draft && <div className="ecosystem-detail-actions">
+            {selectedInstall ? <button type="button" className="ecosystem-primary" disabled={!!busy} onClick={() => void toggle(selectedInstall)}>
+              {busy === selected.id ? "处理中…" : selectedInstall.enabled ? "停用此扩展" : "启用此扩展"}
+            </button> : <button type="button" className="ecosystem-primary" disabled={!!busy} onClick={() => void install(selected.id)}>
+              {busy === selected.id ? "安装中…" : "安装此扩展"}
+            </button>}
+            {selectedInstall?.enabled && <a href="#/experts" onClick={onBrowseResources}>选择专家与技能，开始使用 →</a>}
+            <span>安装后默认停用；启用不会自动执行工具。</span>
+          </div>}
           {selected.experts.map((expert) => (
-            <details key={"e" + expert.id} open>
+            <details key={"e" + expert.id}>
               <summary>专家 · {expert.name}</summary>
               <p>{expert.description}</p>
               <pre>{expert.instruction}</pre>
@@ -432,7 +446,8 @@ export function ExtensionsPanel({
             <details key={"s" + skill.id} open>
               <summary>技能 · {skill.name}</summary>
               <p>{skill.description}</p>
-              <pre>{skill.body}</pre>
+              <details><summary>查看操作指南</summary><pre>{skill.body}</pre></details>
+              <SkillPackFiles files={skill.files} />
             </details>
           ))}
           {draft && (

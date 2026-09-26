@@ -195,7 +195,7 @@ export function SettingsModal({ open, settings, skills, onClose, onSave, theme, 
             <p className="settings-note" role="status">已使用{appearance === "dark" ? "深色" : "浅色"}外观，刷新后保持。</p>
           </>}
           {section === "computer" && <ComputerPanel />}
-          {section === "extensions" && <ExtensionsPanel />}
+          {section === "extensions" && <ExtensionsPanel onBrowseResources={requestClose} />}
           {section === "skills" && <>
             <ResourceCreator kind="skill" />
             <h4>本地技能 <span className="settings-count">{skills.length}</span></h4>

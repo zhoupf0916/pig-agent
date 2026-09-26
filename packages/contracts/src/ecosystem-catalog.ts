@@ -1,3 +1,4 @@
+import { PRACTICAL_CATALOG } from "./practical-catalog.js";
 import { CURATED_CATALOG } from "./curated-catalog.js";
 import type { EcosystemPlugin } from "./ecosystem.ts";
 
@@ -122,6 +123,7 @@ const incident = skill(
 );
 
 export const ECOSYSTEM_CATALOG: EcosystemPlugin[] = [
+  ...PRACTICAL_CATALOG,
   ...CURATED_CATALOG,
   {
     id: "coding-quality",
