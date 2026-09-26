@@ -37,4 +37,10 @@ PIG_SMOKE_PREVIEW=1 PIG_SMOKE_DATA_DIR=/tmp/pig-layout-preview node scripts/smok
 
 预览地址 `http://127.0.0.1:18792/#/conversations`，明确标记模拟数据。端口 18791/18792 必须空闲。预览不连接线上账号，设置仅存在模拟服务内，不执行真实任务。
 
-本次未部署生产；未改管理后台或 Electron 原生窗口，本地模式仅共享对话样式调整。没有把界面模拟验证宣称为新的 Runner、模型或集群验收。
+实现验收阶段未部署生产（后续发布见下）；未改管理后台或 Electron 原生窗口，本地模式仅共享对话样式调整。没有把界面模拟验证宣称为新的 Runner、模型或集群验收。
+
+## 2026-09-26 线上发布
+
+已发布代码 `3c4a7b9`，release `/home/ubuntu/pig-agent/releases/20260926-layout-3c4a7b9`。服务端 bundle 与旧版本逐字节一致；仅先上传带哈希静态资源，再原子替换 HTML 入口，没有重启控制面或 Runner。新控制面镜像同时构建完成，后续容器重建保留新版前端；旧镜像标签为 `before-layout-3c4a7b9`。
+
+公网健康检查与页面返回 200，JS/CSS 与本地构建逐字节一致，技能与专家授权接口返回 200。发布证据在本地 `data/workbench-redesign-20260926/deployment.json`。发布没有调用真实模型。
