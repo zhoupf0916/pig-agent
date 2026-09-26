@@ -1,3 +1,4 @@
+import { summarizeRunTiming } from "@pig-agent/contracts";
 import { registerRecoveryRoutes } from "./recovery.ts";
 import {
   defaultTariff,
@@ -112,7 +113,7 @@ app.use("/internal/*", async (c, next) => {
 async function runFor(id: string, p: Principal, writing = false) {
   return (
     await db.query(
-      "SELECT id,project_id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,worker_id,model_calls,coalesce((input->>'requireApproval')::boolean,true) AS require_approval,coalesce(input->>'networkPolicy','ask') AS network_policy,'container' AS sandbox,CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END AS can_write,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,$4) END)",
+      "SELECT id,project_id,conversation_id,parent_run_id,owner_id,state,error,created_at,updated_at,started_at,recovery_count,worker_id,model_calls,coalesce((input->>'requireApproval')::boolean,true) AS require_approval,coalesce(input->>'networkPolicy','ask') AS network_policy,'container' AS sandbox,CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,true) END AS can_write,input->>'prompt' AS prompt FROM runs WHERE id=$1 AND ($3 OR CASE WHEN project_id IS NULL THEN owner_id=$2 ELSE project_access(project_id,$2,$4) END)",
       [id, p.id, p.role === "admin", writing],
     )
   ).rows[0];
@@ -344,7 +345,15 @@ app.get("/v1/runs/:id/debug", async (c) => {
         [id],
       )
     ).rows[0]?.debug_content === true;
+  const attempts = (await db.query("SELECT count(*)::int AS count,min(created_at) AS first_claim FROM execution_attempts WHERE run_id=$1", [id])).rows[0];
+  const snapshots = (await db.query("SELECT DISTINCT ON (attempt_id) event->'trace' AS trace FROM events WHERE run_id=$1 AND event->>'type'='debug_trace' ORDER BY attempt_id,seq DESC LIMIT 4", [id])).rows;
+  const timing = summarizeRunTiming({ runId: id, createdAt: new Date(run.created_at).toISOString(), startedAt: run.started_at ? new Date(run.started_at).toISOString() : undefined,
+    firstClaimAt: attempts?.first_claim ? new Date(attempts.first_claim).toISOString() : undefined,
+    endAt: terminal(run.state) ? new Date(run.updated_at).toISOString() : new Date().toISOString(), attempts: attempts?.count ?? 0, recoveries: run.recovery_count ?? 0,
+    traces: snapshots.map(r => r.trace).filter(t => t && Array.isArray(t.spans)),
+  });
   const empty: DebugTraceView = {
+    timing,
     sessionId: id,
     contentEnabled: false,
     spans: [],
@@ -362,6 +371,7 @@ app.get("/v1/runs/:id/debug", async (c) => {
     presentDebugTrace(
       closeTerminalDebugTrace(
         {
+          timing,
           sessionId: view.sessionId || id,
           contentEnabled: view.contentEnabled === true,
           spans: view.spans,

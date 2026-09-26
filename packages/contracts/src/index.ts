@@ -650,3 +650,6 @@ export {
 } from "./context.js";
 export type { ContextEvidence, AssembledContext, ContextCallSnapshot, ContextMetrics, MemoryCandidate } from "./context.js";
 export type { WorkspaceFileEdit, WorkspaceFileVersion } from "./workspace-file.js";
+
+export { summarizeRunTiming } from "./debug-trace.js";
+export type { RunTimingSummary } from "./debug-trace.js";

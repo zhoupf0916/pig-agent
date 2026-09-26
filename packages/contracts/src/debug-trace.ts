@@ -27,6 +27,7 @@ export type DebugSpan = {
 };
 
 export type DebugTraceView = {
+  timing?: RunTimingSummary;
   sessionId: string;
   contentEnabled: boolean;
   spans: DebugSpan[];
@@ -72,5 +73,43 @@ export function presentDebugTrace(trace: DebugTraceView, contentAllowed: boolean
       detail.content = "完整内容未开启";
       return { ...span, detail };
     }),
+  };
+}
+
+export type RunTimingSummary = {
+  runId: string;
+  queueMs: number | null;
+  preparationMs: number | null;
+  elapsedMs: number;
+  attempts: number;
+  recoveries: number;
+  modelMs: number;
+  toolMs: number;
+  approvalMs: number;
+  contextMs: number;
+  modelCallsObserved: number;
+  modelTtftMs: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  partial: boolean;
+};
+/** Runner durations are summed only within spans, never by subtracting different host clocks. */
+export function summarizeRunTiming(input: { runId: string; createdAt: string; startedAt?: string; firstClaimAt?: string; endAt: string; attempts: number; recoveries: number; traces: DebugTraceView[] }): RunTimingSummary {
+  const delta = (end: string | undefined, start: string | undefined) => {
+    const n = Date.parse(end ?? "") - Date.parse(start ?? "");
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const spans = input.traces.flatMap(t => t.spans);
+  const total = (kind: string, name?: string) => spans.filter(s => s.kind === kind && (!name || s.name === name)).reduce((n, s) => n + (Number.isFinite(s.durationMs) ? Math.max(0, s.durationMs!) : 0), 0);
+  const models = spans.filter(s => s.kind === "model");
+  const number = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
+  const tokens = (key: string) => {
+    const values = models.map(s => number((s.detail?.usage as Record<string, unknown> | undefined)?.[key])).filter((n): n is number => n !== null);
+    return values.length ? values.reduce((n, value) => n + value, 0) : null;
+  };
+  return { runId: input.runId, queueMs: delta(input.firstClaimAt, input.createdAt), preparationMs: delta(input.startedAt, input.firstClaimAt), elapsedMs: delta(input.endAt, input.createdAt) ?? 0,
+    attempts: input.attempts, recoveries: input.recoveries, modelMs: total("model"), toolMs: total("tool"), approvalMs: total("approval"), contextMs: total("control", "context_assembly"),
+    modelCallsObserved: models.length, modelTtftMs: number(models[0]?.detail?.ttftMs), inputTokens: tokens("prompt_tokens"), outputTokens: tokens("completion_tokens"),
+    partial: input.traces.length < input.attempts || input.traces.some(t => t.dropped > 0 || t.spans.some(s => s.status === "running")),
   };
 }

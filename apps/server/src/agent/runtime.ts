@@ -303,7 +303,10 @@ export async function runAgent(options: {
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
       await options.checkpoint?.("safe", session);
+      const contextStarted = performance.now();
       const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0, options.contextEngine ?? "pig");
+      recordDebugSpan({ id: newId("span"), sessionId: session.id, kind: "control", name: "context_assembly", status: "ok", startedAtMs: 0,
+        durationMs: Math.max(0, Math.round((performance.now() - contextStarted) * 100) / 100), detail: { unit: "estimated_chars", budgetChars: assembled.estimate.budgetChars, usedChars: assembled.estimate.usedChars } }, contextStarted);
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
       if (forceSummary) {

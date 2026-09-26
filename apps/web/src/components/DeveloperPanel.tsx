@@ -120,7 +120,7 @@ export function DeveloperPanel({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-panel text-ink-800" aria-label="开发者">
+    <div className="developer-panel flex h-full min-h-0 flex-col bg-panel text-ink-800" aria-label="开发者">
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-300 px-3 py-2">
         <input
           aria-label="搜索调用"
@@ -159,7 +159,13 @@ export function DeveloperPanel({
           清空视图
         </button>
       </div>
-      <p className="border-b border-ink-300 px-3 py-2 text-xs text-ink-600">
+      {view.timing && <section aria-label="运行耗时概览" className="grid grid-cols-2 gap-2 border-b border-ink-300 p-3 text-xs sm:grid-cols-4">
+        {Object.entries({ "排队": view.timing.queueMs, "准备": view.timing.preparationMs, "整体经过": view.timing.elapsedMs, "模型首字": view.timing.modelTtftMs,
+          "模型累计": view.timing.modelMs, "工具累计": view.timing.toolMs, "审批累计": view.timing.approvalMs, "上下文组装": view.timing.contextMs }).map(([label, ms]) =>
+          <div key={label}><div className="text-ink-500">{label}</div><strong>{ms === null ? "未采集" : `${(ms / 1000).toFixed(2)} s`}</strong></div>)}
+        <p className="col-span-2 sm:col-span-4 text-ink-500">尝试 {view.timing.attempts} 次 · 自动恢复 {view.timing.recoveries} 次 · 已观测模型调用 {view.timing.modelCallsObserved} 次 · 输入/输出 token {view.timing.inputTokens ?? "未知"}/{view.timing.outputTokens ?? "未知"}。整体时间按控制面计时，不含浏览器往返。阶段可能重叠，不应相加。{view.timing.partial ? "记录不完整或仍在执行。" : ""}</p>
+      </section>}
+      <details className="border-b border-ink-300 px-3 py-2 text-xs text-ink-600"><summary className="cursor-pointer">记录范围与隐私</summary><p className="py-2">
         {writable
           ? view.contentEnabled
             ? "完整内容已开启，只留在本机服务进程内存。仍会去掉密钥；清空视图不删除执行结果。"
@@ -185,7 +191,7 @@ export function DeveloperPanel({
             {contentChoice.label ?? "下次运行记录正文"}
           </label>
         )}
-      </p>
+      </p></details>
       {(error || notice) && <p role="alert" className="px-3 py-1 text-xs text-danger">{error || notice}</p>}
       {view.dropped > 0 && <p className="px-3 py-1 text-xs text-ink-600">已丢弃最早的 {view.dropped} 条，以控制保留条数和总体积。</p>}
       <div ref={listRef} className="min-h-[120px] min-w-0 flex-1 overflow-auto" aria-label="调用列表">
@@ -199,7 +205,7 @@ export function DeveloperPanel({
                 onClick={() => setSelectedId(span.id)}
               >
                 <span>{STATUS_LABEL[span.status]}</span>
-                <span className="font-mono">{span.durationMs === undefined ? "未采集" : `${span.durationMs} ms`}</span>
+                <span className="font-mono">{span.durationMs === undefined ? "未采集" : `${Math.round(span.durationMs * 100) / 100} ms`}</span>
                 <span className="truncate">{span.kind} · {span.name}</span>
               </button>
             </li>
@@ -255,7 +261,7 @@ function SpanDetail({ span, onCopy }: { span: DebugSpan; onCopy: (text: string) 
   const toolCalls = detail.toolCalls;
   const overview = [
     ["状态", STATUS_LABEL[span.status]],
-    ["耗时", span.durationMs === undefined ? "未采集" : `${span.durationMs} ms`],
+    ["耗时", span.durationMs === undefined ? "未采集" : `${Math.round(span.durationMs * 100) / 100} ms`],
     ["TTFT", formatOptionalMs(detail.ttftMs)],
     ["用量", formatUsage(detail.usage)],
     ["方法", textOrMissing(request?.method)],
