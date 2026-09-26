@@ -1,0 +1,55 @@
+{
+  "at": "2026-09-26T10:18:20.304Z",
+  "model": "mock",
+  "evidence": [
+    {
+      "scenario": "kill-after-safe-checkpoint",
+      "runId": "run_dcc4fb8052c0473980b455778a2bdc15",
+      "state": "succeeded",
+      "writes": 1,
+      "restoredArtifact": true,
+      "timing": {
+        "runId": "run_dcc4fb8052c0473980b455778a2bdc15",
+        "queueMs": 570,
+        "preparationMs": 31,
+        "elapsedMs": 35424,
+        "attempts": 2,
+        "recoveries": 1,
+        "modelMs": 13100,
+        "toolMs": 266,
+        "approvalMs": 0,
+        "contextMs": 5.89,
+        "modelCallsObserved": 4,
+        "modelTtftMs": null,
+        "inputTokens": null,
+        "outputTokens": null,
+        "partial": true
+      }
+    },
+    {
+      "scenario": "kill-while-awaiting-approval",
+      "runId": "run_2151804f09574104aa116c036b277b1a",
+      "state": "failed",
+      "recoveries": 0,
+      "artifacts": 0
+    },
+    {
+      "scenario": "cancel-fences-checkpoint",
+      "runId": "run_8d6e9b92fcf74ab18911d8f60ec70a5f",
+      "state": "cancelled",
+      "lateCheckpointStatus": 409
+    },
+    {
+      "scenario": "retry-limit",
+      "runId": "run_befd4d8321fd42f9927cd9161e9ded51",
+      "state": "failed",
+      "expiredAttemptRejected": true
+    },
+    {
+      "scenario": "deadline",
+      "runId": "run_14e77b4edd1a495c8a8a4953d08d1cf0",
+      "state": "failed",
+      "expiredAttemptRejected": true
+    }
+  ]
+}
