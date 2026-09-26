@@ -128,6 +128,17 @@ pnpm cloud:smoke
 
 多控制面、多 Runner 的本地验证使用 `pnpm cluster:up` 和 `pnpm cluster:smoke`；详细环境与限制见 [本地云平台](docs/local-cloud.md)。
 
+## 上下文工程与评测
+
+长对话使用有来源的目标、纠正、计划与证据摘录；完整转录保持不变。Pig 运行时可通过 `recall_context` 按消息 ID 分页查阅原文，避免因输出截断重复执行工具。历史证据不替代审批或当前文件状态核验。
+
+```bash
+pnpm eval:context                 # 离线新旧策略对照，不调用模型
+pnpm eval:context --trials 10     # 重复组装测量，报告写入 data/evals/
+```
+
+[设计、权威参考、验收结果与面试讲述](docs/context-engineering-v2.md)。字符预算不等于模型 token 窗口；离线证据保留率不等于模型任务成功率，真实模型评测需显式配置独立环境变量。
+
 ## 注意事项
 
 - Web 任务固定在云端沙箱。桌面任务可以选择这台电脑，或加入云端项目。
