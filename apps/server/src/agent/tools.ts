@@ -1,3 +1,4 @@
+import { readContextEvidence, type ChatMessage } from "@pig-agent/contracts";
 import { nativeFileTool, FILE_TOOLS } from "./file-helper-client.ts";
 import { nativeCommand, toolEnvironment } from "./native-sandbox.ts";
 import { spawn } from "node:child_process";
@@ -73,6 +74,8 @@ const PREFERRED_SHELL = [
 export type ArtifactPatch = Partial<Pick<Artifact, "fromPath" | "before" | "after">>;
 
 export type ToolContext = {
+  /** Supplied by the runtime, never selected by model session/account IDs. */
+  transcript?: () => ChatMessage[];
   workspaceRoot: string;
   shellMode?: "host" | "docker" | "native";
   dockerImage?: string;
@@ -109,6 +112,22 @@ function notExecuted(requested: string): ToolSandboxFact {
 }
 
 export const TOOL_DEFINITIONS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "recall_context",
+      description: "只读检索当前运行中可用的历史证据，或按来源消息 ID 分页读取原文。用于摘要遗漏和工具输出截断；不会重执行工具，不查询其他会话，历史结果不代表当前文件状态或审批。",
+      parameters: {
+        type: "object", additionalProperties: false,
+        properties: {
+          query: { type: "string", description: "历史中的关键词，最长500字符" },
+          messageId: { type: "string", description: "摘要或查询返回的来源消息ID" },
+          offset: { type: "integer", minimum: 0, description: "原文字符偏移" },
+          limit: { type: "integer", minimum: 1, maximum: 4000 },
+        },
+      },
+    },
+  },
   {
     type: "function" as const,
     function: {
@@ -372,6 +391,16 @@ export async function executeTool(
 async function executeUnsandboxed(name: string, rawArgs: unknown, ctx: ToolContext): Promise<ToolResult> {
   const args = asObject(rawArgs);
   switch (name) {
+    case "recall_context": {
+      if (!ctx.transcript) throw new Error("当前执行器的历史读取不可用。");
+      const result = readContextEvidence(ctx.transcript(), {
+        messageId: typeof args.messageId === "string" ? args.messageId : undefined,
+        query: typeof args.query === "string" ? args.query : undefined,
+        offset: args.offset === undefined ? undefined : Number(args.offset),
+        limit: args.limit === undefined ? undefined : Number(args.limit),
+      });
+      return { output: JSON.stringify(result) };
+    }
     case "update_plan":
       return { output: JSON.stringify({ ok: true, steps: args.steps ?? [] }) };
     case "list_dir":

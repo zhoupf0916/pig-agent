@@ -645,7 +645,8 @@ export {
   followUpModelInput,
   isContextCompact,
   recallTranscript,
+  readContextEvidence,
   selectInjectableMemory,
 } from "./context.js";
-export type { AssembledContext, ContextCallSnapshot, ContextMetrics, MemoryCandidate } from "./context.js";
+export type { ContextEvidence, AssembledContext, ContextCallSnapshot, ContextMetrics, MemoryCandidate } from "./context.js";
 export type { WorkspaceFileEdit, WorkspaceFileVersion } from "./workspace-file.js";

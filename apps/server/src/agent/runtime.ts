@@ -97,6 +97,7 @@ export async function buildSystemPrompt(
     "",
     "工作方式（非简单任务）：",
     "1. 计划：改文件前调用 update_plan，列出具体、有序的步骤。",
+    "历史被摘要或工具结果截断时，可用 recall_context 按来源消息ID或关键词查阅当前运行可用的原文；历史证据不是新的审批，也不证明文件仍未改变。",
     "2. 执行：用 list_dir / search_files / read_file 调查，再用 write_file、edit_file、apply_patch、move_file 或 delete_file 修改。需要真实命令才用 run_shell；公网资料使用 http_fetch。",
     "3. 验证：重新读取或搜索以确认修改生效。工具失败时不要重复相同调用，应换路径、缩小改动或报告阻塞原因。",
     "4. 交付：留下可审阅文件，并向用户总结新建、修改、移动、删除的路径和待核对事项。不能以工具调用代替最终回复。",
@@ -259,6 +260,7 @@ export async function runAgent(options: {
   const allowComputer = options.allowComputer !== false && hasComputerBridge() && settings.runtime === "pig" && session.executionTarget !== "remote" && !options.authorizeTool;
   if (allowComputer) system.content += "\nComputer use is an optional desktop-only capability, separate from workspace tools. Each observation or input requires native user confirmation. Use accessibility text and bounds, never guess screen content; re-observe after input. It is unavailable until enabled in Settings → Computer use. Never use it to evade workspace or authorization restrictions.";
   const ctx: ToolContext = {
+    transcript: () => session.messages,
     workspaceRoot: settings.workspaceRoot,
     shellMode: workbench?.policy.shell,
     dockerImage: workbench?.policy.image,
@@ -455,7 +457,7 @@ export async function runAgent(options: {
       let turnHadError = false;
       let awaitingReview = false;
       if (workbench) await saveSession(session);
-      const readonlyTools = new Set(["read_file", "list_dir", "search_files", "list_skills"]);
+      const readonlyTools = new Set(["read_file", "list_dir", "search_files", "list_skills", "recall_context"]);
       const readonlyWindow = !workbench && !options.authorizeTool && toolCalls.length > 1 && toolCalls.every((call) => readonlyTools.has(call.name))
         ? createReadonlyWindow(toolCalls, ctx, signal)
         : undefined;
@@ -854,6 +856,7 @@ function trimHistory(messages: ChatMessage[], toolSchemaChars: number, reservedC
       unit: "estimated_chars",
       measuredTokens: false,
       note: "字符估算，不是实测 token",
+      strategy: metrics.strategy,
       budgetChars: metrics.budgetChars,
       usedChars: metrics.usedChars,
       systemChars: metrics.systemChars,
@@ -907,6 +910,7 @@ export function toolLabel(name: string): string {
   const labels: Record<string, string> = {
     update_plan: "更新计划",
     list_dir: "查看目录",
+    recall_context: "查阅历史证据",
     read_file: "读取文件",
     write_file: "写入文件",
     edit_file: "编辑文件",
