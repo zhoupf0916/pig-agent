@@ -9,9 +9,17 @@ app.onError((error, c) => {
   console.error(error.name);
   return c.json({ error: "模型网关暂时无法连接上游服务" }, 502);
 });
-app.use("*", bodyLimit({ maxSize: 1024 * 1024 }));
+app.use("*", (c, next) => bodyLimit({ maxSize: c.req.path === "/checkpoint" ? 7 * 1024 * 1024 : 1024 * 1024 })(c, next));
 const control = process.env.CONTROL_URL || "http://cloud:8890";
 app.get("/health", (c) => c.json({ ok: true }));
+app.post("/checkpoint", async c => {
+  const body = await c.req.json();
+  const r = await fetch(control + "/internal/checkpoint", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    body: JSON.stringify({ ...body, token: c.req.header("Authorization")?.replace(/^Bearer /, "") || "" }), signal: AbortSignal.timeout(10000),
+  });
+  return new Response(r.body, { status: r.status, headers: { "Content-Type": "application/json" } });
+});
 app.post("/approvals", async (c) => {
   const body = await c.req.json();
   const r = await fetch(control + "/internal/approvals", {
@@ -145,7 +153,7 @@ app.post("/v1/chat/completions", async (c) => {
     provider?: { baseUrl: string; model: string; apiKey: string };
   };
   if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, Math.min(10000, Math.max(250, Number(process.env.PIG_MOCK_MODEL_DELAY_MS) || 250))));
     const tools = (body.messages || []).filter(
       (m: { role: string }) => m.role === "tool",
     );

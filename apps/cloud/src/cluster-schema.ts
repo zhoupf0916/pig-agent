@@ -1,4 +1,11 @@
 export const clusterSchema = `
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS checkpoint jsonb;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS checkpoint_phase text;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS recovery_count int NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS started_at timestamptz;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS attempt_id text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS attempt_id text;
+
 CREATE TABLE IF NOT EXISTS worker_generations(worker_id text NOT NULL,instance_id text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(worker_id,instance_id));
 CREATE TABLE IF NOT EXISTS run_completions(run_id text PRIMARY KEY REFERENCES runs(id),submission_id text NOT NULL,token_hash text NOT NULL,payload_hash text NOT NULL,state text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE approvals ADD COLUMN IF NOT EXISTS receipt_id text;

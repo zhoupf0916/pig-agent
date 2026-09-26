@@ -1,3 +1,4 @@
+import { registerRecoveryRoutes } from "./recovery.ts";
 import {
   defaultTariff,
   reserveCost,
@@ -118,6 +119,7 @@ async function runFor(id: string, p: Principal, writing = false) {
 }
 registerPlatformRoutes(app);
 registerClusterRoutes(app);
+registerRecoveryRoutes(app);
 registerResourceRoutes(app);
 registerScheduleRoutes(app);
 registerConversationRoutes(app);
@@ -555,7 +557,7 @@ app.post("/internal/runs/:id/start", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid run credential" }, 400);
   const { token } = parsed.data;
   const result = await db.query(
-    "UPDATE runs SET state='running' WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') AND (deadline_at IS NULL OR deadline_at>now()) RETURNING id",
+    "UPDATE runs SET state='running',started_at=coalesce(started_at,now()) WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') AND (deadline_at IS NULL OR deadline_at>now()) RETURNING id",
     [c.req.param("id"), hash(String(token))],
   );
   return result.rowCount
@@ -687,7 +689,7 @@ app.post("/internal/runs/:id/event", async (c) => {
   )
     return c.json({ error: "Invalid event id" }, 400);
   const r = await db.query(
-    "INSERT INTO events(run_id,event,event_id) SELECT id,$3,$4 FROM runs WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') ON CONFLICT(run_id,event_id) WHERE event_id IS NOT NULL DO UPDATE SET event_id=EXCLUDED.event_id RETURNING seq",
+    "INSERT INTO events(run_id,event,event_id,attempt_id) SELECT id,$3,$4,attempt_id FROM runs WHERE id=$1 AND attempt_token=$2 AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND state IN ('preparing','running') ON CONFLICT(run_id,event_id) WHERE event_id IS NOT NULL DO UPDATE SET event_id=EXCLUDED.event_id RETURNING seq",
     [c.req.param("id"), hash(String(token)), event, eventId || null],
   );
   return r.rowCount
@@ -705,7 +707,7 @@ app.post("/internal/authorize", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid authorization" }, 400);
   const { token, reserve, modelRequest } = parsed.data;
   const r = await db.query(
-    "SELECT id,input,model_calls FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
+    "SELECT id,input,model_calls,CASE WHEN recovery_count>0 AND checkpoint_phase='safe' THEN checkpoint ELSE NULL END AS recovery FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
     [hash(String(token))],
   );
   if (!r.rowCount) return c.json({ error: "Run credential expired" }, 401);
@@ -782,7 +784,7 @@ app.post("/internal/authorize", async (c) => {
       client.release();
     }
   }
-  return c.json({ id: r.rows[0].id, input: r.rows[0].input });
+  return c.json({ id: r.rows[0].id, input: r.rows[0].input, recovery: r.rows[0].recovery });
 });
 // Trusted gateway only: settlement is idempotent, independent of run lease expiry.
 app.post("/internal/model-settle", async (c) => {

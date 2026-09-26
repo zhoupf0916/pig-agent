@@ -225,3 +225,9 @@ export interface AccountBudget {
   daily_call_limit: number;
   calls_today: string | number;
 }
+
+/** Recoverable only at a completed tool-group boundary; never an authorization receipt. */
+export type RunCheckpoint = {
+  messages: import("./index.ts").ChatMessage[];
+  snapshot: { encoding: "tar.gz"; data: string; files: string[]; skipped: string[]; byteSize: number; truncated?: boolean };
+};

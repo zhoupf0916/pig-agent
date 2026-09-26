@@ -7,7 +7,7 @@ import { mkdir, readdir, readFile, lstat, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { runAgent, ToolAuthorizationDenied } from "./agent/runtime.ts";
-import { readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
+import { recordDebugSpan, readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
 import { normalizeSettings } from "./store/settings.ts";
 import {
   extractWorkspaceSnapshot,
@@ -41,8 +41,9 @@ try {
     signal: AbortSignal.timeout(10000),
   });
   if (!response.ok) throw Error("运行令牌已失效");
-  const { id, input } = (await response.json()) as {
+  const { id, input, recovery } = (await response.json()) as {
     id: string;
+    recovery?: import("@pig-agent/contracts/cloud").RunCheckpoint;
     input: {
       prompt: string;
       requireApproval?: boolean;
@@ -72,7 +73,7 @@ try {
   });
   immutableAttachmentPaths = (input.attachments || []).flatMap(a => [a.workspacePath, a.workspacePath + ".txt"]);
   const { stageCloudWorkspace } = await import("./agent/cloud/stage-workspace.ts");
-  await stageCloudWorkspace(workspaceRoot, {
+  await stageCloudWorkspace(workspaceRoot, recovery ? { workspace: { snapshot: recovery.snapshot } } : {
     workspace: input.workspace,
     projectFiles: input.projectFiles,
     files: input.files,
@@ -96,10 +97,10 @@ try {
   }
   const now = new Date().toISOString();
   // Server-built bounded continuation. Do not expand a stored full tool transcript here.
-  const messages = input.messages || [];
+  const messages = recovery?.messages || input.messages || [];
   if (
-    messages.at(-1)?.role !== "user" ||
-    messages.at(-1)?.content !== input.prompt
+    !recovery && (messages.at(-1)?.role !== "user" ||
+    messages.at(-1)?.content !== input.prompt)
   )
     messages.push({
       id: "prompt:" + id,
@@ -221,6 +222,19 @@ try {
     signal: deadline,
     emit: (event) => emit({ kind: "event", event }),
     contextEngine: "cloud",
+    checkpoint: async (phase, session) => {
+      const started = performance.now();
+      const checkpoint = phase === "safe" ? { messages: session.messages, snapshot: packWorkspaceSnapshot(workspaceRoot, immutableAttachmentPaths, "cloud-result") } : undefined;
+      if (checkpoint?.snapshot.truncated) throw new Error("工作区检查点不完整，已停止执行以避免不安全恢复");
+      const response = await fetch(gateway + "/checkpoint", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ phase, ...(checkpoint ? { checkpoint } : {}) }),
+        signal: AbortSignal.any([deadline, AbortSignal.timeout(10000)]),
+      });
+      recordDebugSpan({ id: randomUUID(), runId: id, sessionId: id, kind: "control", name: `checkpoint_${phase}`, status: response.ok ? "ok" : "error", startedAtMs: 0,
+        durationMs: Math.round(performance.now() - started), detail: { phase, confirmed: response.ok, snapshotBytes: checkpoint?.snapshot.byteSize } }, started);
+      if (!response.ok) throw new Error("控制面未确认执行检查点，已停止；不会继续调用工具");
+    },
     memoryPins: [],
     authorizeTool: async (call) => {
       const gate = cloudToolGate(call.tool, input.requireApproval !== false);

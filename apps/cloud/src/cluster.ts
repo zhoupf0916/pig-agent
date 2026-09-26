@@ -1,3 +1,4 @@
+import { recoverInterruptedSql } from "./recovery.ts";
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -36,11 +37,12 @@ async function policy(client: PoolClient) {
 const active =
   "state IN ('preparing','running','cancelling') AND lease_until>now()";
 export async function sweepRuns() {
+  await db.query("UPDATE runs SET state='failed',error='恢复等待期间任务已超时',updated_at=now() WHERE state='queued' AND deadline_at<=now()");
   await db.query(
     `UPDATE runs r SET state='failed',error='任务创建者已停用或失去共享项目执行权限',updated_at=now() WHERE state='queued' AND (NOT EXISTS(SELECT 1 FROM principals p WHERE p.id=r.owner_id AND p.enabled) OR (r.project_id IS NOT NULL AND NOT project_access(r.project_id,r.owner_id,true)))`,
   );
   await db.query(
-    `UPDATE runs SET state=CASE WHEN state='cancelling' THEN 'cancelled' ELSE 'failed' END,error=CASE WHEN deadline_at<now() THEN '执行超时；请核验已有副作用后重新提交' ELSE '执行节点失联；为避免重复副作用，请核验后重新提交' END,attempt_token=NULL,lease_until=NULL,updated_at=now() WHERE state IN ('preparing','running','cancelling') AND (lease_until<now() OR deadline_at<now())`,
+    recoverInterruptedSql + "(lease_until<now() OR deadline_at<now())",
   );
   await db.query(
     `UPDATE runs SET state='failed',error='等待执行资源超时，请检查 Runner 容量后重试',updated_at=now() WHERE state='queued' AND created_at<now()-make_interval(secs=>COALESCE((SELECT (value->>'queueTimeoutSeconds')::int FROM platform_settings WHERE key='executionPolicy'),3600))`,
@@ -130,7 +132,7 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
       );
       if (old && old.instance_id !== instanceId)
         await client.query(
-          `UPDATE runs SET state='failed',error='执行节点已重启；为避免重复副作用，请核验后重新提交',attempt_token=NULL,lease_until=NULL,updated_at=now() WHERE worker_id=$1 AND state IN ('preparing','running','cancelling')`,
+          recoverInterruptedSql + "worker_id=$1",
           [workerId],
         );
       await client.query(
@@ -227,9 +229,10 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
         profiles[candidate.execution_profile as keyof typeof profiles] ||
         profiles.standard;
       const token = randomUUID() + randomUUID();
+      const attemptId = randomUUID();
       await client.query(
-        "UPDATE runs SET state='preparing',worker_id=$2,attempt_token=$3,lease_until=now()+interval '20 seconds',deadline_at=now()+make_interval(secs=>$4),updated_at=now() WHERE id=$1",
-        [candidate.id, workerId, hash(token), resources.timeoutSeconds + 30],
+        "UPDATE runs SET state='preparing',worker_id=$2,attempt_token=$3,lease_until=now()+interval '20 seconds',deadline_at=coalesce(deadline_at,now()+make_interval(secs=>$4)),attempt_id=$5,updated_at=now() WHERE id=$1",
+        [candidate.id, workerId, hash(token), resources.timeoutSeconds + 30, attemptId],
       );
       await client.query(
         "INSERT INTO dispatch_owners(owner_id,last_claimed_at) VALUES($1,now()) ON CONFLICT(owner_id) DO UPDATE SET last_claimed_at=now()",
@@ -241,7 +244,7 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
       );
       await client.query(
         "INSERT INTO execution_attempts(id,run_id,worker_id,resources) VALUES($1,$2,$3,$4)",
-        [randomUUID(), candidate.id, workerId, resources],
+        [attemptId, candidate.id, workerId, resources],
       );
       await client.query("COMMIT");
       return c.json({ id: candidate.id, token, resources });

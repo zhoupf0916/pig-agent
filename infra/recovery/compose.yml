@@ -1,0 +1,24 @@
+# Acceptance-only overlay. Always use project name pig-recovery, never production.
+services:
+  control:
+    image: node:24-bookworm-slim
+    command: [node, /proxy.mjs]
+    volumes: ["../recovery/proxy.mjs:/proxy.mjs:ro"]
+  postgres:
+    mem_limit: 192m
+  cloud-a:
+    mem_limit: 256m
+  cloud-b:
+    mem_limit: 256m
+  gateway:
+    mem_limit: 192m
+    environment:
+      PIG_MOCK_MODEL_DELAY_MS: "4000"
+  runner-a:
+    mem_limit: 512m
+    environment:
+      WORKER_CAPACITY: "1"
+  runner-b:
+    mem_limit: 512m
+    environment:
+      WORKER_CAPACITY: "1"

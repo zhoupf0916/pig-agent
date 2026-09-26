@@ -100,8 +100,9 @@ async function execute(job: {
       });
   }, 500);
   let eventSequence = 0;
+  const eventAttempt = randomUUID();
   const eventBatcher = new EventBatcher((event) => {
-    const eventId = `${job.id}:${++eventSequence}`;
+    const eventId = `${job.id}:${eventAttempt}:${++eventSequence}`;
     writes = writes
       .then(() =>
         sendEvent(`/internal/runs/${job.id}/event`, {

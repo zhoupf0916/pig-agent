@@ -145,6 +145,7 @@ export async function runAgent(options: {
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
   contextEngine?: "pig" | "cloud";
+  checkpoint?: (phase: "safe" | "unsafe", session: Session) => Promise<void>;
   /** When false, ordinary mutations skip authorizeTool. MCP tools still use it. */
   authorizeMutations?: boolean;
   mcpTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>;
@@ -301,6 +302,7 @@ export async function runAgent(options: {
         : [];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
+      await options.checkpoint?.("safe", session);
       const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0, options.contextEngine ?? "pig");
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
@@ -457,6 +459,8 @@ export async function runAgent(options: {
       let turnHadError = false;
       let awaitingReview = false;
       if (workbench) await saveSession(session);
+      // Fail closed before any tool (including parallel reads or approval consumption).
+      await options.checkpoint?.("unsafe", session);
       const readonlyTools = new Set(["read_file", "list_dir", "search_files", "list_skills", "recall_context"]);
       const readonlyWindow = !workbench && !options.authorizeTool && toolCalls.length > 1 && toolCalls.every((call) => readonlyTools.has(call.name))
         ? createReadonlyWindow(toolCalls, ctx, signal)
