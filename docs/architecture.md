@@ -7,6 +7,9 @@
 | `apps/web` | React UI、交互状态、HTTP / SSE 客户端 | Node 文件系统、密钥持久化、执行器实现 |
 | `apps/server` | API、任务编排、工具、运行时适配、本机存储 | Electron 窗口、React 组件、未来云端租户管理 |
 | `apps/desktop` | 原生窗口、目录选择、系统密钥存储、服务启停、分发 | 重写 Agent 逻辑、复制一套工作台 |
+| `apps/cloud` | PostgreSQL 控制面、账号与项目授权、调度、模型网关、配额 | 本机 JSON 存储、用户电脑的直接文件访问 |
+| `apps/worker` | Runner 注册、领取、续租、执行子进程监督、事件与结果上报 | 自行决定账号权限、覆盖控制面终态 |
+| `apps/admin` | 账号审批、渠道、配额与节点管理 UI | 绕过控制面鉴权直接访问数据库 |
 | `packages/contracts` | API 数据结构、事件和 Cloud 协议 | Node / Electron / React 依赖、运行时密钥、数据库访问 |
 
 依赖方向：Web → contracts；server → contracts；桌面通过构建产物启动 server，通过受限 preload 桥服务 Web。应用之间不直接导入源码。共享包使用 `@pig-agent/contracts` 与 `@pig-agent/contracts/cloud` 的显式导出。
@@ -30,7 +33,9 @@
 
 当前 `apps/server/src/agent/cloud` 是 Cloud **消费端适配器**，`local-stub` 用于本机验证，`remote` 对接已有控制面。它不是可部署的多租户云平台。
 
-当前已新增 `apps/cloud`（PostgreSQL 控制面）、`apps/worker`（可信容器调度）和 `apps/admin`（独立管理界面）；第一批范围见 [本地云平台](local-cloud.md)。它们通过 `contracts/cloud` 协议接入，未复用本机 JSON store 或暴露本机 API。执行镜像目前构建自 server 内的专用入口，复用现有 Pig 循环；共享 agent-core 提取将在下一批按实际依赖完成。云端需要显式建设身份认证、租户隔离、任务队列、对象存储、模型网关、配额与审计。只有出现第二个真实使用方时，才将平台无关的编排逻辑提取为共享包；文件系统、进程、密钥和网络权限通过各宿主适配。
+`apps/cloud` 是实际的 PostgreSQL 控制面，`apps/worker` 是可信 Runner 节点，`apps/admin` 提供管理界面。它们通过 `contracts/cloud` 协议接入，未复用本机 JSON store 或暴露本机 API。已实现账号审批与登录、项目授权、共享队列、租约与并发限制、模型网关与预算、审计、有限检查点恢复；多实例的具体证据与边界见 [技术实现与亮点手册](technical-handbook.md)。独立大对象存储、跨主机高可用和任意工具副作用的 exactly-once 不属于已完成能力。
+
+执行镜像构建自 server 内的专用入口，复用现有 Pig 循环；尚未提取独立 agent-core 包。Docker 承载平台服务与可信 Runner，工具使用原生沙箱，不为每次工具调用创建 Docker 容器。共享编排包应在实际复用需求和依赖边界清楚后提取；文件系统、进程、密钥和网络权限通过各宿主适配。
 
 不预建空的 cloud 应用或抽象框架，以免让占位代码看起来像已实现能力。
 

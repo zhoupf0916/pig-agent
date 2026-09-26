@@ -1,0 +1,87 @@
+{
+  "note": "Before screenshots use the pre-change Web build with synthetic local test data and the new sample catalog. After uses the revised build. All screenshots are actual browser rendering; no production data.",
+  "dimensions": {
+    "before/approval-390.png": [
+      390,
+      844
+    ],
+    "before/send-error-390.png": [
+      390,
+      844
+    ],
+    "before/send-error-1440.png": [
+      1440,
+      900
+    ],
+    "before/result-390.png": [
+      390,
+      844
+    ],
+    "before/market-detail-390.png": [
+      390,
+      844
+    ],
+    "before/market-detail-1440.png": [
+      1440,
+      900
+    ],
+    "before/result-1440.png": [
+      1440,
+      900
+    ],
+    "before/approval-1440.png": [
+      1440,
+      900
+    ],
+    "after/approval-390.png": [
+      390,
+      844
+    ],
+    "after/send-error-390.png": [
+      390,
+      844
+    ],
+    "after/market-enabled-390.png": [
+      390,
+      844
+    ],
+    "after/send-error-1440.png": [
+      1440,
+      900
+    ],
+    "after/result-390.png": [
+      390,
+      844
+    ],
+    "after/market-detail-390.png": [
+      390,
+      844
+    ],
+    "after/rejected-390.png": [
+      390,
+      844
+    ],
+    "after/market-detail-1440.png": [
+      1440,
+      900
+    ],
+    "after/skill-selected-390.png": [
+      390,
+      844
+    ],
+    "after/result-1440.png": [
+      1440,
+      900
+    ],
+    "after/market-error-390.png": [
+      390,
+      844
+    ],
+    "after/approval-1440.png": [
+      1440,
+      900
+    ]
+  },
+  "beforeFrontend": "index-UVkQwqHE.js",
+  "afterFrontend": "index-D47sSCNB.js"
+}

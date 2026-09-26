@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "environment": "isolated local server, scripted SSE provider, real native tools; no production or Docker",
+  "checks": [
+    "real project creation and workspace binding; actual attachment upload; native write gated before approval and survives refresh; actual readback; follow-up appears once and survives refresh",
+    "HTTP send failure retains draft after reload and removes phantom user message",
+    "only one approval shown; rejecting first tool prevents both writes in the batch",
+    "cancel waiting approval through browser and reload: durable cancelled outcome, no pending approval or writes",
+    "market search, resource preview, visible install error and retry, install disabled, enable, usable expert binding and slash skill selection persisted"
+  ],
+  "errors": []
+}
