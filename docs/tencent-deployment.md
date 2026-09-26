@@ -4,9 +4,9 @@
 
 ## 目录与启动
 
-当前实例 193.112.22.18：4 vCPU、约 4 GB 内存、59 GB 磁盘。当前版本：`93e3eea` 基线加 2026-09-24 产品加固，release 为 `20260924-hardening`。
+当前实例 193.112.22.18：4 vCPU、约 4 GB 内存、59 GB 磁盘。当前应用版本：`ad13aec`，release 为 `20260927-market-ad13aec`。
 
-- `/home/ubuntu/pig-agent/releases/20260924-hardening`：源码和预构建 `cloud-dist`。
+- `/home/ubuntu/pig-agent/releases/20260927-market-ad13aec`：源码和预构建 `cloud-dist`。
 - `/home/ubuntu/pig-agent/current`：指向当前 release 的符号链接。
 - `/home/ubuntu/pig-agent/data/cloud-local/stack.env`：数据库、内部认证与加密配置，权限 0600，不能提交 Git。
 - 同目录 `accounts.txt`：已有管理员凭据，部署保留账号，不重新生成密码。
@@ -152,3 +152,12 @@ tar -tzf /tmp/pig-runtime.tar.gz | grep -E '(^|/)\._'
 新增安全检查点与最多两次跨 Runner 接续，工具/审批中断不自动重放；原截止时间与模型额度不重置。迁移仅增加 runs/events 字段。回滚前必须停止领取并核对仍在执行或排队的恢复任务，不能让旧版本从初始输入重复执行它们，不自动恢复数据库或覆盖新数据。
 
 开发者页已加入控制面耗时与执行阶段统计。正式真实模型短回复已验证检查点确认、无工具执行、任务成功、实际usage与耗时可见；两个控制面/两个Runner的故障注入在独立模拟环境完成，不在生产任务上杀节点。详见[实现与证据](recovery-observability-2026-09-26.md)。
+
+
+## 2026-09-27 交互修复与实用技能市场发布
+
+应用提交：`a78176d`（交互）、`c57cdc0`（市场）、`ad13aec`（文档与验收）。发布前 `pnpm cloud:build` 成功，上一轮全量177个测试文件、986项测试通过。
+
+发布前确认无排队或运行任务，执行数据库及配置备份：`backups/daily/20260926T162202Z.dump` 及同时间配置归档（UTC命名）。旧镜像保留 `before-market-ad13aec` 标签，旧 release 保留。控制面、网关及四个 Runner 更新，数据库未重启，账号、渠道和并发配置保留。
+
+上线验收：公网 `/health` 返回200，`modelMode=provider`；首页加载本次前端 `index-D47sSCNB.js`；`/internal/` 返回404。授权市场接口返回15套能力包，包含本次新增4套；管理接口确认四个 Runner 在线、启用、各1槽。未在生产执行故障注入或新增付费模型调用；完整交互与审批证据见 [本地验收记录](core-market-review-2026-09-26.md)。

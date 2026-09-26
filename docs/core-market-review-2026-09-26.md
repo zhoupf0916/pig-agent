@@ -65,3 +65,8 @@ PIG_SMOKE_DATA_DIR=/tmp/pig-core-status-review node scripts/smoke-conversation-e
 | 桌面结果 | [1440×900](evidence/core-market-2026-09-27/before/result-1440.png) | [1440×900](evidence/core-market-2026-09-27/after/result-1440.png) |
 
 另归档安装失败、已启用、拒绝写入与中文技能选择截图。前后均为隔离测试数据；市场前图使用旧UI呈现同一新增包，以比较交互而非伪装为历史线上目录。
+
+
+## 后续发布（2026-09-27）
+
+用户授权后按功能提交推送并上线，应用版本 `ad13aec`。上文“未提交、推送、部署”描述的是本地验收完成时的状态；当前发布及服务器检查结果见 [腾讯云部署记录](tencent-deployment.md#2026-09-27-交互修复与实用技能市场发布)。
