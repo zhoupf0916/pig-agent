@@ -125,6 +125,7 @@ function cloudSnapshot(id) {
   };
 }
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml" };
+let savedSettings = { name: "验收用户", requireApproval: true, networkPolicy: "blocked", memoryEnabled: true, timezone: "Asia/Shanghai", defaultRunTarget: "cloud" };
 const cloud = createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://127.0.0.1");
   if (url.pathname === "/api/deployment") return json(res, { surface: "cloud" });
@@ -132,11 +133,17 @@ const cloud = createServer(async (req, res) => {
   if (url.pathname === "/v1/conversations") {
     return json(res, { conversations: Object.keys(cloudSnapshot("conv_empty")).length ? ["conv_empty", "conv_two", "conv_running", "conv_approval", "conv_failed", "conv_cancelled"].map((id) => ({ id, title: cloudSnapshot(id).conversation.title })) : [] });
   }
-  if (url.pathname === "/v1/projects") return json(res, { projects: [] });
+  if (url.pathname === "/v1/projects") return json(res, { projects: [{ id: "project_demo", name: "产品工作区", kind: "personal", role: "owner", description: "集中整理产品文档与开发任务。" }] });
+  if (url.pathname === "/v1/projects/project_demo/workspace") return json(res, { workspaceName: "产品工作区", seed: { fileCount: 2, files: ["README.md", "notes.md"] }, conversations: [] });
   if (url.pathname === "/v1/spaces") return json(res, { spaces: [] });
-  if (url.pathname === "/v1/experts") return json(res, { experts: [] });
-  if (url.pathname === "/v1/skills") return json(res, { skills: [] });
-  if (url.pathname === "/v1/settings") return json(res, { requireApproval: true, networkPolicy: "blocked" });
+  if (url.pathname === "/v1/experts") return json(res, { experts: [{ id: "exp_review", name: "代码审查专家", description: "从正确性、边界和可维护性检查代码，给出可复核的建议。", instruction: "审查代码", bundled: true }] });
+  if (url.pathname === "/v1/skills") return json(res, { skills: [{ id: "research", name: "research", displayName: "研究与整理", description: "整理资料、核实来源，并生成结构清晰的研究报告。", body: "研究步骤", bundled: true, files: [] }] });
+  if (url.pathname === "/v1/settings") {
+    if (req.method === "PUT") { let body = ""; for await (const chunk of req) body += chunk; const update = JSON.parse(body); savedSettings = { ...savedSettings, ...update, name: update.displayName }; }
+    return json(res, savedSettings);
+  }
+  if (url.pathname === "/v1/usage") return json(res, { budget_micros: 2000000, spent_micros: 125000, reserved_micros: 0, calls_today: 2, daily_call_limit: 100 });
+  if (url.pathname === "/v1/schedules") return json(res, { automations: [] });
   const approvals = url.pathname.match(/^\/v1\/runs\/(run_[a-z_]+)\/approvals$/);
   if (approvals) {
     const pending = approvals[1] === "run_conv_approval";
@@ -156,7 +163,8 @@ const cloud = createServer(async (req, res) => {
   if (url.pathname.startsWith("/v1/") || url.pathname.startsWith("/api/")) return json(res, {});
   const file = join("apps/web/dist", url.pathname === "/" ? "index.html" : url.pathname.slice(1));
   try {
-    const body = await readFile(file);
+    let body = await readFile(file);
+    if (process.env.PIG_SMOKE_PREVIEW === "1" && url.pathname === "/") body = Buffer.from(body.toString().replace("</body>", '<div style="position:fixed;right:12px;bottom:2px;z-index:999;font:10px sans-serif;color:#888;pointer-events:none">本地界面预览 · 模拟数据</div></body>'));
     res.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream" });
     res.end(body);
   } catch {
@@ -171,10 +179,21 @@ await new Promise((ready) => cloud.listen(18792, "127.0.0.1", ready));
 try {
 await waitFor(`http://127.0.0.1:${localPort}/`);
 
+if (process.env.PIG_SMOKE_PREVIEW === "1") {
+  console.log("Isolated mock preview: http://127.0.0.1:18792/#/conversations");
+  await new Promise(resolve => { process.once("SIGTERM", resolve); process.once("SIGINT", resolve); });
+  cloud.close(); local.kill("SIGTERM"); process.exit(0);
+}
 const browser = await chromium.launch({ channel: "chrome", headless: true });
 const checks = [];
 const errors = [];
 const shots = [
+  ["cloud-project", "http://127.0.0.1:18792/#/projects/project_demo/overview", "产品工作区"],
+  ["cloud-new", "http://127.0.0.1:18792/#/conversations", "从一个想法开始"],
+  ["cloud-settings", "http://127.0.0.1:18792/#/settings", "设置"],
+  ["cloud-skills", "http://127.0.0.1:18792/#/experts/skills", "专家与技能"],
+  ["cloud-experts", "http://127.0.0.1:18792/#/experts", "专家与技能"],
+  ["cloud-automations", "http://127.0.0.1:18792/#/automations", "自动化"],
   ["local-empty", `http://127.0.0.1:${localPort}/#/sessions/ses_smoke_empty`, "空对话"],
   ["local-two", `http://127.0.0.1:${localPort}/#/sessions/ses_smoke_two`, "第一轮结论"],
   ["local-running", `http://127.0.0.1:${localPort}/#/sessions/ses_smoke_running`, "正在核对配置"],
@@ -194,9 +213,51 @@ try {
       const page = await browser.newPage({ viewport: { width, height } });
       page.on("pageerror", (error) => errors.push(`${name}:${error.message}`));
       await page.goto(url);
-      await expect(page.locator("h1, .conv-user, .conv-answer, .conv-notice, .conv-alert, .conv-current, .cw-approval").filter({ hasText: text }).locator("visible=true").first()).toBeVisible({ timeout: 20000 });
+      await expect(page.locator("h1, h2, .conv-user, .conv-answer, .conv-notice, .conv-alert, .conv-current, .cw-approval").filter({ hasText: text }).locator("visible=true").first()).toBeVisible({ timeout: 20000 });
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
       if (name.startsWith("local-") && name !== "local-running") await expect(page.getByRole("textbox", { name: "任务消息" })).toBeEnabled();
+      if (name === "cloud-project") {
+        await page.getByRole("button", { name: "工作区与文件", exact: true }).click();
+        await expect(page.getByText("README.md", { exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "概览", exact: true }).click();
+      }
+      if (name === "cloud-skills" || name === "cloud-experts") {
+        await page.getByRole("button", { name: "查看详情", exact: true }).click();
+        await expect(page.getByRole("dialog")).toBeVisible();
+        await page.getByRole("button", { name: "关闭详情", exact: true }).click();
+        await expect(page.getByRole("dialog")).toBeHidden();
+      }
+      if (name === "cloud-settings") {
+        const field = page.getByLabel("显示名称");
+        await expect(field).toBeVisible();
+        await field.fill("界面验收");
+        await page.getByRole("button", { name: "保存设置", exact: true }).click();
+        await expect(page.getByText("设置已保存，下一次新任务生效。")).toBeVisible();
+        await page.reload();
+        await expect(field).toHaveValue("界面验收");
+        checks.push(`${viewport} settings save and reload`);
+      }
+      if (name === "cloud-new") {
+        if (viewport === "desktop1440") {
+          await page.getByRole("button", { name: "收起侧栏" }).click();
+          await expect(page.getByRole("complementary", { name: "全局导航" })).toBeHidden();
+          await page.getByRole("button", { name: "展开侧栏" }).click();
+        }
+        await page.getByText("专家与技能", { exact: true }).click();
+        await expect(page.getByRole("combobox", { name: "任务专家" })).toBeVisible();
+        await page.getByRole("combobox", { name: "任务专家" }).selectOption("exp_review");
+        await page.getByRole("textbox", { name: "任务消息" }).click();
+        await expect(page.getByRole("checkbox", { name: "记录本次调试正文" })).toBeHidden();
+        await page.getByLabel("更多对话选项").click();
+        await expect(page.getByRole("checkbox", { name: "记录本次调试正文" })).toBeVisible();
+        await page.keyboard.press("Escape");
+        const controls = await page.locator(".cw-composer-controls > details > summary, .cw-composer-controls > footer > details > summary, .context-usage-ring, .cw-composer-controls > footer > button").evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return { x:r.x, y:r.y, right:r.right, bottom:r.bottom }; }));
+        for (let i=0;i<controls.length;i++) for (let j=i+1;j<controls.length;j++) {
+          const a=controls[i], b=controls[j];
+          if (Math.min(a.right,b.right)-Math.max(a.x,b.x)>1 && Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y)>1) throw Error(`composer controls overlap at ${viewport}`);
+        }
+        checks.push(`${viewport} composer options and navigation without overlapping controls`);
+      }
       if (name === "cloud-empty") {
         const ring = page.getByRole("button", { name: "上下文用量" });
         await ring.click();
@@ -254,6 +315,10 @@ try {
         await expect(turns.nth(1).getByRole("link", { name: /第二轮测试/ })).toHaveAttribute("href", "/v1/attachments/att_b/download");
         checks.push("collaboration authors and attachment links stay on their own turns");
         checks.push("cloud progress is not the final answer");
+        await page.getByRole("button", { name: "成果与过程", exact: true }).click();
+        await expect(page.getByRole("complementary", { name: "成果与过程" })).toBeVisible();
+        await page.screenshot({ path: join(out, "cloud-inspector-desktop1440.png") });
+        await page.getByRole("button", { name: "关闭成果", exact: true }).click();
       }
       await page.screenshot({ path: join(out, `${name}-${viewport}.png`), fullPage: true });
       if (name === "cloud-two" && viewport === "desktop1440") {
