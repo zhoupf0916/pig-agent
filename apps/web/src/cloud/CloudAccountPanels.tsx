@@ -39,7 +39,7 @@ export function CloudSettingsPanel() {
     };
   }, [reload]);
   return (
-    <section className="cloud-page">
+    <section className="cloud-page settings-layout">
       <h2 className="jd-duplicate-title">设置</h2>
       <nav className="cloud-settings-tabs" aria-label="设置分类">
         <button

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import {
+  PanelLeft,
   BookOpen,
   Clock3,
   LogOut,
@@ -24,8 +25,9 @@ import {
 } from "./CloudAccountPanels";
 import { cloudRequest as api, advanceCloudIdentity } from "./cloud-api";
 import "./cloud-app.css";
-import "./joydesk-workbench.css";
+import "./resource-details.css";
 import "./responsive.css";
+import "./workbench-layout.css";
 import { useDialog } from "../lib/use-dialog";
 type Account = { id: string; name: string };
 export function CloudAppShell() {
@@ -33,6 +35,7 @@ export function CloudAppShell() {
     [loading, setLoading] = useState(true),
     [hash, setHash] = useState(location.hash),
     [navigation, setNavigation] = useState(false),
+    [collapsed, setCollapsed] = useState(false),
     [error, setError] = useState(""),
     [taskKey, setTaskKey] = useState(0),
     [options, setOptions] = useState<{
@@ -129,7 +132,7 @@ export function CloudAppShell() {
       />
     );
   return (
-    <div className={`app-layout cloud-app cloud-app-${route}`} key={account.id}>
+    <div className={`app-layout cloud-app cloud-app-${route} ${collapsed ? "rail-collapsed" : ""}`} key={account.id}>
       {navigation && (
         <button
           className="navigation-scrim"
@@ -146,7 +149,7 @@ export function CloudAppShell() {
           <span className="brand-mark">P</span>
           <span className="jd-brand-copy">
             <strong>Pig Agent</strong>
-            <em>云端沙箱</em>
+
           </span>
           <button
             className="icon-button mobile-only"
@@ -156,6 +159,7 @@ export function CloudAppShell() {
             <X size={18} />
           </button>
         </div>
+        <button className="rail-collapse desktop-only icon-button" aria-label="收起侧栏" onClick={() => setCollapsed(true)}><PanelLeft size={18} /></button>
         <button className="sidebar-new" onClick={() => newTask()}>
           <Plus size={17} />
           新对话
@@ -273,6 +277,7 @@ export function CloudAppShell() {
         </div>
       </aside>
       <main className="app-main">
+        {collapsed && <button className="rail-expand desktop-only icon-button" aria-label="展开侧栏" onClick={() => setCollapsed(false)}><PanelLeft size={18} /></button>}
         {!showTask && (
           <header className="task-header">
             <button

@@ -58,6 +58,7 @@ export function CloudResourcesPanel({
   async function refresh() {
     const own = ++revision.current;
     setLoading(true);
+    setError("");
     try {
       const [experts, sk] = await Promise.all([
         api("/v1/experts"),
@@ -128,7 +129,7 @@ export function CloudResourcesPanel({
           技能
         </button>
       </div>
-      {kind === "skill" && <SkillPackImporter onImport={async files => { await api("/v1/skill-packs", "POST", { files }); setFeedback("技能包已导入，可以开始对话。"); await refresh(); }} />}
+      {kind === "skill" && <details className="library-import"><summary>导入技能包</summary><SkillPackImporter onImport={async files => { await api("/v1/skill-packs", "POST", { files }); setFeedback("技能包已导入，可以开始对话。"); await refresh(); }} /></details>}
       <div className="resource-toolbar">
         <div className="resource-filters" aria-label="资源分类">
           {[
@@ -155,7 +156,7 @@ export function CloudResourcesPanel({
           />
         </label>
       </div>
-      {error && !edit && !preview && !creating && <p role="alert">{error}</p>}
+      {error && !edit && !preview && !creating && <div role="alert" className="resource-error">{error}<button onClick={() => void refresh()} disabled={loading}>重新加载</button></div>}
       {feedback && <p role="status">{feedback}</p>}
       {(edit || preview || creating) && (
         <div
