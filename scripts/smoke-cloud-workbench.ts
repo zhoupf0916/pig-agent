@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+// Works in both MODEL_MODE=mock and provider: the prompt is explicit enough for a real model.
+const PROOF_PROMPT = "请在工作区创建 cloud-proof.txt，内容为一行 PIG_CLOUD_CONTAINER_OK，然后读回确认，最后在回复中写上“沙箱执行验收通过”。";
 const directory = await mkdtemp(join(tmpdir(), "pig-plane-ui-"));
 process.env.PIG_DESKTOP = "1";
 process.env.DATA_DIR = join(directory, "data");
@@ -59,7 +61,7 @@ try {
     "POST",
     {
       name: "工作台接口验收",
-      prompt: "写入并读回文件",
+      prompt: PROOF_PROMPT,
       executionTarget: "remote",
       schedule: null,
     },
@@ -83,6 +85,9 @@ try {
   await request(`/api/sessions/${session.id}`, "PATCH", {
     executionTarget: "remote",
     engine: "pig",
+    // Chat runs default to blocking approvals; this smoke covers detached-stream survival,
+    // approvals are covered by smoke-cloud-approvals.
+    remoteRequireApproval: false,
   });
   const response = await app.request(`/api/sessions/${session.id}/messages`, {
     method: "POST",
@@ -91,14 +96,14 @@ try {
       Origin: "http://127.0.0.1:8797",
     },
     body: JSON.stringify({
-      content: "写入并读回文件",
+      content: PROOF_PROMPT,
       clientMessageId: randomUUID(),
     }),
   });
   assert.equal(response.status, 200);
   // Disconnect the client immediately. The run and persisted result must survive.
   await response.body!.cancel();
-  const end = Date.now() + 45000;
+  const end = Date.now() + 120000;
   let completed;
   while (Date.now() < end) {
     const current = await getSession(session.id);
@@ -112,7 +117,7 @@ try {
   assert.ok(completed?.remoteRunId, "remote run survives detached stream");
   assert.ok(
     completed.messages.some(
-      (m) => m.role === "assistant" && m.content.includes("容器执行验收通过"),
+      (m) => m.role === "assistant" && /(容器|沙箱)执行验收通过/.test(m.content),
     ),
   );
   assert.equal(completed.messages.filter((m) => m.role === "user").length, 1);
@@ -130,7 +135,7 @@ try {
   assert.ok(
     recovered.messages.some(
       (m: any) =>
-        m.role === "assistant" && m.content.includes("容器执行验收通过"),
+        m.role === "assistant" && /(容器|沙箱)执行验收通过/.test(m.content),
     ),
   );
   const again = await request(`/api/sessions/${session.id}`);
