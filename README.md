@@ -74,6 +74,18 @@ pnpm dev        # API http://127.0.0.1:8787，UI http://127.0.0.1:5173
 
 `WORKSPACE_ROOT` 默认是仓库内的 `sample-workspace/`，建议指向临时目录以免改动仓库。mock 模型按指令路由场景（列出/读/写/运行命令/闲聊/失败），也可用 `MOCK_LLM_SCENARIO=readme` 或消息里的 `[mock:shell]` 强制指定。`PIG_LOCAL_WORKBENCH=1` 会直接操作本机工作区文件，仅用于本地开发，不要在公网暴露。
 
+### Agent 运行参数（环境变量）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `PIG_MAX_TURNS` | 20 | 每轮最多模型/工具回合（1–200） |
+| `PIG_COMPACTION` / `PIG_COMPACT_RATIO` | on / 0.6 | 可见上下文超过预算比例时，用一次模型调用生成分段摘要替换较早消息（原文保留，可 recall_context） |
+| `PIG_SUBAGENTS` | on | 只读子 Agent 工具 `spawn_subagent`（全新上下文，最多并行 3 个，只回传报告） |
+| `PIG_SKILL_AUTOLOAD` | off | 关闭时关键词命中的技能只做提示，由模型 `load_skill` 按需加载 |
+| `PIG_EMBEDDING_BASE_URL` / `PIG_EMBEDDING_MODEL` / `PIG_EMBEDDING_API_KEY` | 未设置 | 设置后记忆召回在 BM25 之外融合向量相似度（OpenAI 兼容 /embeddings） |
+
+任务级评测：`pnpm eval:tasks`（离线 mock）或 `pnpm eval:tasks --real`（使用 `LLM_*`/`DEEPSEEK_API_KEY`），结果写入 `data/evals/`。
+
 ### 本地启动 Electron 客户端
 
 ```bash
