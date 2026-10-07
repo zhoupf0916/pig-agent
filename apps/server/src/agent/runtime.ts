@@ -1,5 +1,5 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
-import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, TokenCalibrator } from "./tokens.ts";
+import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -53,6 +53,8 @@ export class ToolAuthorizationDenied extends Error {}
 export const MAX_TURNS = 20;
 export const MAX_CONSECUTIVE_ERRORS = 3;
 export const MAX_HISTORY_CHARS = 80_000;
+
+export const SYSTEM_DYNAMIC_MARKER = "--- 本轮上下文 (per-turn context) ---";
 
 export async function buildSystemPrompt(
   settings: Settings,
@@ -120,12 +122,16 @@ export async function buildSystemPrompt(
     `Workspace root: ${settings.workspaceRoot}`,
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
+    "沟通要求：进度短句也默认使用简体中文，例如「我会申请访问这个网页，等待你批准后读取」。不要受英文工具定义影响写成英文。用户明确指定其他语言时除外。",
+    "",
+    // Everything above is static per settings and forms the cacheable prompt prefix.
+    // Per-turn context (instructions, memory, skills) goes last so prompt caching survives across turns.
+    SYSTEM_DYNAMIC_MARKER,
     ...(boundBlock ? [boundBlock, ""] : []),
     ...(memoryBlock ? [memoryBlock, ""] : []),
     "Suggested skills for this task:",
     skillLines,
     loaded,
-    "沟通要求：进度短句也默认使用简体中文，例如「我会申请访问这个网页，等待你批准后读取」。不要受英文工具定义影响写成英文。用户明确指定其他语言时除外。",
   ].join("\n");
 }
 
@@ -300,7 +306,7 @@ export async function runAgent(options: {
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
       const extraToolDefs = allowComputer || options.mcpTools?.length
-        ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
+        ? [...(allowComputer ? [computerToolDefinition] : []), ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name))]
         : [];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
@@ -353,9 +359,7 @@ export async function runAgent(options: {
       }, modelStartedMono);
       response = await complete(settings, history, {
         signal,
-        extraTools: allowComputer || options.mcpTools?.length
-          ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
-          : undefined,
+        extraTools: extraToolDefs.length ? extraToolDefs : undefined,
         maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
         onUsage: (usage) => { reported = usage; },
         onDelta: (text) => {
@@ -411,6 +415,7 @@ export async function runAgent(options: {
           sandboxRequested: workbench?.policy.shell ?? "未采集",
           sandboxEffective: "未采集",
           usage: reported ?? null,
+          cache: { ...promptCacheStats(reported), prefix: prefixFingerprint(TOOL_DEFINITIONS, extraToolDefs, system.content.split(SYSTEM_DYNAMIC_MARKER)[0]) },
           finishReason: response.finishReason,
           ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
           contextEstimate,

@@ -41,3 +41,22 @@ export class TokenCalibrator {
   }
   get currentRatio(): number { return this.ratio; }
 }
+
+/** Provider-reported cached prompt tokens (DeepSeek `prompt_cache_hit_tokens`, OpenAI `prompt_tokens_details.cached_tokens`). */
+export function promptCacheStats(usage: { prompt_tokens?: number; prompt_cache_hit_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | undefined | null): { cachedTokens: number | null; hitRate: number | null } {
+  if (!usage) return { cachedTokens: null, hitRate: null };
+  const cached = usage.prompt_cache_hit_tokens ?? usage.prompt_tokens_details?.cached_tokens;
+  if (typeof cached !== "number" || !Number.isFinite(cached)) return { cachedTokens: null, hitRate: null };
+  const prompt = usage.prompt_tokens ?? 0;
+  return { cachedTokens: cached, hitRate: prompt > 0 ? Math.round((cached / prompt) * 1000) / 1000 : null };
+}
+
+/** Short stable fingerprint of the cacheable prefix (tools + static system), to spot prefix churn in traces. */
+export function prefixFingerprint(...parts: unknown[]): string {
+  let h = 0x811c9dc5;
+  for (const part of parts) {
+    const str = typeof part === "string" ? part : JSON.stringify(part ?? null);
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  }
+  return h.toString(16).padStart(8, "0");
+}
