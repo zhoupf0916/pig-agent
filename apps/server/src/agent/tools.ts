@@ -804,6 +804,8 @@ async function runShell(
     const timer = setTimeout(() => { timedOut = true; terminate(); }, timeout);
     const onAbort = terminate;
     ctx.signal?.addEventListener("abort", onAbort, { once: true });
+    // The signal may already be aborted (abort raced the spawn); "abort" will never fire again then.
+    if (ctx.signal?.aborted) terminate();
     child.stdout!.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
       if (stdout.length > MAX_SHELL_CHARS * 2) terminate();
