@@ -83,8 +83,16 @@ pnpm dev        # API http://127.0.0.1:8787，UI http://127.0.0.1:5173
 | `PIG_SUBAGENTS` | on | 只读子 Agent 工具 `spawn_subagent`（全新上下文，最多并行 3 个，只回传报告） |
 | `PIG_SKILL_AUTOLOAD` | off | 关闭时关键词命中的技能只做提示，由模型 `load_skill` 按需加载 |
 | `PIG_EMBEDDING_BASE_URL` / `PIG_EMBEDDING_MODEL` / `PIG_EMBEDDING_API_KEY` | 未设置 | 设置后记忆召回在 BM25 之外融合向量相似度（OpenAI 兼容 /embeddings） |
+| `PIG_ROUTER_FAST_MODEL` / `PIG_ROUTER_STRONG_MODEL` | 未设置 | 按难度路由模型：每个用户回合判定一次（缓存按模型隔离，回合内不来回切换），工具失败或上下文过长时只升级不降级；路由记录在 trace 的 `route` / `pig.route` |
+| `PIG_TOOL_SEARCH` / `PIG_TOOL_SEARCH_THRESHOLD` | auto / 12 | MCP 工具超过阈值时只暴露 `search_tools`，模型按意图检索后激活（会话内保持，工具前缀稳定）；`on` 总是启用，`off` 关闭 |
+| `PIG_COMPUTER_MAX_ACTIONS` / `PIG_COMPUTER_MAX_OBSERVES` | 25 / 40 | 每次任务电脑操作预算；另有连续失败熔断、疑似密钥输入与终端破坏性命令拒绝、风险提示进入桌面确认框 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`（或 `_TRACES_ENDPOINT`）/ `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` | 未设置 | 以 OTLP/HTTP JSON 导出调试 span（GenAI 语义约定：`chat <model>`、`execute_tool <name>`、token 与缓存命中属性），只导出元数据不导出内容；`OTEL_SDK_DISABLED=true` 关闭 |
 
-任务级评测：`pnpm eval:tasks`（离线 mock）或 `pnpm eval:tasks --real`（使用 `LLM_*`/`DEEPSEEK_API_KEY`），结果写入 `data/evals/`。
+远端 MCP 凭据除静态 Bearer 外，可填 JSON：`{"type":"oauth_client_credentials","clientId":"…","clientSecret":"…","scope":"…"}`，按 MCP 授权规范（RFC 9728 → RFC 8414）自动发现 token 端点（也可显式给 `tokenUrl`），令牌缓存到过期前，401 时刷新一次。
+
+云端 A2A：`GET /.well-known/agent-card.json`（公开 Agent Card），`POST /v1/a2a`（JSON-RPC，Bearer 认证）支持 `message/send`（`configuration.blocking`、`contextId` 续接同一会话）、`tasks/get`、`tasks/cancel`；Task 即云端 run，`messageId` 作为幂等键。
+
+任务级评测：`pnpm eval:tasks`（离线 mock）或 `pnpm eval:tasks --real`（使用 `LLM_*`/`DEEPSEEK_API_KEY`），加 `--judge` 用 LLM 评审按每个用例的 rubric 打 1–5 分（`PIG_JUDGE_MODEL` 等可单独指定），并报告评审与确定性检查的一致率；结果写入 `data/evals/`。
 
 ### 本地启动 Electron 客户端
 
