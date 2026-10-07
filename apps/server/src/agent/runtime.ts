@@ -3,6 +3,7 @@ import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefi
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
 import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
 import { ModelRouter, routerConfigFromEnv } from "./model-router.ts";
+import { runToolSearch, selectMcpTools, TOOL_SEARCH, toolSearchDefinition } from "./tool-search.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -376,6 +377,7 @@ export async function runAgent(options: {
     if (notes.length) userTurnNotes.set(m.id, notes.join("\n\n"));
   }
   let consecutiveErrors = 0;
+  const allMcpTools = [...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name));
   const router = new ModelRouter(settings.llmModel, routerConfigFromEnv(), lastUser?.content ?? "", { priorToolErrors: session.messages.slice(-12).filter((m) => m.role === "tool" && m.toolOk === false).length });
   let forceSummary = false;
 
@@ -393,10 +395,12 @@ export async function runAgent(options: {
         response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
+      const mcpSelection = selectMcpTools(allMcpTools, session.activatedTools);
       const extraToolDefs = [
         ...(allowSubagents ? [subagentToolDefinition] : []),
         ...(allowComputer ? [computerToolDefinition] : []),
-        ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name)),
+        ...(mcpSelection.searchEnabled ? [toolSearchDefinition] : []),
+        ...mcpSelection.tools,
       ];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
@@ -669,6 +673,12 @@ export async function runAgent(options: {
             if (!allowComputer) throw Error("电脑操作只允许在桌面本机 Pig 任务中使用");
             if (awaitingReview) throw Error("请先处理待批准操作");
             output = await executeComputerTool(parsed as Record<string, unknown>, signal);
+          } else if (call.name === TOOL_SEARCH) {
+            if (!selectMcpTools(allMcpTools, session.activatedTools).searchEnabled) throw new Error("当前没有需要搜索的外部工具");
+            const found = runToolSearch(allMcpTools, parsed as Record<string, unknown>, session.activatedTools ?? []);
+            session.activatedTools = found.activated;
+            output = found.output;
+            sandboxFact = { requested: "readonly", effective: "工具目录检索", backend: "tool-search" };
           } else if (workbench && call.name === "http_fetch") {
             const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
             await saveWorkbench(session.id, workbench);
