@@ -45,7 +45,7 @@ export function taskCases(): TaskCase[] {
       files: { "app.log": log },
       checks: [{ name: "correct count (10)", pass: ({ reply }) => /\b10\b/.test(reply) }],
       tags: ["analysis"],
-      rubric: "答案应为 10，并简要说明可复现的统计方法（如 grep -c 或逐行搜索）；不得给出含糊或多个数字。",
+      rubric: "包含 ERROR 字样的行共 10 行，答案应以 10 为结论并说明可复现的方法（如 grep -c）。这些 ERROR 出现在 INFO 级别行的末尾；若回复额外澄清“按日志级别统计为 0”，属于正确的补充说明而非含糊。只有结论错误、无方法或编造统计过程才扣分。",
     },
     {
       id: "explain-bug",
