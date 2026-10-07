@@ -95,6 +95,8 @@ export function exporterFromEnv(env: NodeJS.ProcessEnv = process.env): OtlpExpor
   const base = env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim();
   const url = traces || (base ? `${base.replace(/\/$/, "")}/v1/traces` : "");
   singleton = url && env.OTEL_SDK_DISABLED !== "true" ? new OtlpExporter(url, parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS)) : null;
+  // Timers are unref'd so short-lived CLIs (evals) exit promptly; flush what is left on the way out.
+  if (singleton) { const exp = singleton; process.once("beforeExit", () => void exp.flush()); }
   return singleton;
 }
 export function resetExporterForTests(): void { singleton = undefined; }
