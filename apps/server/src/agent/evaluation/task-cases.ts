@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export type TaskCheck = { name: string; pass: (input: { root: string; reply: string; tools: string[] }) => boolean };
-export type TaskCase = { id: string; prompt: string | string[]; files: Record<string, string>; checks: TaskCheck[]; tags?: string[] };
+/** rubric: optional natural-language grading criteria for the LLM judge (--judge). */
+export type TaskCase = { id: string; prompt: string | string[]; files: Record<string, string>; checks: TaskCheck[]; tags?: string[]; rubric?: string };
 
 const read = (root: string, p: string) => (existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : "");
 const log = Array.from({ length: 400 }, (_, i) => `2026-10-0${(i % 9) + 1} INFO worker-${i % 5} batch ${i} ok${i % 41 === 0 ? " ERROR db timeout" : ""}`).join("\n");
@@ -19,6 +20,7 @@ export function taskCases(): TaskCase[] {
         { name: "used a read tool", pass: ({ tools }) => tools.some((t) => ["list_dir", "read_file", "search_files", "spawn_subagent"].includes(t)) },
       ],
       tags: ["read"],
+      rubric: "回复必须基于真实文件内容：todo.txt 是待办（写周报、修复登录 bug），meeting.md 是周会/发布计划记录；每个文件一句话，不能编造不存在的文件或内容。",
     },
     {
       id: "write-file",
@@ -43,6 +45,18 @@ export function taskCases(): TaskCase[] {
       files: { "app.log": log },
       checks: [{ name: "correct count (10)", pass: ({ reply }) => /\b10\b/.test(reply) }],
       tags: ["analysis"],
+      rubric: "答案应为 10，并简要说明可复现的统计方法（如 grep -c 或逐行搜索）；不得给出含糊或多个数字。",
+    },
+    {
+      id: "explain-bug",
+      prompt: "calc.js 里的 sumTo(n) 应该返回 1 到 n 的和。找出 bug 并解释原因，给出修复建议，但不要修改文件。",
+      files: { "calc.js": "function sumTo(n) {\n  let total = 0;\n  for (let i = 1; i < n; i++) total += i;\n  return total;\n}\nmodule.exports = { sumTo };\n" },
+      checks: [
+        { name: "file untouched", pass: ({ root }) => read(root, "calc.js").includes("i < n;") },
+        { name: "mentions off-by-one fix", pass: ({ reply }) => /<=\s*n|i\s*<=|off.by.one|少加|漏掉|不包含\s*n|没有加上\s*n/i.test(reply) },
+      ],
+      tags: ["reasoning"],
+      rubric: "必须指出循环条件 i < n 导致漏加 n（差一错误），建议改为 i <= n 或使用 n*(n+1)/2；解释清楚且未声称已修改文件。",
     },
     {
       id: "multi-turn-memory",

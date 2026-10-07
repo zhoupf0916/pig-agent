@@ -3,20 +3,36 @@
  * outcomes deterministically. Reports success rate, model calls, tool calls, tokens,
  * prompt-cache hit rate and latency per case so harness changes can be compared.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import type { Session, Settings } from "../../types.ts";
 import { runAgent } from "../runtime.ts";
 import { readDebugTrace, dropDebugSession } from "../debug-trace.ts";
 import type { TaskCase } from "./task-cases.ts";
+import type { Judge } from "./judge.ts";
 
 export type TaskResult = {
   id: string; pass: boolean; checks: Array<{ name: string; pass: boolean }>; error?: string;
   modelCalls: number; toolCalls: number; promptTokens: number; completionTokens: number; cachedTokens: number; cacheHitRate: number | null; ms: number; reply: string;
+  judge?: { score: number; pass: boolean; reasons: string } | { error: string };
 };
 
-export async function runTaskCase(c: TaskCase, settings: Omit<Settings, "workspaceRoot">, opts: { runOptions?: Record<string, unknown> } = {}): Promise<TaskResult> {
+function snapshot(root: string, limit = 20): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      if (Object.keys(out).length >= limit || name.startsWith(".")) continue;
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (statSync(p).size < 64_000) out[relative(root, p)] = readFileSync(p, "utf8");
+    }
+  };
+  walk(root);
+  return out;
+}
+
+export async function runTaskCase(c: TaskCase, settings: Omit<Settings, "workspaceRoot">, opts: { runOptions?: Record<string, unknown>; judge?: Judge } = {}): Promise<TaskResult> {
   const root = mkdtempSync(join(tmpdir(), `pig-eval-${c.id}-`));
   for (const [p, content] of Object.entries(c.files)) { mkdirSync(dirname(join(root, p)), { recursive: true }); writeFileSync(join(root, p), content); }
   const started = Date.now();
@@ -38,12 +54,17 @@ export async function runTaskCase(c: TaskCase, settings: Omit<Settings, "workspa
   const sum = (f: (d: any) => number | undefined) => models.reduce((n, s) => n + (f(s.detail) ?? 0), 0);
   const promptTokens = sum((d) => d?.usage?.prompt_tokens);
   const cachedTokens = sum((d) => d?.cache?.cachedTokens ?? undefined);
+  let judge: TaskResult["judge"];
+  if (opts.judge && c.rubric) {
+    const task = (Array.isArray(c.prompt) ? c.prompt : [c.prompt]).map((p, i) => `第${i + 1}轮用户：${p}`).join("\n");
+    try { judge = await opts.judge({ task, rubric: c.rubric, reply, tools, files: snapshot(root) }); } catch (err) { judge = { error: err instanceof Error ? err.message : String(err) }; }
+  }
   dropDebugSession(session.id);
   rmSync(root, { recursive: true, force: true });
   return {
     id: c.id, pass: !error && checks.every((k) => k.pass), checks, error,
     modelCalls: models.length, toolCalls: tools.length, promptTokens, completionTokens: sum((d) => d?.usage?.completion_tokens),
-    cachedTokens, cacheHitRate: promptTokens ? Math.round((cachedTokens / promptTokens) * 1000) / 1000 : null, ms, reply: reply.slice(0, 300),
+    cachedTokens, cacheHitRate: promptTokens ? Math.round((cachedTokens / promptTokens) * 1000) / 1000 : null, ms, reply: reply.slice(0, 300), ...(judge ? { judge } : {}),
   };
 }
 
@@ -57,10 +78,25 @@ export function summarize(results: TaskResult[]) {
     promptTokens: prompt, completionTokens: results.reduce((a, r) => a + r.completionTokens, 0),
     cacheHitRate: prompt ? Math.round((results.reduce((a, r) => a + r.cachedTokens, 0) / prompt) * 1000) / 1000 : null,
     p50Ms: [...results].map((r) => r.ms).sort((a, b) => a - b)[Math.floor(results.length / 2)] ?? 0,
+    ...judgeSummary(results),
+  };
+}
+
+function judgeSummary(results: TaskResult[]) {
+  const judged = results.filter((r): r is TaskResult & { judge: { score: number; pass: boolean; reasons: string } } => Boolean(r.judge && "score" in r.judge));
+  if (!judged.length) return {};
+  return {
+    judged: judged.length,
+    judgeErrors: results.filter((r) => r.judge && "error" in r.judge).length,
+    avgJudgeScore: +(judged.reduce((a, r) => a + r.judge.score, 0) / judged.length).toFixed(2),
+    judgePassRate: Math.round((judged.filter((r) => r.judge.pass).length / judged.length) * 1000) / 1000,
+    /** share of cases where judge and deterministic checks agree — calibrates the judge */
+    judgeAgreement: Math.round((judged.filter((r) => r.judge.pass === r.pass).length / judged.length) * 1000) / 1000,
   };
 }
 
 export function markdownTable(results: TaskResult[]): string {
-  const rows = results.map((r) => `| ${r.id} | ${r.pass ? "✅" : "❌"} | ${r.modelCalls} | ${r.toolCalls} | ${r.promptTokens} | ${r.cacheHitRate ?? "-"} | ${(r.ms / 1000).toFixed(1)}s | ${r.error ? r.error.slice(0, 60) : r.checks.filter((k) => !k.pass).map((k) => k.name).join(", ")} |`);
-  return ["| case | pass | model calls | tool calls | prompt tok | cache hit | time | notes |", "|---|---|---|---|---|---|---|---|", ...rows].join("\n");
+  const judgeCell = (r: TaskResult) => !r.judge ? "-" : "score" in r.judge ? `${r.judge.score}/5 ${r.judge.reasons.slice(0, 50)}` : `err: ${r.judge.error.slice(0, 40)}`;
+  const rows = results.map((r) => `| ${r.id} | ${r.pass ? "✅" : "❌"} | ${judgeCell(r)} | ${r.modelCalls} | ${r.toolCalls} | ${r.promptTokens} | ${r.cacheHitRate ?? "-"} | ${(r.ms / 1000).toFixed(1)}s | ${r.error ? r.error.slice(0, 60) : r.checks.filter((k) => !k.pass).map((k) => k.name).join(", ")} |`);
+  return ["| case | pass | judge | model calls | tool calls | prompt tok | cache hit | time | notes |", "|---|---|---|---|---|---|---|---|---|", ...rows].join("\n");
 }
