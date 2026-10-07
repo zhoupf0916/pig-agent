@@ -36,11 +36,15 @@ async function request(
   );
   return r;
 }
-async function create(prompt = "本地云平台验收：创建并读回一个文件", key) {
+// Works for both MODEL_MODE=mock (scenario model) and a real provider: explicit file + content,
+// and approvals off so a real model's write_file is not parked waiting for a human.
+const PROOF_PROMPT =
+  "请在工作区创建 cloud-proof.txt，内容为一行 PIG_CLOUD_CONTAINER_OK，然后读回确认，最后在回复中写上“沙箱执行验收通过”。";
+async function create(prompt = PROOF_PROMPT, key) {
   return (
     await request("/v1/runs", {
       method: "POST",
-      body: { prompt },
+      body: { prompt, requireApproval: false },
       key,
       status: 201,
     })
@@ -76,7 +80,7 @@ const key = randomUUID(),
 const same = await (
   await request("/v1/runs", {
     method: "POST",
-    body: { prompt: "本地云平台验收：创建并读回一个文件" },
+    body: { prompt: PROOF_PROMPT, requireApproval: false },
     key,
   })
 ).json();
