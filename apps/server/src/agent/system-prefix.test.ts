@@ -15,3 +15,13 @@ describe("cache-friendly system prompt", () => {
     expect(pa).not.toContain("偏好");
   });
 });
+
+import { suggestedSkillsNote } from "./runtime.ts";
+describe("per-turn skill suggestions", () => {
+  it("are rendered as an ephemeral harness note, not part of the system prompt", async () => {
+    const note = suggestedSkillsNote([{ name: "csv", description: "数据", reasons: ["csv"] } as never]);
+    expect(note).toContain("csv: 数据");
+    const sys = await buildSystemPrompt(settings, { suggested: [] });
+    expect(sys).not.toContain("csv: 数据");
+  });
+});

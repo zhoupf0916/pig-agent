@@ -56,6 +56,11 @@ export const MAX_HISTORY_CHARS = 80_000;
 
 export const SYSTEM_DYNAMIC_MARKER = "--- 本轮上下文 (per-turn context) ---";
 
+/** Ephemeral per-turn note appended at the end of the request (never persisted). */
+export function suggestedSkillsNote(suggested: ScoredSkill[]): string {
+  return ["[harness] Suggested skills for this turn (call load_skill if one matches):", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
+}
+
 export async function buildSystemPrompt(
   settings: Settings,
   options: {
@@ -242,8 +247,10 @@ export async function runAgent(options: {
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
+    // Per-turn keyword skill suggestions are sent as an ephemeral tail message (see below),
+    // so the system prompt stays byte-identical across user turns and the provider prefix cache survives.
     content: await buildSystemPrompt(settings, {
-      suggested,
+      suggested: [],
       loadedBodies,
       projectInstruction,
       expertInstruction,
@@ -317,6 +324,7 @@ export async function runAgent(options: {
         durationMs: Math.max(0, Math.round((performance.now() - contextStarted) * 100) / 100), detail: { unit: "estimated_chars", budgetChars: assembled.estimate.budgetChars, usedChars: assembled.estimate.usedChars } }, contextStarted);
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
+      if (suggested.length && !forceSummary) history.push({ id: newId("msg"), role: "system", content: suggestedSkillsNote(suggested), createdAt: nowIso() });
       if (forceSummary) {
         history.push({
           id: newId("msg"),
