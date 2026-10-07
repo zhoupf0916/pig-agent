@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
+import { ComputerGuard, UNTRUSTED_NOTE } from "./computer-guard.ts";
 type ComputerBridge = (
   method: "status" | "enable" | "revoke" | "execute" | "cancel",
   value?: Record<string, unknown>,
@@ -53,10 +54,13 @@ export function hasComputerBridge() {
 export async function executeComputerTool(
   args: Record<string, unknown>,
   signal?: AbortSignal,
+  guard: ComputerGuard = new ComputerGuard(),
 ) {
   if (!bridge)
     throw new Error("电脑操作仅限本机桌面客户端，网页及远端执行不可用");
   if (signal?.aborted) throw new Error("电脑操作已取消");
+  const { risk } = guard.check(args);
+  if (risk) args = { ...args, risk };
   if (args.action === "observe") screenshot = undefined;
   const requestId = randomUUID();
   const cancel = () => {
@@ -66,13 +70,18 @@ export async function executeComputerTool(
   let result;
   try {
     result = await bridge("execute", { ...args, requestId });
+  } catch (error) {
+    guard.record(args, false);
+    throw error;
   } finally {
     signal?.removeEventListener("abort", cancel);
   }
   if (signal?.aborted) throw new Error("电脑操作已取消");
+  guard.record(args, true, result);
   const { screenshot: preview, ...text } = result;
   if (preview) screenshot = preview;
   return JSON.stringify({
+    ...(args.action === "observe" ? { untrusted: UNTRUSTED_NOTE } : {}),
     ...text,
     ...(preview
       ? { screenshotPreview: "/api/desktop/computer/screenshot" }

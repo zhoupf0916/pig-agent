@@ -21,6 +21,6 @@ describe('computer tool execution boundary',()=>{
   mock.complete.mockResolvedValueOnce({content:'',toolCalls:[{id:'allowed',name:'computer_use',arguments:'{"action":"observe"}'}]});
   await runAgent({settings,session:{...session,executionTarget:'local'},signal,emit:()=>{},memoryPins:[]});
   expect(mock.complete.mock.calls[0]?.[2].extraTools.map((t: { function: { name: string } }) => t.function.name)).toContain('computer_use');
-  expect(mock.execute).toHaveBeenCalledWith({action:'observe'},signal);
+  expect(mock.execute).toHaveBeenCalledWith({action:'observe'},signal,expect.anything());
  });
 });

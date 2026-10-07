@@ -1,4 +1,5 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
+import { ComputerGuard } from "../desktop/computer-guard.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
 import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
@@ -377,6 +378,7 @@ export async function runAgent(options: {
     if (notes.length) userTurnNotes.set(m.id, notes.join("\n\n"));
   }
   let consecutiveErrors = 0;
+  let computerGuard: ComputerGuard | undefined;
   const allMcpTools = [...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name));
   const router = new ModelRouter(settings.llmModel, routerConfigFromEnv(), lastUser?.content ?? "", { priorToolErrors: session.messages.slice(-12).filter((m) => m.role === "tool" && m.toolOk === false).length });
   let forceSummary = false;
@@ -672,7 +674,7 @@ export async function runAgent(options: {
           } else if (call.name === "computer_use") {
             if (!allowComputer) throw Error("电脑操作只允许在桌面本机 Pig 任务中使用");
             if (awaitingReview) throw Error("请先处理待批准操作");
-            output = await executeComputerTool(parsed as Record<string, unknown>, signal);
+            output = await executeComputerTool(parsed as Record<string, unknown>, signal, computerGuard ??= new ComputerGuard());
           } else if (call.name === TOOL_SEARCH) {
             if (!selectMcpTools(allMcpTools, session.activatedTools).searchEnabled) throw new Error("当前没有需要搜索的外部工具");
             const found = runToolSearch(allMcpTools, parsed as Record<string, unknown>, session.activatedTools ?? []);
