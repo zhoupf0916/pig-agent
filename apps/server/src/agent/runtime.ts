@@ -1,6 +1,7 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
+import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -9,6 +10,7 @@ import type {
   Artifact,
   ChatMessage,
   PlanStep,
+  ToolCall,
   Session,
   Settings,
 } from "../types.ts";
@@ -91,6 +93,23 @@ async function maybeCompact(input: { session: Session; settings: Settings; signa
       durationMs: Math.round(performance.now() - started), detail: { error: err instanceof Error ? err.message : String(err) } }, started);
     return false;
   }
+}
+
+/** Start up to SUBAGENT_MAX_PARALLEL sub-agents of this response concurrently. */
+function startSubagents(calls: ToolCall[], input: { settings: Settings; ctx: ToolContext; signal: AbortSignal; workbench?: Awaited<ReturnType<typeof loadWorkbench>> | null }): Map<string, Promise<SubagentResult>> {
+  const runs = new Map<string, Promise<SubagentResult>>();
+  for (const call of calls.filter((c) => c.name === SUBAGENT_TOOL).slice(0, SUBAGENT_MAX_PARALLEL)) {
+    const args = safeJsonParse(call.arguments) as { task?: string };
+    const run = runSubagent({ settings: input.settings, task: String(args?.task ?? ""), ctx: input.ctx, signal: input.signal, onUsage: (u) => {
+      const wb = input.workbench;
+      if (!wb) return;
+      wb.usage.calls++; wb.usage.input += u.prompt_tokens; wb.usage.output += u.completion_tokens;
+      wb.usage.cost += (u.prompt_tokens * wb.policy.inputPrice + u.completion_tokens * wb.policy.outputPrice) / 1000000;
+    } });
+    run.catch(() => {}); // awaited later; avoid unhandled rejection while earlier calls run
+    runs.set(call.id, run);
+  }
+  return runs;
 }
 
 /** Ephemeral per-turn note appended at the end of the request (never persisted). */
@@ -194,6 +213,8 @@ export async function runAgent(options: {
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
   contextEngine?: "pig" | "cloud";
+  /** Expose the read-only spawn_subagent tool (default on; PIG_SUBAGENTS=off disables). */
+  allowSubagents?: boolean;
   /** Max model/tool rounds per user turn. Default PIG_MAX_TURNS or 20, clamped 1..200. */
   maxTurns?: number;
   /** Compact when the model-visible transcript exceeds this many chars. Default PIG_COMPACT_RATIO (0.6) × MAX_HISTORY_CHARS; 0 or PIG_COMPACTION=off disables. */
@@ -349,6 +370,7 @@ export async function runAgent(options: {
   let forceSummary = false;
 
   try {
+    const allowSubagents = options.allowSubagents ?? process.env.PIG_SUBAGENTS !== "off";
     const maxTurns = Math.min(200, Math.max(1, Math.floor(options.maxTurns ?? envNumber("PIG_MAX_TURNS", MAX_TURNS, 1, 200))));
     const compactAtChars = options.compactAtChars ?? (process.env.PIG_COMPACTION === "off" ? 0 : Math.floor(MAX_HISTORY_CHARS * envNumber("PIG_COMPACT_RATIO", DEFAULT_COMPACT_RATIO, 0.2, 0.95)));
     for (let turn = 0; turn < maxTurns; turn += 1) {
@@ -361,9 +383,11 @@ export async function runAgent(options: {
         response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
-      const extraToolDefs = allowComputer || options.mcpTools?.length
-        ? [...(allowComputer ? [computerToolDefinition] : []), ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name))]
-        : [];
+      const extraToolDefs = [
+        ...(allowSubagents ? [subagentToolDefinition] : []),
+        ...(allowComputer ? [computerToolDefinition] : []),
+        ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name)),
+      ];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
       await options.checkpoint?.("safe", session);
@@ -542,6 +566,7 @@ export async function runAgent(options: {
       const readonlyWindow = !workbench && !options.authorizeTool && toolCalls.length > 1 && toolCalls.every((call) => readonlyTools.has(call.name))
         ? createReadonlyWindow(toolCalls, ctx, signal)
         : undefined;
+      let subagentRuns: Map<string, Promise<SubagentResult>> | undefined;
       for (const [callIndex, call] of toolCalls.entries()) {
         if (signal.aborted) throw new Error("Aborted");
         if (forceSummary) break;
@@ -663,6 +688,14 @@ export async function runAgent(options: {
               output = await options.mcpInvoke({ name: call.name, args: parsed as Record<string, unknown>, signal, callId: call.id });
               sandboxFact = { requested: "mcp", effective: "远端 MCP 服务", backend: "mcp-http" };
             }
+          } else if (call.name === SUBAGENT_TOOL) {
+            if (!allowSubagents) throw new Error("子 Agent 未启用");
+            subagentRuns ??= startSubagents(toolCalls, { settings, ctx, signal, workbench });
+            const run = subagentRuns.get(call.id);
+            if (!run) throw new Error("同一轮最多并行 3 个子 Agent，本次未执行");
+            const result = await run;
+            output = formatSubagentOutput((parsed as { name?: string }).name, result);
+            sandboxFact = { requested: "readonly", effective: "只读子 Agent", backend: "subagent" };
           } else if (prepared) {
             if (!prepared.ok) throw prepared.error;
             output = prepared.value.output;
