@@ -9,7 +9,8 @@ export const PROJECT_ROOT = resolve(
   process.env.PIG_APP_ROOT || resolve(here, "../../.."),
 );
 
-if (process.env.PIG_DESKTOP !== "1") {
+// Developer .env files must not leak into the test suite (vitest sets VITEST).
+if (process.env.PIG_DESKTOP !== "1" && !process.env.VITEST) {
   loadEnv({ path: resolve(PROJECT_ROOT, ".env") });
   loadEnv({ path: resolve(PROJECT_ROOT, ".env.local"), override: true });
 }
