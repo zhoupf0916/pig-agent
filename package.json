@@ -42,7 +42,8 @@
     "cluster:logs": "node scripts/cluster-local.mjs logs",
     "cluster:smoke": "node scripts/smoke-cluster-control.mjs && node scripts/smoke-cluster-runners.mjs",
     "product:smoke": "pnpm build && node scripts/smoke-product.mjs",
-    "eval:context": "tsx scripts/eval-context.ts"
+    "eval:context": "tsx scripts/eval-context.ts",
+    "eval:tasks": "tsx scripts/eval-tasks.ts"
   },
   "engines": {
     "node": ">=22.13"

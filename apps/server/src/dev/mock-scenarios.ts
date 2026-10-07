@@ -54,7 +54,7 @@ export function mockReply(messages: MockMessage[], forced = process.env.MOCK_LLM
         { id: "call_write", name: "write_file", arguments: { path: "README.md", content: "# Demo workspace\n\nThis README was written by the local mock LLM so you can review an artifact without a live API key.\n\n## Layout\n- `notes/` meeting notes and todos\n- `drafts/` unfinished ideas\n- `scattered-log.txt` leftover log\n\nAsk DeepSeek (or another OpenAI-compatible model) for a richer rewrite.\n" } },
       ] };
     case "list":
-      return done ? { content: `工作区文件如下（mock）：\n\n${lastTool}` } : { toolCalls: [{ id: "call_list", name: "list_dir", arguments: { path: "." } }] };
+      return done ? { content: `工作区文件如下（mock）：\n\n${lastTool}` } : { toolCalls: [{ id: "call_list", name: "list_dir", arguments: { path: /([\w.-]+)\s*(?:目录|文件夹|folder|dir)/i.exec(user)?.[1] ?? "." } }] };
     case "read": {
       const path = fileIn(user) ?? "README.md";
       return done ? { content: `已读取 \`${path}\`（mock），前 400 字：\n\n${lastTool}` } : { toolCalls: [{ id: "call_read", name: "read_file", arguments: { path } }] };
