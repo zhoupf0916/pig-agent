@@ -114,7 +114,7 @@ function startSubagents(calls: ToolCall[], input: { settings: Settings; ctx: Too
 
 /** Ephemeral per-turn note appended at the end of the request (never persisted). */
 export function suggestedSkillsNote(suggested: ScoredSkill[]): string {
-  return ["[harness] Suggested skills for this turn (call load_skill if one matches):", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
+  return ["[harness] Suggested skills for this turn — not loaded yet; call load_skill(name) first if one matches the task:", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
 }
 
 export async function buildSystemPrompt(
@@ -213,6 +213,8 @@ export async function runAgent(options: {
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
   contextEngine?: "pig" | "cloud";
+  /** Eagerly inject keyword-matched skill bodies (default off: lazy via load_skill). */
+  skillAutoload?: boolean;
   /** Expose the read-only spawn_subagent tool (default on; PIG_SUBAGENTS=off disables). */
   allowSubagents?: boolean;
   /** Max model/tool rounds per user turn. Default PIG_MAX_TURNS or 20, clamped 1..200. */
@@ -287,7 +289,11 @@ export async function runAgent(options: {
   const { materializeSkillSnapshots } = await import("./skill-pack.ts");
   const frozen = new Set((session.skillSnapshots ?? []).flatMap((skill) => [skill.id, skill.name]));
   const activated = [...(session.skillSnapshots ?? [])];
-  for (const skill of loaded) {
+  // Progressive disclosure: keyword matches are only *suggested* (name + description on the
+  // user turn); the model pulls a body with load_skill. User-selected skills and frozen
+  // snapshots stay preloaded. PIG_SKILL_AUTOLOAD=on restores eager loading.
+  const autoload = options.skillAutoload ?? process.env.PIG_SKILL_AUTOLOAD === "on";
+  for (const skill of autoload ? loaded : []) {
     const snapshot = skillToSnapshot(skill);
     if (frozen.has(snapshot.id) || frozen.has(snapshot.name)) continue;
     activated.push(snapshot);
