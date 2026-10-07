@@ -1,4 +1,5 @@
 import { summarizeRunTiming } from "@pig-agent/contracts";
+import { registerA2aRoutes } from "./a2a.ts";
 import { registerRecoveryRoutes } from "./recovery.ts";
 import {
   defaultTariff,
@@ -102,6 +103,8 @@ app.get("/health", async (c) => {
 });
 registerWebAuthRoutes(app);
 app.use("/v1/*", authenticateWebOrBearer);
+// After the /v1 auth middleware so /v1/a2a is authenticated; the agent card stays public.
+registerA2aRoutes(app);
 app.use("/internal/*", async (c, next) => {
   if (
     !process.env.WORKER_TOKEN ||
