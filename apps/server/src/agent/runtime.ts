@@ -15,7 +15,7 @@ import type {
   Settings,
 } from "../types.ts";
 import { newId, nowIso, safeJsonParse } from "../util.ts";
-import { formatMemoryPinBlock, listRecentPinTexts } from "../store/memory.ts";
+import { formatMemoryPinBlock, listRecentPinTexts, listRelevantPinTexts } from "../store/memory.ts";
 import { formatBoundInstructionBlock } from "./bound-instructions.ts";
 import {
   LOCAL_TURN_MESSAGES,
@@ -312,6 +312,12 @@ export async function runAgent(options: {
     ? [{ name: "selected-skills", body: skillActivationPrompt(activated) }]
     : [];
 
+  const systemPins = options.memoryPins ?? (await listRecentPinTexts({ sessionId: session.id, projectId: session.projectId }));
+  // Hybrid (BM25 + optional embedding) recall for the current request, frozen per user message.
+  if (options.memoryPins === undefined && lastUser && !session.memoryRecall?.[lastUser.id]) {
+    const recalled = await listRelevantPinTexts({ sessionId: session.id, projectId: session.projectId, query: lastUser.content, exclude: systemPins }).catch(() => []);
+    if (recalled.length) session.memoryRecall = { ...session.memoryRecall, [lastUser.id]: ["[harness] Related saved notes for this request (user-curated; verify before relying on them):", ...recalled.map((t) => `- ${t}`)].join("\n") };
+  }
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
@@ -322,12 +328,7 @@ export async function runAgent(options: {
       loadedBodies,
       projectInstruction,
       expertInstruction,
-      memoryPins:
-        options.memoryPins ??
-        (await listRecentPinTexts({
-          sessionId: session.id,
-          projectId: session.projectId,
-        })),
+      memoryPins: systemPins,
     }),
     createdAt: nowIso(),
   };
@@ -370,7 +371,8 @@ export async function runAgent(options: {
   const userTurnNotes = new Map<string, string>();
   for (const m of session.messages) if (m.role === "user" && !m.content.startsWith("[harness]")) {
     const hits = m.id === lastUser?.id ? suggested : suggestSkills(m.content, skillMetas, 2);
-    if (hits.length) userTurnNotes.set(m.id, suggestedSkillsNote(hits));
+    const notes = [session.memoryRecall?.[m.id], hits.length ? suggestedSkillsNote(hits) : undefined].filter(Boolean);
+    if (notes.length) userTurnNotes.set(m.id, notes.join("\n\n"));
   }
   let consecutiveErrors = 0;
   let forceSummary = false;

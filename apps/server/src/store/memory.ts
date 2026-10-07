@@ -330,3 +330,16 @@ export async function listRecentPinTexts(
     .map((note) => note.text)
     .filter((text) => text.trim());
 }
+
+/**
+ * Pins relevant to `query` (hybrid BM25 + optional embeddings), within the same scope rules
+ * as injection. Used for per-turn recall beyond the recency-ordered system pins.
+ */
+export async function listRelevantPinTexts(ctx: { sessionId?: string; projectId?: string; query: string; exclude?: string[]; limit?: number }): Promise<string[]> {
+  const { rankMemory, embedderFromEnv } = await import("./memory-search.ts");
+  const pins = selectInjectableMemory(await listMemory({ kind: "pin" }), { now: new Date().toISOString(), sessionId: ctx.sessionId, projectId: ctx.projectId, memoryEnabled: true });
+  const exclude = new Set(ctx.exclude ?? []);
+  const candidates = pins.filter((p) => !exclude.has(p.text)).map((p) => ({ id: p.id, text: p.text, tags: (p as { tags?: string[] }).tags, updatedAt: p.updatedAt }));
+  const ranked = await rankMemory(ctx.query, candidates, { limit: ctx.limit ?? 3, embed: embedderFromEnv() });
+  return ranked.map((r) => clipPinForPrompt(r.text));
+}
