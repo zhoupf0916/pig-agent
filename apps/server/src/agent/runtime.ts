@@ -22,7 +22,7 @@ import {
 import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { nativeSandboxStatus } from "./native-sandbox.ts";
-import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
+import { listSkills, loadSkill, loadSuggestedSkills, suggestSkills, type ScoredSkill } from "./skills.ts";
 import { assembleModelContext, contextUsageFromMetrics, parseMcpToolName, type ContextMetrics } from "@pig-agent/contracts";
 import { requireMcpTarget } from "../store/mcp-servers.ts";
 import { executeTool, sandboxFromError, summarizeToolArgs, type ToolContext, type ToolSandboxFact, TOOL_DEFINITIONS } from "./tools.ts";
@@ -298,6 +298,12 @@ export async function runAgent(options: {
   };
 
   const tokenCalibrator = new TokenCalibrator();
+  const skillMetas = await listSkills().catch(() => []);
+  const userTurnNotes = new Map<string, string>();
+  for (const m of session.messages) if (m.role === "user" && !m.content.startsWith("[harness]")) {
+    const hits = m.id === lastUser?.id ? suggested : suggestSkills(m.content, skillMetas, 2);
+    if (hits.length) userTurnNotes.set(m.id, suggestedSkillsNote(hits));
+  }
   let consecutiveErrors = 0;
   let forceSummary = false;
 
@@ -324,7 +330,13 @@ export async function runAgent(options: {
         durationMs: Math.max(0, Math.round((performance.now() - contextStarted) * 100) / 100), detail: { unit: "estimated_chars", budgetChars: assembled.estimate.budgetChars, usedChars: assembled.estimate.usedChars } }, contextStarted);
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
-      if (suggested.length && !forceSummary) history.push({ id: newId("msg"), role: "system", content: suggestedSkillsNote(suggested), createdAt: nowIso() });
+      // Attach each user turn's skill suggestions to that user message (deterministic re-render).
+      // Providers like DeepSeek persist cache units at the end of user input / model output, so
+      // the note must sit inside the user turn rather than as a moving tail after it.
+      for (let i = 0; i < history.length; i++) {
+        const note = history[i]!.role === "user" ? userTurnNotes.get(history[i]!.id) : undefined;
+        if (note) history[i] = { ...history[i]!, content: `${history[i]!.content}\n\n${note}` };
+      }
       if (forceSummary) {
         history.push({
           id: newId("msg"),
