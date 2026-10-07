@@ -2,7 +2,10 @@
  * Tiny OpenAI-compatible mock for offline demos and smoke tests.
  * Start with: pnpm mock:llm
  * Then set LLM Base URL to http://127.0.0.1:8788/v1
+ * Scenarios (see mock-scenarios.ts): routed by the user message, or force with
+ * MOCK_LLM_SCENARIO=readme|list|write|shell|read|chat|fail or a "[mock:name]" tag.
  */
+import { mockReply } from "./mock-scenarios.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 const PORT = Number(process.env.MOCK_LLM_PORT ?? 8788);
@@ -49,69 +52,14 @@ const server = createServer(async (req, res) => {
     messages = [];
   }
 
-  const hasToolResult = messages.some((m) => m.role === "tool");
+  const reply = mockReply(messages);
   res.writeHead(200, { "Content-Type": "text/event-stream" });
-
-  if (!hasToolResult) {
-    writeSse(res, {
-      choices: [
-        {
-          delta: {
-            tool_calls: [
-              {
-                index: 0,
-                id: "call_plan",
-                function: {
-                  name: "update_plan",
-                  arguments: JSON.stringify({
-                    steps: [
-                      { title: "查看工作区", status: "done" },
-                      { title: "撰写摘要 README", status: "running" },
-                    ],
-                  }),
-                },
-              },
-              {
-                index: 1,
-                id: "call_search",
-                function: {
-                  name: "search_files",
-                  arguments: JSON.stringify({ query: "todo", path: "." }),
-                },
-              },
-              {
-                index: 2,
-                id: "call_write",
-                function: {
-                  name: "write_file",
-                  arguments: JSON.stringify({
-                    path: "README.md",
-                    content: [
-                      "# Demo workspace",
-                      "",
-                      "This README was written by the local mock LLM so you can review an artifact without a live API key.",
-                      "",
-                      "## Layout",
-                      "- `notes/` meeting notes and todos",
-                      "- `drafts/` unfinished ideas",
-                      "- `scattered-log.txt` leftover log",
-                      "",
-                      "Ask DeepSeek (or another OpenAI-compatible model) for a richer rewrite.",
-                      "",
-                    ].join("\n"),
-                  }),
-                },
-              },
-            ],
-          },
-        },
-      ],
-    });
+  if (reply.toolCalls?.length) {
+    writeSse(res, { choices: [{ delta: { tool_calls: reply.toolCalls.map((call, index) => ({ index, id: call.id, function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) } }] });
   } else {
-    const text =
-      "已更新 `README.md`。请在右侧「产物」中打开预览，确认工作区摘要是否符合预期。";
-    writeSse(res, { choices: [{ delta: { content: text } }] });
+    writeSse(res, { choices: [{ delta: { content: reply.content ?? "" } }] });
   }
+  writeSse(res, { choices: [{ delta: {}, finish_reason: reply.toolCalls?.length ? "tool_calls" : "stop" }], usage: { prompt_tokens: Math.ceil(raw.length / 4), completion_tokens: Math.ceil(JSON.stringify(reply).length / 4) } });
 
   res.write("data: [DONE]\n\n");
   res.end();
