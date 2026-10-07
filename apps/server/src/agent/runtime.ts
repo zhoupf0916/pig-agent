@@ -1,4 +1,5 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
+import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, TokenCalibrator } from "./tokens.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -283,6 +284,7 @@ export async function runAgent(options: {
     },
   };
 
+  const tokenCalibrator = new TokenCalibrator();
   let consecutiveErrors = 0;
   let forceSummary = false;
 
@@ -318,7 +320,9 @@ export async function runAgent(options: {
         });
       }
 
-      const inputEstimate = history.reduce((n, m) => n + m.content.length + (m.reasoningContent?.length ?? 0) + JSON.stringify(m.toolCalls ?? []).length, 0) + JSON.stringify(TOOL_DEFINITIONS).length;
+      // Unified budget: messages + built-in tools + computer/MCP tools, in estimated tokens (calibrated by provider usage).
+      const rawInputEstimate = estimateMessagesTokens(history) + estimateToolSchemaTokens(TOOL_DEFINITIONS, extraToolDefs);
+      const inputEstimate = tokenCalibrator.apply(rawInputEstimate);
       let remaining = workbench ? workbench.policy.maxTokens - workbench.usage.input - workbench.usage.output - inputEstimate : 4096;
       if (workbench && workbench.policy.maxCost > 0) {
         const moneyLeft = workbench.policy.maxCost - workbench.usage.cost - inputEstimate * workbench.policy.inputPrice / 1000000;
@@ -421,7 +425,8 @@ export async function runAgent(options: {
       if (workbench) {
         const valid = reported && Number.isFinite(reported.prompt_tokens) && Number.isFinite(reported.completion_tokens) && reported.prompt_tokens >= 0 && reported.completion_tokens >= 0;
         const input = valid ? reported!.prompt_tokens : inputEstimate;
-        const output = valid ? reported!.completion_tokens : content.length + JSON.stringify(toolCalls).length;
+        if (valid) tokenCalibrator.observe(rawInputEstimate, reported!.prompt_tokens);
+        const output = valid ? reported!.completion_tokens : estimateTokens(content) + estimateTokens(JSON.stringify(toolCalls ?? []));
         workbench.usage.input += input;
         workbench.usage.output += output;
         workbench.usage.estimated ||= !valid;
