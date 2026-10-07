@@ -1,3 +1,5 @@
+// These suites cover the deterministic context assembler; LLM compaction is tested in compaction.test.ts.
+process.env.PIG_COMPACTION = "off";
 import {loadWorkbench,saveWorkbench} from "../store/workbench.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";

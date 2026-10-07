@@ -49,6 +49,8 @@ export type RemoteRetryKind = "follow-up" | "create-run" | "unavailable";
 export type LocalRetryKind = "turn" | "unavailable";
 
 export type Session = {
+  /** Structured LLM summary replacing transcript messages up to `through` in model context (UI keeps the full transcript). */
+  contextCompaction?: { summary: string; through: string; createdAt: string; count: number };
   workspaceId?: string;
   workspaceName?: string;
   /** Project workspace captured when this task is created. */
