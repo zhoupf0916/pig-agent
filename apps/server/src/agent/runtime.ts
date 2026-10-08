@@ -1,7 +1,10 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
+import { ComputerGuard } from "../desktop/computer-guard.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
 import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
+import { ModelRouter, routerConfigFromEnv } from "./model-router.ts";
+import { runToolSearch, selectMcpTools, TOOL_SEARCH, toolSearchDefinition } from "./tool-search.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -375,6 +378,9 @@ export async function runAgent(options: {
     if (notes.length) userTurnNotes.set(m.id, notes.join("\n\n"));
   }
   let consecutiveErrors = 0;
+  let computerGuard: ComputerGuard | undefined;
+  const allMcpTools = [...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name));
+  const router = new ModelRouter(settings.llmModel, routerConfigFromEnv(), lastUser?.content ?? "", { priorToolErrors: session.messages.slice(-12).filter((m) => m.role === "tool" && m.toolOk === false).length });
   let forceSummary = false;
 
   try {
@@ -391,10 +397,12 @@ export async function runAgent(options: {
         response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
+      const mcpSelection = selectMcpTools(allMcpTools, session.activatedTools);
       const extraToolDefs = [
         ...(allowSubagents ? [subagentToolDefinition] : []),
         ...(allowComputer ? [computerToolDefinition] : []),
-        ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name)),
+        ...(mcpSelection.searchEnabled ? [toolSearchDefinition] : []),
+        ...mcpSelection.tools,
       ];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
@@ -441,19 +449,22 @@ export async function runAgent(options: {
       if (workbench) { workbench.usage.calls++; await saveWorkbench(session.id, workbench); }
       const modelStartedMono = performance.now();
       const modelSpanId = newId("span");
+      if (typeof contextEstimate.usedChars === "number" && typeof contextEstimate.budgetChars === "number" && contextEstimate.usedChars > contextEstimate.budgetChars * 0.6) router.escalate("上下文较长");
+      const route = router.current();
+      const callSettings = route.model === settings.llmModel ? settings : { ...settings, llmModel: route.model };
       let firstTokenAt: number | undefined;
       recordDebugSpan({
         id: modelSpanId,
         sessionId: session.id,
         turnId: String(turn),
         kind: "model",
-        name: settings.llmModel || "model",
+        name: route.model || "model",
         status: "running",
         startedAtMs: 0,
         wallStartedAt: new Date(modelStarted).toISOString(),
-        detail: { model: settings.llmModel, provider: providerHost(settings.llmBaseUrl), sandboxEffective: "未采集", usage: null, finishReason: null, ttftMs: null, contextEstimate },
+        detail: { model: route.model, provider: providerHost(settings.llmBaseUrl), sandboxEffective: "未采集", usage: null, finishReason: null, ttftMs: null, contextEstimate },
       }, modelStartedMono);
-      response = await complete(settings, history, {
+      response = await complete(callSettings, history, {
         signal,
         extraTools: extraToolDefs.length ? extraToolDefs : undefined,
         maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
@@ -500,17 +511,18 @@ export async function runAgent(options: {
         sessionId: session.id,
         turnId: String(turn),
         kind: "model",
-        name: settings.llmModel || "model",
+        name: route.model || "model",
         status: "ok",
         startedAtMs: 0,
         durationMs: Math.max(0, Math.round(performance.now() - modelStartedMono)),
         wallStartedAt: new Date(modelStarted).toISOString(),
         detail: debugDetail(session.id, {
-          model: settings.llmModel,
+          model: route.model,
           provider: providerHost(settings.llmBaseUrl),
           sandboxRequested: workbench?.policy.shell ?? "未采集",
           sandboxEffective: "未采集",
           usage: reported ?? null,
+          route: router.enabled ? `${route.tier}:${route.model}（${route.reason}）` : undefined,
           cache: { ...promptCacheStats(reported), prefix: prefixFingerprint(TOOL_DEFINITIONS, extraToolDefs, system.content.split(SYSTEM_DYNAMIC_MARKER)[0]) },
           finishReason: response.finishReason,
           ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
@@ -662,7 +674,13 @@ export async function runAgent(options: {
           } else if (call.name === "computer_use") {
             if (!allowComputer) throw Error("电脑操作只允许在桌面本机 Pig 任务中使用");
             if (awaitingReview) throw Error("请先处理待批准操作");
-            output = await executeComputerTool(parsed as Record<string, unknown>, signal);
+            output = await executeComputerTool(parsed as Record<string, unknown>, signal, computerGuard ??= new ComputerGuard());
+          } else if (call.name === TOOL_SEARCH) {
+            if (!selectMcpTools(allMcpTools, session.activatedTools).searchEnabled) throw new Error("当前没有需要搜索的外部工具");
+            const found = runToolSearch(allMcpTools, parsed as Record<string, unknown>, session.activatedTools ?? []);
+            session.activatedTools = found.activated;
+            output = found.output;
+            sandboxFact = { requested: "readonly", effective: "工具目录检索", backend: "tool-search" };
           } else if (workbench && call.name === "http_fetch") {
             const op = await stageOperation(workbench, call.id, call.name, parsed as Record<string, unknown>);
             await saveWorkbench(session.id, workbench);
@@ -802,6 +820,7 @@ export async function runAgent(options: {
         return finishIdle(session, emit);
       }
       if (turnHadError) {
+        router.escalate("本轮工具失败");
         consecutiveErrors += 1;
         session.messages.push({
           id: newId("msg"),

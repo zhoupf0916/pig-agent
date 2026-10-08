@@ -56,6 +56,8 @@ function validateAction(input) {
     (!Number.isInteger(input.delta) || Math.abs(input.delta) > 2000)
   )
     throw new Error("滚动距离无效");
+  if (input.risk !== undefined && (typeof input.risk !== "string" || input.risk.length > 200))
+    throw new Error("风险提示无效");
   return Object.fromEntries(
     Object.entries(input).filter(([k]) =>
       [
@@ -67,6 +69,7 @@ function validateAction(input) {
         "delta",
         "observationId",
         "appName",
+        "risk",
       ].includes(k),
     ),
   );
@@ -244,7 +247,7 @@ function createComputer({
         type: "warning",
         title: "确认电脑操作",
         message: `Agent 请求：${action.action}`,
-        detail: `目标应用：${action.action === "observe" ? before.app : lastApp}（${pid}）\n${action.action === "type" ? action.text : JSON.stringify(action)}\n确认前检查目标应用。取消不会执行。`,
+        detail: `${action.risk ? `⚠️ 风险：${action.risk}\n` : ""}目标应用：${action.action === "observe" ? before.app : lastApp}（${pid}）\n${action.action === "type" ? action.text : JSON.stringify(action)}\n确认前检查目标应用。取消不会执行。`,
         buttons: ["取消", "允许本次"],
         defaultId: 0,
         cancelId: 0,
@@ -253,7 +256,8 @@ function createComputer({
         throw new Error("用户取消了电脑操作");
       if (action.action !== "observe" && Date.now() > expiresAt)
         throw new Error("等待确认期间观察已过期，请重新观察");
-      const result = await native({ ...action, pid }, valid);
+      const { risk: _risk, ...nativeAction } = action;
+      const result = await native({ ...nativeAction, pid }, valid);
       if (result.error) throw new Error(result.error);
       if (!valid() || !enabled) throw new Error("电脑操作已取消");
       if (action.action === "observe") {

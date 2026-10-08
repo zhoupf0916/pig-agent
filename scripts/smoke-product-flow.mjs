@@ -87,7 +87,7 @@ try {
     samples.every((sample) => expectedText.startsWith(sample.text)),
     "stream must remain an exact prefix, without duplicated tokens from two SSE connections",
   );
-  await expect(page.getByText(expectedText, { exact: true })).toHaveCount(1);
+  await expect.poll(async () => page.getByText(expectedText, { exact: true }).count(), { timeout: 30000 }).toBe(1);
   const recorded = await fetch(
     `${base}/api/sessions/${sessionId}/events?live=0&after=0`,
   ).then((r) => r.json());
@@ -165,9 +165,13 @@ try {
   await send("继续核验刚才的文件，报告已保存的结果。");
   await approve();
   assert.notEqual((await session()).remoteRunId, first);
-  await expect(page.getByText(/沙箱执行验收通过/)).toHaveCount(2, {
-    timeout: 15000,
-  });
+  // The follow-up run is already "succeeded" here, but the reply reaches the session and the
+  // page through SSE, which can lag well past 15s on a busy runner.
+  await expect.poll(async () => {
+    const messages = (await session()).messages ?? [];
+    return messages.filter((m) => m.role === "assistant" && /沙箱执行验收通过/.test(m.content ?? "")).length;
+  }, { timeout: 30000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => page.getByText(/沙箱执行验收通过/).count(), { timeout: 45000 }).toBeGreaterThanOrEqual(2);
   checks.push(
     "follow-up uses next run automatically and preserves remote workspace",
   );

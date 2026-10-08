@@ -2,6 +2,7 @@
  * Task-level eval runner.
  *   pnpm eval:tasks                      # offline, in-process scenario mock model
  *   pnpm eval:tasks --real               # real model from LLM_BASE_URL/LLM_MODEL + DEEPSEEK_API_KEY|LLM_API_KEY
+ *   --judge                              # + LLM-as-judge rubric scoring (PIG_JUDGE_MODEL, defaults to LLM_MODEL; real key required)
  *   --case <id>  --trials <n>  --out data/evals/tasks-latest.json  --min-pass 0.8 (exit 1 below)
  */
 import { createServer } from "node:http";
@@ -11,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { taskCases } from "../apps/server/src/agent/evaluation/task-cases.ts";
 import { markdownTable, runTaskCase, summarize, type TaskResult } from "../apps/server/src/agent/evaluation/task-eval.ts";
 import { mockReply } from "../apps/server/src/dev/mock-scenarios.ts";
+import { openAiJudge } from "../apps/server/src/agent/evaluation/judge.ts";
 
 const args = process.argv.slice(2);
 const value = (flag: string, fallback: string) => (args.includes(flag) ? args[args.indexOf(flag) + 1] ?? fallback : fallback);
@@ -44,11 +46,16 @@ const settings = {
   llmApiKey: key, llmModel: real ? process.env.LLM_MODEL || "deepseek-chat" : "mock",
   runtime: "pig", codexBinaryPath: "", codexModel: "", codexNetworkAccess: false, cloudBaseUrl: "", cloudToken: "", cloudMode: "local-stub",
 } as const;
+const judgeKey = (process.env.PIG_JUDGE_API_KEY || process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY || "").trim();
+if (args.includes("--judge") && !judgeKey) throw new Error("--judge needs PIG_JUDGE_API_KEY, LLM_API_KEY or DEEPSEEK_API_KEY");
+const judge = args.includes("--judge")
+  ? openAiJudge({ baseUrl: process.env.PIG_JUDGE_BASE_URL || process.env.LLM_BASE_URL || "https://api.deepseek.com/v1", apiKey: judgeKey, model: process.env.PIG_JUDGE_MODEL || process.env.LLM_MODEL || "deepseek-chat" })
+  : undefined;
 const results: TaskResult[] = [];
 for (const c of taskCases().filter((t) => !filter || t.id === filter)) for (let i = 0; i < trials; i++) {
-  const r = await runTaskCase(c, settings as never);
+  const r = await runTaskCase(c, settings as never, { judge });
   results.push(r);
-  console.log(`${r.pass ? "PASS" : "FAIL"} ${c.id}#${i} calls=${r.modelCalls} tools=${r.toolCalls} tok=${r.promptTokens} cache=${r.cacheHitRate ?? "-"} ${(r.ms / 1000).toFixed(1)}s${r.error ? " err=" + r.error : ""}`);
+  console.log(`${r.pass ? "PASS" : "FAIL"} ${c.id}#${i} calls=${r.modelCalls} tools=${r.toolCalls} tok=${r.promptTokens} cache=${r.cacheHitRate ?? "-"}${r.judge ? ` judge=${"score" in r.judge ? r.judge.score : "err"}` : ""} ${(r.ms / 1000).toFixed(1)}s${r.error ? " err=" + r.error : ""}`);
 }
 mock?.close();
 const summary = summarize(results);

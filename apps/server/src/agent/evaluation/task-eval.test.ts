@@ -35,3 +35,30 @@ describe("task eval harness (offline mock model)", () => {
     expect(markdownTable(results)).toContain("| write-file | ❌");
   });
 });
+
+describe("task eval + judge wiring", () => {
+  it("judges only cases with a rubric and passes the final workspace snapshot", async () => {
+    const { runTaskCase } = await import("./task-eval.ts");
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c) => chunks.push(c));
+      req.on("end", () => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "循环条件 i < n 漏加了 n，应改为 i <= n" } }] })}\n\ndata: [DONE]\n\n`); res.end();
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const settings = { llmBaseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`, llmApiKey: "t", llmModel: "mock", runtime: "pig", codexBinaryPath: "", codexModel: "", codexNetworkAccess: false, cloudBaseUrl: "", cloudToken: "", cloudMode: "local-stub" } as never;
+    const seen: any[] = [];
+    const judge = async (i: any) => { seen.push(i); return { score: 5, pass: true, reasons: "ok" }; };
+    const bug = taskCases().find((c) => c.id === "explain-bug")!;
+    const r = await runTaskCase(bug, settings, { judge });
+    const noRubric = await runTaskCase(taskCases().find((c) => c.id === "write-file")!, settings, { judge });
+    server.close();
+    expect(r.pass).toBe(true);
+    expect(r.judge).toEqual({ score: 5, pass: true, reasons: "ok" });
+    expect(seen[0].files["calc.js"]).toContain("i < n");
+    expect(seen).toHaveLength(1);
+    expect(noRubric.judge).toBeUndefined();
+  });
+});

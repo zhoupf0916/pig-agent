@@ -53,6 +53,8 @@ export type Session = {
   memoryRecall?: Record<string, string>;
   /** Structured LLM summary replacing transcript messages up to `through` in model context (UI keeps the full transcript). */
   contextCompaction?: { summary: string; through: string; createdAt: string; count: number };
+  /** MCP tools activated via search_tools (sticky for the session). */
+  activatedTools?: string[];
   workspaceId?: string;
   workspaceName?: string;
   /** Project workspace captured when this task is created. */

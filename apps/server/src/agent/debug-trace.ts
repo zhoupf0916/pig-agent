@@ -1,6 +1,7 @@
 import { presentDebugTrace, type DebugSpan, type DebugTraceView } from "@pig-agent/contracts";
 
 export { presentDebugTrace };
+import { exporterFromEnv } from "./otel-export.ts";
 
 /** Match a secret field name, not a usage counter such as prompt_tokens. */
 const SECRET_KEY = /(?:^|[_.-])(?:authorization|cookie|set-cookie|api[-_]?key|token|password|secret)(?:$|[_.-])/i;
@@ -13,7 +14,7 @@ export const DEBUG_TRACE_LIMITS = {
   maxTotalBytes: 2_097_152,
 } as const;
 
-const traces = new Map<string, { origin: number; content: boolean; spans: DebugSpan[]; dropped: number; touched: number }>();
+const traces = new Map<string, { origin: number; wallOrigin: number; content: boolean; spans: DebugSpan[]; dropped: number; touched: number }>();
 const listeners = new Set<(sessionId: string) => void>();
 
 export function subscribeDebugSpans(listener: (sessionId: string) => void): () => void {
@@ -65,7 +66,7 @@ export function redactDebugText(value: string): string {
 function bucket(sessionId: string) {
   let trace = traces.get(sessionId);
   if (!trace) {
-    trace = { origin: performance.now(), content: false, spans: [], dropped: 0, touched: performance.now() };
+    trace = { origin: performance.now(), wallOrigin: Date.now(), content: false, spans: [], dropped: 0, touched: performance.now() };
     traces.set(sessionId, trace);
   }
   trace.touched = performance.now();
@@ -192,6 +193,7 @@ export function recordDebugSpan(span: DebugSpan, monoStart?: number): void {
     }
   }
   enforceTraceLimits(span.sessionId);
+  exporterFromEnv()?.enqueue(next, trace.wallOrigin);
   for (const listener of listeners) listener(span.sessionId);
 }
 
