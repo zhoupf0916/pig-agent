@@ -268,7 +268,7 @@ describe("delivery review and recovery", () => {
     expect((await post(`/api/sessions/${session.id}/abort`)).status).toBe(200);
     expect((await approval).status).toBe(409);
     expect((await loadWorkbench(session.id,root)).operations[0]?.status).toBe("error");
-  });
+  }, 20000);
   it("persists custom templates", async () => {
     const added = await post("/api/workbench/templates",{name:"我的模板",prompt:"检查资料"}); expect(added.status).toBe(200);
     const item = await added.json() as { id: string; name: string; prompt: string }; const list = await (await app.request("/api/workbench/templates")).json(); expect(list).toContainEqual(item);

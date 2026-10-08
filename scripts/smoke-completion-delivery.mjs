@@ -91,7 +91,7 @@ try {
         "PATCH",
       );
   // host.docker.internal only resolves by default on Docker Desktop; map it explicitly for Linux hosts/CI.
-  docker(["create", "--name",containerName,"--init","--add-host","host.docker.internal:host-gateway","--network","pig-agent-cluster_control","--cap-drop","ALL","--security-opt","no-new-privileges:true","--security-opt","systempaths=unconfined","--security-opt","seccomp="+resolve("infra/cloud/runner-seccomp.json"),"-e","WORKER_TOKEN","-e","CONTROL_URL=http://host.docker.internal:18895","-e","GATEWAY_URL=http://gateway:8891","-e",`WORKER_ID=${workerId}`,"-e","WORKER_OUTBOX_DIR=/tmp/outbox","-e","WORKER_CAPACITY=1","pig-agent-cluster-worker:local"]);
+  docker(["create", "--name",containerName,"--init","--add-host","host.docker.internal:host-gateway","--network","pig-agent-cluster_control","--cap-drop","ALL","--security-opt","no-new-privileges:true","--security-opt","apparmor=unconfined","--security-opt","systempaths=unconfined","--security-opt","seccomp="+resolve("infra/cloud/runner-seccomp.json"),"-e","WORKER_TOKEN","-e","CONTROL_URL=http://host.docker.internal:18895","-e","GATEWAY_URL=http://gateway:8891","-e",`WORKER_ID=${workerId}`,"-e","WORKER_OUTBOX_DIR=/tmp/outbox","-e","WORKER_CAPACITY=1","pig-agent-cluster-worker:local"]);
   docker(["network","connect","pig-agent-cluster_egress",containerName]);
   child=spawn("docker",["start","-a",containerName],{env:dockerEnv,stdio:["ignore","pipe","pipe"]});
   child.stdout.on("data", (b) => process.stdout.write(b));
