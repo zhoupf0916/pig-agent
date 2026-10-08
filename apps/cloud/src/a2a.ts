@@ -45,6 +45,14 @@ export function taskState(runState: string, pendingApproval = false): TaskState 
   }
 }
 
+/** Public origin for the agent card. PUBLIC_ORIGIN wins; otherwise WEB_PUBLIC_ORIGIN (what the rest of the app uses); otherwise the request origin. Behind a TLS-terminating proxy the request arrives as plain http, and advertising that URL would send clients' bearer tokens in cleartext. */
+export function configuredPublicOrigin(): string | undefined {
+  for (const value of [process.env.PUBLIC_ORIGIN, process.env.WEB_PUBLIC_ORIGIN]) {
+    if (!value) continue;
+    try { return new URL(value).origin; } catch { /* skip a malformed value, fall through */ }
+  }
+  return undefined;
+}
 export function agentCard(origin: string, version = "0.1.1"): Json {
   return {
     protocolVersion: "0.3.0",
@@ -281,7 +289,7 @@ export async function* handleA2aStream(forward: Forward, open: OpenStream, req: 
 
 export function registerA2aRoutes(app: Hono<any>): void {
   app.get("/.well-known/agent-card.json", (c) => {
-    const origin = process.env.PUBLIC_ORIGIN?.replace(/\/$/, "") || new URL(c.req.url).origin;
+    const origin = configuredPublicOrigin() || new URL(c.req.url).origin;
     c.header("Cache-Control", "public, max-age=300");
     return c.json(agentCard(origin));
   });
