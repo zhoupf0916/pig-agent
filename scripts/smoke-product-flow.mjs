@@ -45,10 +45,10 @@ try {
   sessionId = (await (await createdResponse).json()).id;
   await page.waitForURL("**/#/sessions/" + sessionId);
   await page.getByLabel("执行位置", { exact: true }).selectOption("remote");
-  await expect(page.getByLabel("写入前审批")).toBeEnabled();
-  if (!(await page.getByLabel("写入前审批").isChecked()))
-    await page.getByLabel("写入前审批").click();
-  await expect(page.getByLabel("写入前审批")).toBeChecked();
+  await expect(page.getByLabel("写入与命令需审批")).toBeEnabled();
+  if (!(await page.getByLabel("写入与命令需审批").isChecked()))
+    await page.getByLabel("写入与命令需审批").click();
+  await expect(page.getByLabel("写入与命令需审批")).toBeChecked();
   await send("产品验收：请创建并读回 cloud-proof.txt，核验容器执行成果。");
   await page.screenshot({ path: evidence + "/flow-approval.png" });
   checks.push(
@@ -58,7 +58,7 @@ try {
     window.__streamSamples = [];
     window.__streamObserver = new MutationObserver(() => {
       const text =
-        document.querySelector('[data-streaming="true"]')?.textContent || "";
+        document.querySelector('.conv-answer.is-streaming')?.textContent || "";
       const list = window.__streamSamples;
       if (text && text !== list.at(-1)?.text)
         list.push({ text, at: performance.now() });
@@ -70,7 +70,7 @@ try {
     });
   });
   const firstApproval = approve();
-  await page.locator('[data-streaming="true"]').waitFor();
+  await page.locator('.conv-answer.is-streaming').waitFor();
   await page.screenshot({ path: evidence + "/flow-streaming.png" });
   await firstApproval;
   const samples = await page.evaluate(() => {
@@ -82,7 +82,7 @@ try {
     "real container reply must paint multiple incremental text fragments before completion",
   );
   const expectedText =
-    "容器执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。";
+    "沙箱执行验收通过：已创建并读回 cloud-proof.txt。当前为模拟模型模式，尚未调用真实提供商。";
   assert(
     samples.every((sample) => expectedText.startsWith(sample.text)),
     "stream must remain an exact prefix, without duplicated tokens from two SSE connections",
@@ -139,7 +139,7 @@ try {
   checks.push(
     "real container paints progressive exact text; dual SSE delivery and cursor replay do not duplicate tokens",
   );
-  await page.getByRole("button", { name: /项成果可核验/ }).click();
+  await page.getByRole("button", { name: /项文件与变更/ }).click();
   const inspector = page.getByRole("complementary", { name: "远端成果检查器" });
   const downloadPromise = page.waitForEvent("download");
   await inspector.getByRole("link", { name: "下载", exact: true }).click();
@@ -154,7 +154,7 @@ try {
   await page.screenshot({ path: evidence + "/flow-result.png" });
   await page.getByRole("button", { name: "关闭成果面板" }).click();
   await page.reload();
-  await expect(page.getByText(/容器执行验收通过/).first()).toBeVisible({
+  await expect(page.getByText(/沙箱执行验收通过/).first()).toBeVisible({
     timeout: 15000,
   });
   await page.getByRole("button", { name: "任务配置", exact: true }).click();
@@ -165,7 +165,7 @@ try {
   await send("继续核验刚才的文件，报告已保存的结果。");
   await approve();
   assert.notEqual((await session()).remoteRunId, first);
-  await expect(page.getByText(/容器执行验收通过/)).toHaveCount(2, {
+  await expect(page.getByText(/沙箱执行验收通过/)).toHaveCount(2, {
     timeout: 15000,
   });
   checks.push(
