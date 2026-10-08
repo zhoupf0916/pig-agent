@@ -20,6 +20,23 @@ describe("conversation activity grouping", () => {
     expect(merged[1]?.name).toBe("search_files");
   });
 
+  it("renders a remote transcript author object as its display name (never as an object child)", () => {
+    const turns = buildTurns({
+      messages: [
+        { id: "u", role: "user", content: "远端", createdAt: at, author: { id: "member", name: "本机体验账号" } },
+        { id: "a", role: "assistant", content: "好。", createdAt: at, phase: "answer" },
+        { id: "u2", role: "user", content: "无名", createdAt: at, author: { id: "x" } },
+      ],
+      tools: [],
+      toolTitle: title,
+      streaming: false,
+      pendingApproval: false,
+    });
+    expect(turns[0]?.author).toBe("本机体验账号");
+    expect(turns[0]?.answer).toBe("好。");
+    expect(turns[1]?.author).toBeUndefined();
+  });
+
   it("keeps author and attachments on the matching turn and treats live tool text as progress", () => {
     const turns = buildTurns({
       messages: [
