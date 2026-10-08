@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 const env = Object.fromEntries(
   (await readFile("data/cluster-local/stack.env", "utf8"))
     .split("\n")
@@ -524,7 +525,10 @@ try {
   record("two scheduler instances", "one unique firing and one queued run");
   await cleanupJobs();
   const durable = await create();
-  execFileSync(
+  // Async on purpose: a synchronous restart (~10s) blocks the event loop, so the keep-alive close
+  // from the other control instance is never processed and the next request reuses a dead socket
+  // ("other side closed").
+  await promisify(execFile)(
     "docker",
     [
       "compose",
@@ -535,7 +539,6 @@ try {
       "restart",
       "cloud-a",
     ],
-    { stdio: "pipe" },
   );
   assert.equal(
     (await req("/v1/runs/" + durable.id, { base: bases[1] })).state,
