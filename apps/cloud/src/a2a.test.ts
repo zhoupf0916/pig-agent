@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { describe, expect, it } from "vitest";
-import { agentCard, registerA2aRoutes, taskState } from "./a2a.ts";
+import { agentCard, configuredPublicOrigin, registerA2aRoutes, taskState } from "./a2a.ts";
 
 /** Fake /v1 surface standing in for the real run API (auth + runs + conversations). */
 function fakeCloud() {
@@ -68,6 +68,27 @@ describe("A2A endpoint", () => {
     expect(card).toMatchObject({ protocolVersion: "0.3.0", url: "http://cloud.test/v1/a2a", preferredTransport: "JSONRPC", security: [{ bearer: [] }] });
     expect(card.skills[0].id).toBe("workbench");
     expect(agentCard("https://x").capabilities.streaming).toBe(true);
+  });
+  it("advertises the configured public origin so bearer tokens never travel over plain http", async () => {
+    const saved = [process.env.PUBLIC_ORIGIN, process.env.WEB_PUBLIC_ORIGIN];
+    const card = async () => (await fakeCloud().app.request("http://cloud.test/.well-known/agent-card.json")).json() as any;
+    try {
+      delete process.env.PUBLIC_ORIGIN; delete process.env.WEB_PUBLIC_ORIGIN;
+      expect(configuredPublicOrigin()).toBeUndefined();
+      expect((await card()).url).toBe("http://cloud.test/v1/a2a");
+      process.env.WEB_PUBLIC_ORIGIN = "https://193.0.2.18";
+      expect((await card()).url).toBe("https://193.0.2.18/v1/a2a");
+      expect((await card()).provider.url).toBe("https://193.0.2.18");
+      process.env.WEB_PUBLIC_ORIGIN = "https://193.0.2.18/admin/";
+      expect(configuredPublicOrigin()).toBe("https://193.0.2.18");
+      process.env.PUBLIC_ORIGIN = "https://agent.example/";
+      expect((await card()).url).toBe("https://agent.example/v1/a2a");
+      process.env.PUBLIC_ORIGIN = "not a url";
+      expect((await card()).url).toBe("https://193.0.2.18/v1/a2a");
+    } finally {
+      for (const [k, v] of [["PUBLIC_ORIGIN", saved[0]], ["WEB_PUBLIC_ORIGIN", saved[1]]] as const)
+        v === undefined ? delete process.env[k] : (process.env[k] = v);
+    }
   });
   it("maps run states (approval pending → input-required)", () => {
     expect(taskState("queued")).toBe("submitted");
