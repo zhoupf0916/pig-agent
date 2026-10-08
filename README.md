@@ -88,9 +88,9 @@ pnpm dev        # API http://127.0.0.1:8787，UI http://127.0.0.1:5173
 | `PIG_COMPUTER_MAX_ACTIONS` / `PIG_COMPUTER_MAX_OBSERVES` | 25 / 40 | 每次任务电脑操作预算；另有连续失败熔断、疑似密钥输入与终端破坏性命令拒绝、风险提示进入桌面确认框 |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`（或 `_TRACES_ENDPOINT`）/ `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME` | 未设置 | 以 OTLP/HTTP JSON 导出调试 span（GenAI 语义约定：`chat <model>`、`execute_tool <name>`、token 与缓存命中属性），只导出元数据不导出内容；`OTEL_SDK_DISABLED=true` 关闭 |
 
-远端 MCP 凭据除静态 Bearer 外，可填 JSON：`{"type":"oauth_client_credentials","clientId":"…","clientSecret":"…","scope":"…"}`，按 MCP 授权规范（RFC 9728 → RFC 8414）自动发现 token 端点（也可显式给 `tokenUrl`），令牌缓存到过期前，401 时刷新一次。
+远端 MCP 凭据（本机与云端）除静态 Bearer 外，可填 JSON：`{"type":"oauth_client_credentials","clientId":"…","clientSecret":"…","scope":"…"}`，按 MCP 授权规范（RFC 9728 → RFC 8414）自动发现 token 端点（也可显式给 `tokenUrl`），令牌缓存到过期前，401 时刷新一次。云端的元数据/令牌请求与 MCP 流量走同一租户出网策略（私网地址需逐个 URL 加入 `MCP_ENDPOINT_ALLOWLIST`）。
 
-云端 A2A：`GET /.well-known/agent-card.json`（公开 Agent Card），`POST /v1/a2a`（JSON-RPC，Bearer 认证）支持 `message/send`（`configuration.blocking`、`contextId` 续接同一会话）、`tasks/get`、`tasks/cancel`；Task 即云端 run，`messageId` 作为幂等键。
+云端 A2A：`GET /.well-known/agent-card.json`（公开 Agent Card），`POST /v1/a2a`（JSON-RPC，Bearer 认证）支持 `message/send`（`configuration.blocking`、`contextId` 续接同一会话）、`message/stream` 与 `tasks/resubscribe`（SSE：`status-update` 进度/工具调用/待审批 `input-required`、`artifact-update` 按模型回合流式输出文本并在结束时附上产物文件，最后一条 `final: true` 的状态带最终回复）、`tasks/get`、`tasks/cancel`；Task 即云端 run，`messageId` 作为幂等键。
 
 任务级评测：`pnpm eval:tasks`（离线 mock）或 `pnpm eval:tasks --real`（使用 `LLM_*`/`DEEPSEEK_API_KEY`），加 `--judge` 用 LLM 评审按每个用例的 rubric 打 1–5 分（`PIG_JUDGE_MODEL` 等可单独指定），并报告评审与确定性检查的一致率；结果写入 `data/evals/`。
 
