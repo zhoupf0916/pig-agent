@@ -12,7 +12,7 @@ describe('computer tool execution boundary',()=>{
   if(mode==='web')mock.bridge.mockReturnValue(false);
   mock.complete.mockResolvedValueOnce({content:'',toolCalls:[{id:'unauthorized',name:'computer_use',arguments:'{"action":"observe"}'}]});
   const result=await runAgent({settings,session:{...session,executionTarget:mode==='remote'?'remote':'local'},signal:new AbortController().signal,emit:()=>{},memoryPins:[],allowComputer:mode==='stub'?false:undefined,authorizeTool:mode==='authorized-remote'?async()=>true:undefined});
-  expect(mock.complete.mock.calls[0]?.[2].extraTools).toBeUndefined();
+  expect((mock.complete.mock.calls[0]?.[2].extraTools ?? []).map((t: { function: { name: string } }) => t.function.name)).not.toContain('computer_use');
   expect(mock.execute).not.toHaveBeenCalled();
   expect(result.messages.some(m=>m.role==='tool'&&m.content.includes('只允许在桌面本机'))).toBe(true);
  });
@@ -20,7 +20,7 @@ describe('computer tool execution boundary',()=>{
   const signal=new AbortController().signal;
   mock.complete.mockResolvedValueOnce({content:'',toolCalls:[{id:'allowed',name:'computer_use',arguments:'{"action":"observe"}'}]});
   await runAgent({settings,session:{...session,executionTarget:'local'},signal,emit:()=>{},memoryPins:[]});
-  expect(mock.complete.mock.calls[0]?.[2].extraTools[0].function.name).toBe('computer_use');
+  expect(mock.complete.mock.calls[0]?.[2].extraTools.map((t: { function: { name: string } }) => t.function.name)).toContain('computer_use');
   expect(mock.execute).toHaveBeenCalledWith({action:'observe'},signal);
  });
 });

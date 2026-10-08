@@ -2,7 +2,7 @@ import type { ChatMessage, ToolCall } from "../types.ts";
 import { TOOL_DEFINITIONS } from "./tools.ts";
 
 export type TokenUsage = { prompt_tokens: number; completion_tokens: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
-type CompletionOptions = { extraTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>; allowTools?: boolean; signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number };
+type CompletionOptions = { extraTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>; allowTools?: boolean; signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number; /** Restrict built-in tools to these names (sub-agents). */ onlyTools?: string[] };
 
 export type LlmSettings = {
   llmBaseUrl: string;
@@ -128,7 +128,7 @@ async function completeOnce(
   const body: Record<string, unknown> = {
     model: settings.llmModel,
     messages: toOpenAiMessages(messages),
-    ...(options.allowTools === false ? {} : { tools: [...TOOL_DEFINITIONS, ...(options.extraTools ?? [])], tool_choice: "auto" }),
+    ...(options.allowTools === false ? {} : { tools: [...(options.onlyTools ? TOOL_DEFINITIONS.filter((t) => options.onlyTools!.includes(t.function.name)) : TOOL_DEFINITIONS), ...(options.extraTools ?? [])], tool_choice: "auto" }),
     stream: attempt.stream,
     temperature: 0.2,
   };

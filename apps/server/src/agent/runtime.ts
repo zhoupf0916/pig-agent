@@ -1,5 +1,7 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
+import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
+import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -8,11 +10,12 @@ import type {
   Artifact,
   ChatMessage,
   PlanStep,
+  ToolCall,
   Session,
   Settings,
 } from "../types.ts";
 import { newId, nowIso, safeJsonParse } from "../util.ts";
-import { formatMemoryPinBlock, listRecentPinTexts } from "../store/memory.ts";
+import { formatMemoryPinBlock, listRecentPinTexts, listRelevantPinTexts } from "../store/memory.ts";
 import { formatBoundInstructionBlock } from "./bound-instructions.ts";
 import {
   LOCAL_TURN_MESSAGES,
@@ -56,9 +59,62 @@ export const MAX_HISTORY_CHARS = 80_000;
 
 export const SYSTEM_DYNAMIC_MARKER = "--- 本轮上下文 (per-turn context) ---";
 
+/**
+ * Structured LLM compaction at a loop boundary (all tool calls answered). Failures are
+ * non-fatal: the deterministic trimming in assembleModelContext still applies.
+ */
+async function maybeCompact(input: { session: Session; settings: Settings; signal: AbortSignal; compactAtChars: number; emit: (event: AgentEvent) => void; workbench?: Awaited<ReturnType<typeof loadWorkbench>> | null }): Promise<boolean> {
+  const { session, settings, signal, compactAtChars, workbench } = input;
+  const view = compactedView(session.messages, session.contextCompaction);
+  if (viewChars(view) <= compactAtChars) return false;
+  const last = session.messages.at(-1);
+  if (last?.role === "assistant" && last.toolCalls?.length) return false; // mid tool-call: never compact
+  const cut = selectCompactionCut(view, Math.floor(compactAtChars * DEFAULT_KEEP_RATIO));
+  if (!cut) return false;
+  const previous = session.contextCompaction;
+  const folded = view.slice(0, view.findIndex((m) => m.id === cut) + 1).filter((m) => m.synthetic !== "context-compact");
+  const started = performance.now();
+  try {
+    let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
+    const result = await complete(settings, buildCompactionRequest(folded, previous?.summary), { signal, allowTools: false, maxOutputTokens: 1500, onUsage: (u) => { usage = u; } });
+    if (!result.content.trim()) return false;
+    session.contextCompaction = { summary: result.content.trim(), through: cut, createdAt: nowIso(), count: (previous?.count ?? 0) + 1 };
+    if (workbench && usage) {
+      workbench.usage.calls++; workbench.usage.input += usage.prompt_tokens; workbench.usage.output += usage.completion_tokens;
+      workbench.usage.cost += (usage.prompt_tokens * workbench.policy.inputPrice + usage.completion_tokens * workbench.policy.outputPrice) / 1000000;
+      await saveWorkbench(session.id, workbench);
+    }
+    recordDebugSpan({ id: newId("span"), sessionId: session.id, kind: "control", name: "context_compaction", status: "ok", startedAtMs: 0,
+      durationMs: Math.round(performance.now() - started), detail: { foldedMessages: folded.length, beforeChars: viewChars(view), afterChars: viewChars(compactedView(session.messages, session.contextCompaction)), usage: usage ?? null } }, started);
+    return true;
+  } catch (err) {
+    if (signal.aborted) throw err;
+    recordDebugSpan({ id: newId("span"), sessionId: session.id, kind: "control", name: "context_compaction", status: "error", startedAtMs: 0,
+      durationMs: Math.round(performance.now() - started), detail: { error: err instanceof Error ? err.message : String(err) } }, started);
+    return false;
+  }
+}
+
+/** Start up to SUBAGENT_MAX_PARALLEL sub-agents of this response concurrently. */
+function startSubagents(calls: ToolCall[], input: { settings: Settings; ctx: ToolContext; signal: AbortSignal; workbench?: Awaited<ReturnType<typeof loadWorkbench>> | null }): Map<string, Promise<SubagentResult>> {
+  const runs = new Map<string, Promise<SubagentResult>>();
+  for (const call of calls.filter((c) => c.name === SUBAGENT_TOOL).slice(0, SUBAGENT_MAX_PARALLEL)) {
+    const args = safeJsonParse(call.arguments) as { task?: string };
+    const run = runSubagent({ settings: input.settings, task: String(args?.task ?? ""), ctx: input.ctx, signal: input.signal, onUsage: (u) => {
+      const wb = input.workbench;
+      if (!wb) return;
+      wb.usage.calls++; wb.usage.input += u.prompt_tokens; wb.usage.output += u.completion_tokens;
+      wb.usage.cost += (u.prompt_tokens * wb.policy.inputPrice + u.completion_tokens * wb.policy.outputPrice) / 1000000;
+    } });
+    run.catch(() => {}); // awaited later; avoid unhandled rejection while earlier calls run
+    runs.set(call.id, run);
+  }
+  return runs;
+}
+
 /** Ephemeral per-turn note appended at the end of the request (never persisted). */
 export function suggestedSkillsNote(suggested: ScoredSkill[]): string {
-  return ["[harness] Suggested skills for this turn (call load_skill if one matches):", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
+  return ["[harness] Suggested skills for this turn — not loaded yet; call load_skill(name) first if one matches the task:", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
 }
 
 export async function buildSystemPrompt(
@@ -157,6 +213,14 @@ export async function runAgent(options: {
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
   contextEngine?: "pig" | "cloud";
+  /** Eagerly inject keyword-matched skill bodies (default off: lazy via load_skill). */
+  skillAutoload?: boolean;
+  /** Expose the read-only spawn_subagent tool (default on; PIG_SUBAGENTS=off disables). */
+  allowSubagents?: boolean;
+  /** Max model/tool rounds per user turn. Default PIG_MAX_TURNS or 20, clamped 1..200. */
+  maxTurns?: number;
+  /** Compact when the model-visible transcript exceeds this many chars. Default PIG_COMPACT_RATIO (0.6) × MAX_HISTORY_CHARS; 0 or PIG_COMPACTION=off disables. */
+  compactAtChars?: number;
   checkpoint?: (phase: "safe" | "unsafe", session: Session) => Promise<void>;
   /** When false, ordinary mutations skip authorizeTool. MCP tools still use it. */
   authorizeMutations?: boolean;
@@ -225,7 +289,11 @@ export async function runAgent(options: {
   const { materializeSkillSnapshots } = await import("./skill-pack.ts");
   const frozen = new Set((session.skillSnapshots ?? []).flatMap((skill) => [skill.id, skill.name]));
   const activated = [...(session.skillSnapshots ?? [])];
-  for (const skill of loaded) {
+  // Progressive disclosure: keyword matches are only *suggested* (name + description on the
+  // user turn); the model pulls a body with load_skill. User-selected skills and frozen
+  // snapshots stay preloaded. PIG_SKILL_AUTOLOAD=on restores eager loading.
+  const autoload = options.skillAutoload ?? process.env.PIG_SKILL_AUTOLOAD === "on";
+  for (const skill of autoload ? loaded : []) {
     const snapshot = skillToSnapshot(skill);
     if (frozen.has(snapshot.id) || frozen.has(snapshot.name)) continue;
     activated.push(snapshot);
@@ -244,6 +312,12 @@ export async function runAgent(options: {
     ? [{ name: "selected-skills", body: skillActivationPrompt(activated) }]
     : [];
 
+  const systemPins = options.memoryPins ?? (await listRecentPinTexts({ sessionId: session.id, projectId: session.projectId }));
+  // Hybrid (BM25 + optional embedding) recall for the current request, frozen per user message.
+  if (options.memoryPins === undefined && lastUser && !session.memoryRecall?.[lastUser.id]) {
+    const recalled = await listRelevantPinTexts({ sessionId: session.id, projectId: session.projectId, query: lastUser.content, exclude: systemPins }).catch(() => []);
+    if (recalled.length) session.memoryRecall = { ...session.memoryRecall, [lastUser.id]: ["[harness] Related saved notes for this request (user-curated; verify before relying on them):", ...recalled.map((t) => `- ${t}`)].join("\n") };
+  }
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
@@ -254,12 +328,7 @@ export async function runAgent(options: {
       loadedBodies,
       projectInstruction,
       expertInstruction,
-      memoryPins:
-        options.memoryPins ??
-        (await listRecentPinTexts({
-          sessionId: session.id,
-          projectId: session.projectId,
-        })),
+      memoryPins: systemPins,
     }),
     createdAt: nowIso(),
   };
@@ -302,13 +371,17 @@ export async function runAgent(options: {
   const userTurnNotes = new Map<string, string>();
   for (const m of session.messages) if (m.role === "user" && !m.content.startsWith("[harness]")) {
     const hits = m.id === lastUser?.id ? suggested : suggestSkills(m.content, skillMetas, 2);
-    if (hits.length) userTurnNotes.set(m.id, suggestedSkillsNote(hits));
+    const notes = [session.memoryRecall?.[m.id], hits.length ? suggestedSkillsNote(hits) : undefined].filter(Boolean);
+    if (notes.length) userTurnNotes.set(m.id, notes.join("\n\n"));
   }
   let consecutiveErrors = 0;
   let forceSummary = false;
 
   try {
-    for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const allowSubagents = options.allowSubagents ?? process.env.PIG_SUBAGENTS !== "off";
+    const maxTurns = Math.min(200, Math.max(1, Math.floor(options.maxTurns ?? envNumber("PIG_MAX_TURNS", MAX_TURNS, 1, 200))));
+    const compactAtChars = options.compactAtChars ?? (process.env.PIG_COMPACTION === "off" ? 0 : Math.floor(MAX_HISTORY_CHARS * envNumber("PIG_COMPACT_RATIO", DEFAULT_COMPACT_RATIO, 0.2, 0.95)));
+    for (let turn = 0; turn < maxTurns; turn += 1) {
       if (signal.aborted) throw new Error("Aborted");
 
       const checkpoint = workbench?.checkpoint;
@@ -318,14 +391,17 @@ export async function runAgent(options: {
         response = { content: "", toolCalls: checkpoint.calls, finishReason: null };
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
-      const extraToolDefs = allowComputer || options.mcpTools?.length
-        ? [...(allowComputer ? [computerToolDefinition] : []), ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name))]
-        : [];
+      const extraToolDefs = [
+        ...(allowSubagents ? [subagentToolDefinition] : []),
+        ...(allowComputer ? [computerToolDefinition] : []),
+        ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name)),
+      ];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
       await options.checkpoint?.("safe", session);
       const contextStarted = performance.now();
-      const assembled = trimHistory([system, ...session.messages], toolSchemaChars, forceSummary ? summaryHarness.length : 0, options.contextEngine ?? "pig");
+      if (compactAtChars > 0 && !forceSummary) await maybeCompact({ session, settings, signal, compactAtChars, emit, workbench });
+      const assembled = trimHistory([system, ...compactedView(session.messages, session.contextCompaction)], toolSchemaChars, forceSummary ? summaryHarness.length : 0, options.contextEngine ?? "pig");
       recordDebugSpan({ id: newId("span"), sessionId: session.id, kind: "control", name: "context_assembly", status: "ok", startedAtMs: 0,
         durationMs: Math.max(0, Math.round((performance.now() - contextStarted) * 100) / 100), detail: { unit: "estimated_chars", budgetChars: assembled.estimate.budgetChars, usedChars: assembled.estimate.usedChars } }, contextStarted);
       const history = assembled.messages;
@@ -498,6 +574,7 @@ export async function runAgent(options: {
       const readonlyWindow = !workbench && !options.authorizeTool && toolCalls.length > 1 && toolCalls.every((call) => readonlyTools.has(call.name))
         ? createReadonlyWindow(toolCalls, ctx, signal)
         : undefined;
+      let subagentRuns: Map<string, Promise<SubagentResult>> | undefined;
       for (const [callIndex, call] of toolCalls.entries()) {
         if (signal.aborted) throw new Error("Aborted");
         if (forceSummary) break;
@@ -619,6 +696,14 @@ export async function runAgent(options: {
               output = await options.mcpInvoke({ name: call.name, args: parsed as Record<string, unknown>, signal, callId: call.id });
               sandboxFact = { requested: "mcp", effective: "远端 MCP 服务", backend: "mcp-http" };
             }
+          } else if (call.name === SUBAGENT_TOOL) {
+            if (!allowSubagents) throw new Error("子 Agent 未启用");
+            subagentRuns ??= startSubagents(toolCalls, { settings, ctx, signal, workbench });
+            const run = subagentRuns.get(call.id);
+            if (!run) throw new Error("同一轮最多并行 3 个子 Agent，本次未执行");
+            const result = await run;
+            output = formatSubagentOutput((parsed as { name?: string }).name, result);
+            sandboxFact = { requested: "readonly", effective: "只读子 Agent", backend: "subagent" };
           } else if (prepared) {
             if (!prepared.ok) throw prepared.error;
             output = prepared.value.output;
