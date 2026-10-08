@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { exposedMcpToolName, isBlockedEgressAddress, isLoopbackAddress, isMetadataAddress, redactConfiguredSecret, redactSecretValue, type McpToolView } from "@pig-agent/contracts";
+import { credentialSecrets, invalidateToken, isUnauthorizedError, parseOAuthSecret, resolveBearer } from "@pig-agent/contracts/mcp-oauth";
 
 export class McpEgressError extends Error {}
 
@@ -141,11 +142,35 @@ export function createCloudMcpFetch(role: string, deadline: AbortSignal) {
 
 type CloudServer = { id: string; name: string; url: string; timeoutMs: number; secret?: string; role: string };
 
+/** Redact the configured secret plus, for OAuth descriptors, the client secret and issued tokens. */
+function redactAll(text: string, secret: string | undefined): string {
+  return credentialSecrets(secret).reduce((t, s) => redactConfiguredSecret(t, s), text);
+}
+
 async function withCloudClient<T>(config: CloudServer, run: (client: Client) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try {
+    return await connectCloudOnce(config, run, signal);
+  } catch (error) {
+    // OAuth access tokens can be revoked before expiry: drop the cached token and retry once.
+    if (!isUnauthorizedError(error) || !parseOAuthSecret(config.secret)) throw publicCloudMcpError(error, config.secret);
+    invalidateToken(config.url, config.secret);
+    try { return await connectCloudOnce(config, run, signal); } catch (retry) { throw publicCloudMcpError(retry, config.secret); }
+  }
+}
+
+function publicCloudMcpError(error: unknown, secret: string | undefined): McpEgressError {
+  const message = error instanceof Error ? error.message : String(error);
+  return new McpEgressError(redactAll(message, secret) || "MCP 调用失败");
+}
+
+async function connectCloudOnce<T>(config: CloudServer, run: (client: Client) => Promise<T>, signal?: AbortSignal): Promise<T> {
   const timed = AbortSignal.any([AbortSignal.timeout(Math.min(120_000, Math.max(500, config.timeoutMs || 15_000))), ...(signal ? [signal] : [])]);
+  const fetch = createCloudMcpFetch(config.role, timed);
+  // Token + discovery requests use the same tenant egress policy (pinned DNS, no private/metadata IPs).
+  const bearer = await resolveBearer(config.url, config.secret, (url, init) => fetch(url, { method: init?.method, headers: new Headers(init?.headers), body: init?.body }));
   const transport = new StreamableHTTPClientTransport(new URL(config.url), {
-    fetch: createCloudMcpFetch(config.role, timed) as unknown as typeof globalThis.fetch,
-    requestInit: { headers: config.secret ? { authorization: `Bearer ${config.secret}` } : {} },
+    fetch: fetch as unknown as typeof globalThis.fetch,
+    requestInit: { headers: bearer ? { authorization: `Bearer ${bearer}` } : {} },
   });
   const client = new Client({ name: "pig-agent", version: "0.3.0" }, { capabilities: {} });
   const stop = () => { void transport.close().catch(() => undefined); };
@@ -153,9 +178,6 @@ async function withCloudClient<T>(config: CloudServer, run: (client: Client) => 
   try {
     await client.connect(transport);
     return await run(client);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new McpEgressError(redactConfiguredSecret(message, config.secret) || "MCP 调用失败");
   } finally {
     timed.removeEventListener("abort", stop);
     await transport.terminateSession().catch(() => undefined);
@@ -164,18 +186,19 @@ async function withCloudClient<T>(config: CloudServer, run: (client: Client) => 
 }
 
 export async function listRemoteTools(config: CloudServer, signal?: AbortSignal): Promise<McpToolView[]> {
+  const leakKey = parseOAuthSecret(config.secret)?.clientSecret ?? config.secret;
   return withCloudClient(config, async (client) => {
     const listed = await client.listTools();
     return listed.tools.slice(0, 40).map((tool) => {
-      const schema = redactSecretValue(tool.inputSchema, config.secret);
+      const schema = redactSecretValue(tool.inputSchema, leakKey);
       const modelName = exposedMcpToolName(config.id, tool.name);
       const usable = schema && typeof schema === "object" && !Array.isArray(schema) && JSON.stringify(schema).length <= 8000;
       return {
         serverId: config.id,
-        serverName: redactConfiguredSecret(config.name, config.secret),
-        name: config.secret && tool.name.includes(config.secret) ? "" : tool.name,
-        modelName: config.secret && tool.name.includes(config.secret) ? null : modelName,
-        description: redactConfiguredSecret(tool.description ?? "", config.secret).slice(0, 400),
+        serverName: redactAll(config.name, config.secret),
+        name: leakKey && tool.name.includes(leakKey) ? "" : tool.name,
+        modelName: leakKey && tool.name.includes(leakKey) ? null : modelName,
+        description: redactAll(tool.description ?? "", config.secret).slice(0, 400),
         inputSchema: usable ? schema as Record<string, unknown> : null,
         readOnlyHint: typeof tool.annotations?.readOnlyHint === "boolean" ? tool.annotations.readOnlyHint : null,
         skipReason: modelName && usable ? null : "工具名或参数不符合限制，未挂载",
@@ -187,6 +210,6 @@ export async function listRemoteTools(config: CloudServer, signal?: AbortSignal)
 export async function callRemoteTool(config: CloudServer, tool: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<string> {
   return withCloudClient(config, async (client) => {
     const result = await client.callTool({ name: tool, arguments: args }, undefined, { signal });
-    return redactConfiguredSecret(JSON.stringify(result), config.secret).slice(0, 8000);
+    return redactAll(JSON.stringify(result), config.secret).slice(0, 8000);
   }, signal);
 }

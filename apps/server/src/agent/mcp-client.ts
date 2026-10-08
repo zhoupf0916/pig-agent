@@ -2,7 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { exposedMcpToolName, mcpDefinitions, mcpToolName, parseMcpToolName, redactConfiguredSecret, redactSecretValue, type McpToolView } from "@pig-agent/contracts";
 import { createPinnedMcpFetch, type McpEgressOptions } from "./mcp-egress.ts";
-import { credentialSecrets, invalidateToken, parseOAuthSecret, resolveBearer } from "./mcp-oauth.ts";
+import { credentialSecrets, invalidateToken, isUnauthorizedError, parseOAuthSecret, resolveBearer } from "./mcp-oauth.ts";
 
 const SDK_VERSION = "1.30.0";
 const MAX_SCHEMA_CHARS = 8_000;
@@ -30,9 +30,8 @@ export async function withMcpClient<T>(config: ServerConfig, options: McpEgressO
     return await connectOnce(config, options, run, signal);
   } catch (error) {
     // OAuth tokens can be revoked before they expire: refresh once on 401.
-    const unauthorized = (error as { code?: unknown })?.code === 401 || /\b401\b|unauthori[sz]ed/i.test(String((error as Error)?.message));
-    if (!unauthorized || !parseOAuthSecret(config.secret)) throw publicMcpError(error, config.secret);
-    invalidateToken(config.secret);
+    if (!isUnauthorizedError(error) || !parseOAuthSecret(config.secret)) throw publicMcpError(error, config.secret);
+    invalidateToken(config.url, config.secret);
     try { return await connectOnce(config, options, run, signal); } catch (retry) { throw publicMcpError(retry, config.secret); }
   }
 }
