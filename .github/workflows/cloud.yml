@@ -23,6 +23,8 @@ jobs:
           package-manager-cache: false
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      # Host-side smokes (remote adapter, product flow) snapshot the workspace with bubblewrap.
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap
       # Ubuntu 24.04 runners restrict unprivileged user namespaces via AppArmor, so bubblewrap
       # cannot configure loopback in its net namespace ("Failed RTM_NEWADDR: Operation not permitted").
       - name: Allow unprivileged user namespaces for bubblewrap
