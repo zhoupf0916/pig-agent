@@ -37,12 +37,34 @@ async function req(
   );
   return raw ? r : r.json();
 }
-async function wait(id, token) {
+// Shared-project runs always require approval (e5d37d0). Pass `approver` (a project editor) to
+// approve each pending step; `deniedApprover` (a viewer) must be refused first. Follow-ups may
+// finish without a tool call (the mock model sees the earlier tool results), so only a fresh
+// shared run asserts that approval was actually required.
+async function wait(id, token, { approver, deniedApprover, mustApprove = false } = {}) {
+  let approved = 0;
   for (let i = 0; i < 300; i++) {
     const r = await req("/v1/runs/" + id, { token });
     if (["succeeded", "failed", "cancelled"].includes(r.state)) {
       assert.equal(r.state, "succeeded", r.error);
+      if (mustApprove) assert.ok(approved > 0, "shared-project run must have required approval");
       return r;
+    }
+    if (approver && r.state === "running") {
+      const { approvals } = await req(`/v1/runs/${id}/approvals`, { token: approver });
+      for (const a of approvals.filter((x) => x.state === "pending")) {
+        if (deniedApprover)
+          await req(`/v1/runs/${id}/approvals/${a.id}/decision`, {
+            token: deniedApprover,
+            body: { decision: "approve" },
+            status: 403,
+          });
+        await req(`/v1/runs/${id}/approvals/${a.id}/decision`, {
+          token: approver,
+          body: { decision: "approve" },
+        });
+        approved++;
+      }
     }
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -118,7 +140,7 @@ try {
       status: 201,
       key,
     });
-  const complete = await wait(run.id, owner.token);
+  const complete = await wait(run.id, owner.token, { approver: editor.token, deniedApprover: viewer.token, mustApprove: true });
   assert.equal(
     (await req(`/v1/runs/${run.id}`, { token: viewer.token })).can_write,
     false,
@@ -146,7 +168,7 @@ try {
     body: { prompt: "Continue across members" },
     status: 201,
   });
-  await wait(follow.id, viewer.token);
+  await wait(follow.id, viewer.token, { approver: owner.token });
   const privateRun = await req("/v1/runs", {
     token: viewer.token,
     body: { prompt: "Private must remain private" },
@@ -193,7 +215,7 @@ try {
     body: { prompt: "Promoted editor continues" },
     status: 201,
   });
-  await wait(allowed.id, owner.token);
+  await wait(allowed.id, owner.token, { approver: viewer.token });
   console.log(
     "PASS: organization invitations/roles, shared project execution, cross-member follow-up, private isolation, read-only enforcement, creator revocation across artifacts/transcripts/attempts, promotion and stale idempotency authorization.",
   );

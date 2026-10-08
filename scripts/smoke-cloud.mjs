@@ -36,11 +36,15 @@ async function request(
   );
   return r;
 }
-async function create(prompt = "本地云平台验收：创建并读回一个文件", key) {
+// Works for both MODEL_MODE=mock (scenario model) and a real provider: explicit file + content,
+// and approvals off so a real model's write_file is not parked waiting for a human.
+const PROOF_PROMPT =
+  "请在工作区创建 cloud-proof.txt，内容为一行 PIG_CLOUD_CONTAINER_OK，然后读回确认，最后在回复中写上“沙箱执行验收通过”。";
+async function create(prompt = PROOF_PROMPT, key) {
   return (
     await request("/v1/runs", {
       method: "POST",
-      body: { prompt },
+      body: { prompt, requireApproval: false },
       key,
       status: 201,
     })
@@ -76,7 +80,7 @@ const key = randomUUID(),
 const same = await (
   await request("/v1/runs", {
     method: "POST",
-    body: { prompt: "本地云平台验收：创建并读回一个文件" },
+    body: { prompt: PROOF_PROMPT, requireApproval: false },
     key,
   })
 ).json();
@@ -156,7 +160,17 @@ const workerContainer = execFileSync(
 ).trim();
 execFileSync("docker", ["kill", workerContainer], { stdio: "pipe" });
 execFileSync("docker", [...compose, "start", "worker"], { stdio: "pipe" });
-assert.equal((await wait(crash.id)).state, "failed");
+// Since safe-checkpoint recovery (f7b1c0b) a worker crash no longer always fails the run: a run
+// killed at a safe checkpoint is re-queued and resumed (recovery_count 1); one killed mid-step
+// fails durably with the interruption error. Either way it must reach a terminal state, never hang
+// or be replayed more than once (or the kill may land after the run already finished).
+const crashed = await wait(crash.id);
+if (crashed.state === "failed") assert.match(crashed.error ?? "", /执行中断/);
+else {
+  assert.equal(crashed.state, "succeeded", crashed.error);
+  assert.ok(crashed.recovery_count <= 1, `recovery_count=${crashed.recovery_count}`);
+}
+console.log(`worker crash: run ${crashed.state} (recoveries=${crashed.recovery_count})`);
 const recovery = await create();
 assert.equal((await wait(recovery.id)).state, "succeeded");
 const overview = await (

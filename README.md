@@ -60,6 +60,20 @@ pnpm cloud:down      # 停止服务，保留数据库
 pnpm dev             # http://127.0.0.1:5173/，云接口代理到 8890
 ```
 
+### 本机 Web 开发模式（本机 Agent API）
+
+默认的 `pnpm start` / `pnpm dev:server` 只暴露 Web 入口：所有 `/api/*` 返回 410，并把页面重定向到控制面。调试本机 Agent 需显式开启本机工作台：
+
+```bash
+pnpm mock:llm   # 可选：离线 mock 模型，http://127.0.0.1:8788/v1
+
+PIG_LOCAL_WORKBENCH=1 WORKSPACE_ROOT=$(mktemp -d) \
+LLM_BASE_URL=http://127.0.0.1:8788/v1 LLM_API_KEY=mock \
+pnpm dev        # API http://127.0.0.1:8787，UI http://127.0.0.1:5173
+```
+
+`WORKSPACE_ROOT` 默认是仓库内的 `sample-workspace/`，建议指向临时目录以免改动仓库。mock 模型按指令路由场景（列出/读/写/运行命令/闲聊/失败），也可用 `MOCK_LLM_SCENARIO=readme` 或消息里的 `[mock:shell]` 强制指定。`PIG_LOCAL_WORKBENCH=1` 会直接操作本机工作区文件，仅用于本地开发，不要在公网暴露。
+
 ### 本地启动 Electron 客户端
 
 ```bash

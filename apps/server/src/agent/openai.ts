@@ -1,7 +1,7 @@
 import type { ChatMessage, ToolCall } from "../types.ts";
 import { TOOL_DEFINITIONS } from "./tools.ts";
 
-export type TokenUsage = { prompt_tokens: number; completion_tokens: number };
+export type TokenUsage = { prompt_tokens: number; completion_tokens: number; prompt_cache_hit_tokens?: number; prompt_cache_miss_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
 type CompletionOptions = { extraTools?: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }>; allowTools?: boolean; signal?: AbortSignal; onDelta?: (text: string) => void; onUsage?: (usage: TokenUsage) => void; maxOutputTokens?: number };
 
 export type LlmSettings = {

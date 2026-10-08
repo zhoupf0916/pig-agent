@@ -154,9 +154,13 @@ app.post("/v1/chat/completions", async (c) => {
   };
   if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
     await new Promise((resolve) => setTimeout(resolve, Math.min(10000, Math.max(250, Number(process.env.PIG_MOCK_MODEL_DELAY_MS) || 250))));
-    const tools = (body.messages || []).filter(
-      (m: { role: string }) => m.role === "tool",
-    );
+    // The scenario restarts on every user turn: follow-ups carry earlier tool results in their
+    // transcript, but each turn should still write/read (and so hit approval) like a real model.
+    const messages: Array<{ role: string }> = body.messages || [];
+    const lastUser = messages.map((m) => m.role).lastIndexOf("user");
+    const tools = messages
+      .slice(lastUser + 1)
+      .filter((m) => m.role === "tool");
     const networkTarget = [...(body.messages || [])]
       .reverse()
       .find(

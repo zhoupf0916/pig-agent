@@ -70,6 +70,8 @@ services:
       MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com/v1}
       MODEL_NAME: ${MODEL_NAME:-deepseek-chat}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
+      # Mock-mode latency; raise (e.g. 3000) so crash-recovery smoke can kill the worker mid-run.
+      PIG_MOCK_MODEL_DELAY_MS: ${PIG_MOCK_MODEL_DELAY_MS:-250}
     networks: [control, egress]
     depends_on:
       cloud: { condition: service_healthy }

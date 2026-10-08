@@ -7,7 +7,8 @@ export type TurnMessage = ChatMessage & {
   phase?: "progress" | "answer";
   outcome?: TurnOutcome;
   notice?: string;
-  author?: string;
+  /** Local turns use a display name; merged remote transcripts carry `{ id, name }`. */
+  author?: string | { id?: string; name?: string };
   attachments?: TurnAttachment[];
 };
 
@@ -52,6 +53,14 @@ function rowFromTool(tool: LiveTool, title: string): ActivityRow {
     state: cancelled ? "cancelled" : approval ? "approval" : !tool.done ? "running" : failed ? "failed" : "ok",
     output: tool.output,
   };
+}
+
+/** Remote transcripts carry `author: { id, name }`; rendering that object as a React child crashes the page. */
+export function authorName(author: unknown): string | undefined {
+  if (typeof author === "string") return author || undefined;
+  if (author && typeof author === "object" && typeof (author as { name?: unknown }).name === "string")
+    return (author as { name: string }).name || undefined;
+  return undefined;
 }
 
 function summarize(value: unknown): string {
@@ -171,7 +180,7 @@ export function buildTurns(input: {
     return {
       id: turn.id,
       userText: turn.user?.content,
-      author: turn.user?.author,
+      author: authorName(turn.user?.author),
       attachments: turn.user?.attachments,
       answer,
       answerStreaming: streamingAnswer,

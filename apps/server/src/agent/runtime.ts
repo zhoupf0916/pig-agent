@@ -1,4 +1,5 @@
 import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "../desktop/computer.ts";
+import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { loadWorkbench, saveWorkbench, stageOperation, applyOperation, MUTATIONS } from "../store/workbench.ts";
 import { saveSession } from "../store/sessions.ts";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -21,7 +22,7 @@ import {
 import { complete } from "./openai.ts";
 import { SandboxError } from "./sandbox.ts";
 import { nativeSandboxStatus } from "./native-sandbox.ts";
-import { loadSkill, loadSuggestedSkills, type ScoredSkill } from "./skills.ts";
+import { listSkills, loadSkill, loadSuggestedSkills, suggestSkills, type ScoredSkill } from "./skills.ts";
 import { assembleModelContext, contextUsageFromMetrics, parseMcpToolName, type ContextMetrics } from "@pig-agent/contracts";
 import { requireMcpTarget } from "../store/mcp-servers.ts";
 import { executeTool, sandboxFromError, summarizeToolArgs, type ToolContext, type ToolSandboxFact, TOOL_DEFINITIONS } from "./tools.ts";
@@ -52,6 +53,13 @@ export class ToolAuthorizationDenied extends Error {}
 export const MAX_TURNS = 20;
 export const MAX_CONSECUTIVE_ERRORS = 3;
 export const MAX_HISTORY_CHARS = 80_000;
+
+export const SYSTEM_DYNAMIC_MARKER = "--- 本轮上下文 (per-turn context) ---";
+
+/** Ephemeral per-turn note appended at the end of the request (never persisted). */
+export function suggestedSkillsNote(suggested: ScoredSkill[]): string {
+  return ["[harness] Suggested skills for this turn (call load_skill if one matches):", ...suggested.map((s) => `- ${s.name}: ${s.description} (matched: ${s.reasons.join(", ")})`)].join("\n");
+}
 
 export async function buildSystemPrompt(
   settings: Settings,
@@ -119,12 +127,16 @@ export async function buildSystemPrompt(
     `Workspace root: ${settings.workspaceRoot}`,
     `LLM: ${settings.llmModel} @ ${settings.llmBaseUrl}`,
     "",
+    "沟通要求：进度短句也默认使用简体中文，例如「我会申请访问这个网页，等待你批准后读取」。不要受英文工具定义影响写成英文。用户明确指定其他语言时除外。",
+    "",
+    // Everything above is static per settings and forms the cacheable prompt prefix.
+    // Per-turn context (instructions, memory, skills) goes last so prompt caching survives across turns.
+    SYSTEM_DYNAMIC_MARKER,
     ...(boundBlock ? [boundBlock, ""] : []),
     ...(memoryBlock ? [memoryBlock, ""] : []),
     "Suggested skills for this task:",
     skillLines,
     loaded,
-    "沟通要求：进度短句也默认使用简体中文，例如「我会申请访问这个网页，等待你批准后读取」。不要受英文工具定义影响写成英文。用户明确指定其他语言时除外。",
   ].join("\n");
 }
 
@@ -235,8 +247,10 @@ export async function runAgent(options: {
   const system: ChatMessage = {
     id: newId("msg"),
     role: "system",
+    // Per-turn keyword skill suggestions are sent as an ephemeral tail message (see below),
+    // so the system prompt stays byte-identical across user turns and the provider prefix cache survives.
     content: await buildSystemPrompt(settings, {
-      suggested,
+      suggested: [],
       loadedBodies,
       projectInstruction,
       expertInstruction,
@@ -283,6 +297,13 @@ export async function runAgent(options: {
     },
   };
 
+  const tokenCalibrator = new TokenCalibrator();
+  const skillMetas = await listSkills().catch(() => []);
+  const userTurnNotes = new Map<string, string>();
+  for (const m of session.messages) if (m.role === "user" && !m.content.startsWith("[harness]")) {
+    const hits = m.id === lastUser?.id ? suggested : suggestSkills(m.content, skillMetas, 2);
+    if (hits.length) userTurnNotes.set(m.id, suggestedSkillsNote(hits));
+  }
   let consecutiveErrors = 0;
   let forceSummary = false;
 
@@ -298,7 +319,7 @@ export async function runAgent(options: {
       } else {
       if (workbench?.checkpoint) { delete workbench.checkpoint; await saveWorkbench(session.id, workbench); }
       const extraToolDefs = allowComputer || options.mcpTools?.length
-        ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
+        ? [...(allowComputer ? [computerToolDefinition] : []), ...[...(options.mcpTools ?? [])].sort((a, b) => a.function.name.localeCompare(b.function.name))]
         : [];
       const toolSchemaChars = JSON.stringify(TOOL_DEFINITIONS).length + JSON.stringify(extraToolDefs).length;
       const summaryHarness = "[harness] Stop calling tools. Write a concise user-facing summary of what you already changed, what failed, and what to review.";
@@ -309,6 +330,13 @@ export async function runAgent(options: {
         durationMs: Math.max(0, Math.round((performance.now() - contextStarted) * 100) / 100), detail: { unit: "estimated_chars", budgetChars: assembled.estimate.budgetChars, usedChars: assembled.estimate.usedChars } }, contextStarted);
       const history = assembled.messages;
       const contextEstimate = assembled.estimate;
+      // Attach each user turn's skill suggestions to that user message (deterministic re-render).
+      // Providers like DeepSeek persist cache units at the end of user input / model output, so
+      // the note must sit inside the user turn rather than as a moving tail after it.
+      for (let i = 0; i < history.length; i++) {
+        const note = history[i]!.role === "user" ? userTurnNotes.get(history[i]!.id) : undefined;
+        if (note) history[i] = { ...history[i]!, content: `${history[i]!.content}\n\n${note}` };
+      }
       if (forceSummary) {
         history.push({
           id: newId("msg"),
@@ -318,7 +346,9 @@ export async function runAgent(options: {
         });
       }
 
-      const inputEstimate = history.reduce((n, m) => n + m.content.length + (m.reasoningContent?.length ?? 0) + JSON.stringify(m.toolCalls ?? []).length, 0) + JSON.stringify(TOOL_DEFINITIONS).length;
+      // Unified budget: messages + built-in tools + computer/MCP tools, in estimated tokens (calibrated by provider usage).
+      const rawInputEstimate = estimateMessagesTokens(history) + estimateToolSchemaTokens(TOOL_DEFINITIONS, extraToolDefs);
+      const inputEstimate = tokenCalibrator.apply(rawInputEstimate);
       let remaining = workbench ? workbench.policy.maxTokens - workbench.usage.input - workbench.usage.output - inputEstimate : 4096;
       if (workbench && workbench.policy.maxCost > 0) {
         const moneyLeft = workbench.policy.maxCost - workbench.usage.cost - inputEstimate * workbench.policy.inputPrice / 1000000;
@@ -349,9 +379,7 @@ export async function runAgent(options: {
       }, modelStartedMono);
       response = await complete(settings, history, {
         signal,
-        extraTools: allowComputer || options.mcpTools?.length
-          ? [...(allowComputer ? [computerToolDefinition] : []), ...(options.mcpTools ?? [])]
-          : undefined,
+        extraTools: extraToolDefs.length ? extraToolDefs : undefined,
         maxOutputTokens: workbench ? Math.min(4096, remaining) : undefined,
         onUsage: (usage) => { reported = usage; },
         onDelta: (text) => {
@@ -407,6 +435,7 @@ export async function runAgent(options: {
           sandboxRequested: workbench?.policy.shell ?? "未采集",
           sandboxEffective: "未采集",
           usage: reported ?? null,
+          cache: { ...promptCacheStats(reported), prefix: prefixFingerprint(TOOL_DEFINITIONS, extraToolDefs, system.content.split(SYSTEM_DYNAMIC_MARKER)[0]) },
           finishReason: response.finishReason,
           ttftMs: firstTokenAt === undefined ? null : Math.max(0, Math.round(firstTokenAt - modelStartedMono)),
           contextEstimate,
@@ -421,7 +450,8 @@ export async function runAgent(options: {
       if (workbench) {
         const valid = reported && Number.isFinite(reported.prompt_tokens) && Number.isFinite(reported.completion_tokens) && reported.prompt_tokens >= 0 && reported.completion_tokens >= 0;
         const input = valid ? reported!.prompt_tokens : inputEstimate;
-        const output = valid ? reported!.completion_tokens : content.length + JSON.stringify(toolCalls).length;
+        if (valid) tokenCalibrator.observe(rawInputEstimate, reported!.prompt_tokens);
+        const output = valid ? reported!.completion_tokens : estimateTokens(content) + estimateTokens(JSON.stringify(toolCalls ?? []));
         workbench.usage.input += input;
         workbench.usage.output += output;
         workbench.usage.estimated ||= !valid;

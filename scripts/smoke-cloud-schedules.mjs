@@ -83,7 +83,7 @@ async function create(extra = {}) {
   const key = randomUUID();
   const body = {
     name: "自动验收定时计划",
-    prompt: "在容器写入并读回验收文件",
+    prompt: "请在工作区创建 cloud-proof.txt，内容为一行 PIG_CLOUD_CONTAINER_OK，然后读回确认，最后在回复中写上“沙箱执行验收通过”。",
     schedule: "@hourly",
     timezone: "Asia/Shanghai",
     ...extra,

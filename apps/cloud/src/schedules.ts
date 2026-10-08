@@ -328,7 +328,12 @@ export function registerScheduleRoutes(app: Hono<CloudEnv>): void {
         ).rows[0];
         if (!old) return null;
         const p = { ...view(old), ...parsed.data };
-        const compiled = compiledSchedule({ plan: parsed.data.plan ?? p.plan, schedule: parsed.data.schedule ?? p.schedule });
+        // An explicit cron in the patch must win over the stored plan; otherwise invalid crons were silently ignored.
+        const compiled = parsed.data.plan
+          ? compiledSchedule({ plan: parsed.data.plan })
+          : parsed.data.schedule !== undefined
+            ? compiledSchedule({ schedule: parsed.data.schedule })
+            : compiledSchedule({ plan: p.plan, schedule: p.schedule });
         const changed =
           compiled.cron !== old.cron ||
           p.timezone !== old.timezone ||

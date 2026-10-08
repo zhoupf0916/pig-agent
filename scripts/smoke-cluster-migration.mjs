@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 // Run real migration DDL against an empty, transaction-local schema. Rollback leaves the live cluster untouched.
-const base = (await readFile("apps/cloud/src/db.ts", "utf8")).match(
-  /await client\.query\(`([\s\S]*?)`\);/,
+// db.ts interpolates the billing DDL (9fad499), so substitute it the same way the runtime does.
+const billing = (await readFile("apps/cloud/src/billing.ts", "utf8")).match(
+  /export const billingSchema = `([\s\S]*?)`;/,
 )?.[1];
+const base = (await readFile("apps/cloud/src/db.ts", "utf8"))
+  .match(/await client\.query\(`([\s\S]*?)`\);/)?.[1]
+  ?.replace("${billingSchema}", () => billing ?? "");
 const collaboration = (
   await readFile("apps/cloud/src/collaboration-schema.ts", "utf8")
 ).match(/export const collaborationSchema = `([\s\S]*?)`;/)?.[1];
@@ -12,7 +16,7 @@ const cluster = (
   await readFile("apps/cloud/src/cluster-schema.ts", "utf8")
 ).match(/export const clusterSchema = `([\s\S]*?)`;/)?.[1];
 assert(
-  base && collaboration && cluster,
+  billing && base && !base.includes("${") && collaboration && cluster,
   "Expected actual migration DDL templates",
 );
 const schema = `acceptance_migration_${Date.now()}`;

@@ -43,7 +43,7 @@ exports.runSmoke = async ({ app, win, origin, userData, accessVault }) => {
       await win.webContents.executeJavaScript(`(async()=>{
         const list=await (await fetch('/api/sessions')).json();
         const records=await Promise.all(list.sessions.map(s=>fetch('/api/sessions/'+s.id).then(r=>r.json())));
-        if (!records.some(s=>s.engine==='codex' && s.executionTarget==='local')) throw Error('Pinned execution config lost on restart');
+        if (!records.some(s=>s.engine==='pig' && s.executionTarget==='local')) throw Error('Pinned execution config lost on restart');
         const fresh=await (await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
         if(fresh.engine!=='pig') throw Error('New session ignored default engine');
         location.hash='#/sessions/'+fresh.id;
@@ -84,18 +84,24 @@ exports.runSmoke = async ({ app, win, origin, userData, accessVault }) => {
     })()`);
     if (!chat.streamed || chat.users !== 1 || chat.answer !== "OK")
       throw new Error("Chat/SSE proxy failed");
+    // Codex execution was dropped (e5d37d0 "keep execution in the Pig sandbox and drop Codex"):
+    // a runtime:'codex' request must be coerced to the Pig sandbox and still complete, while the
+    // stored Codex key copy stays redacted.
     const codex = await win.webContents.executeJavaScript(`(async () => {
-      await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runtime: 'codex', codexBaseUrl: ${JSON.stringify(mockURL)}, codexBinaryPath: ${JSON.stringify(process.env.PIG_DESKTOP_SMOKE_CODEX_BIN)}, codexModel: 'deepseek-flash' }) });
+      const put = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runtime: 'codex', codexBaseUrl: ${JSON.stringify(mockURL)}, codexBinaryPath: ${JSON.stringify(process.env.PIG_DESKTOP_SMOKE_CODEX_BIN)}, codexModel: 'deepseek-flash' }) });
+      const effective = await put.json();
+      if (effective.runtime !== 'pig') return { ok: false, error: 'codex runtime was not coerced to pig: ' + effective.runtime };
       const copy = await fetch('/api/settings/codex/use-pig-key', { method: 'POST' });
       const visible = await copy.json();
       const test = await fetch('/api/settings/test-connection', { method: 'POST' });
       if (!test.ok) return { ok: false, error: await test.text() };
       const task = await (await fetch('/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json();
-      await (await fetch('/api/sessions/' + task.id + '/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'Reply CODEX_OK, no tools.' }) })).text();
+      if (task.engine !== 'pig') return { ok: false, error: 'new task engine ' + task.engine };
+      await (await fetch('/api/sessions/' + task.id + '/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: 'Reply OK, no tools.' }) })).text();
       const final = await (await fetch('/api/sessions/' + task.id)).json();
-      return { ok: copy.ok && visible.codexApiKey === '' && visible.codexApiKeyConfigured && final.messages.at(-1)?.content === 'CODEX_OK' && !final.lastError };
+      return { ok: copy.ok && visible.codexApiKey === '' && visible.codexApiKeyConfigured && final.messages.at(-1)?.content === 'OK' && !final.lastError, error: final.lastError };
     })()`);
-    if (!codex.ok) throw new Error('Desktop Codex failed: ' + (codex.error || 'chat/key'));
+    if (!codex.ok) throw new Error('Desktop codex→pig fallback failed: ' + (codex.error || 'chat/key'));
     const disk = await fs.readFile(
       path.join(userData, "data/settings.json"),
       "utf8",
