@@ -12,9 +12,12 @@ bash deploy-c666abf.sh            # 部署（同目录有 e2e-remote.sh 时成�
 bash deploy-c666abf.sh rollback   # 先备份，再切回部署前的 release 与 before-* 镜像
 bash deploy-c666abf.sh status     # 只做检查
 bash e2e-remote.sh                # 单独跑 e2e
+# 在其他机器上对公网地址跑（遵守 Nginx 限流，默认每请求间隔 150ms；只尝试一次登录）
+PIG_BASE=https://193.112.22.18 PIG_REMOTE_ADMIN_USER=admin PIG_REMOTE_ADMIN_PASSWORD=*** bash e2e-remote.sh
 ```
 
 - `data/`、`stack.env`、`accounts.txt` 只在 `/home/ubuntu/pig-agent/data` 与 Docker 卷中，脚本从不打印、复制或上传其内容；e2e 在进程内读取管理员账号，结束时注销会话，测试计划会删除。
 - 有运行中任务时部署会停止（`FORCE=1` 跳过）。日志写入 `backups/deploy-*.log`（0600）。
 - 回滚不恢复数据库：c666abf 没有新增表结构迁移。只有确需回到部署前数据时，才单独确认并用 `backups/before-20261008-p0p2-c666abf/*.dump` 恢复（会覆盖之后的新数据）。
+- 账号来源：`PIG_REMOTE_ADMIN_USER` / `PIG_REMOTE_ADMIN_PASSWORD` 环境变量优先，其次 `accounts.txt`（`Username:` / `Password:` 行，用户名默认 `admin`）；都没有时输出一条 FAIL 并停止，不会继续尝试。`PIG_INSECURE_TLS=1` 仅用于已知自签名主机。
 - 可选：`CLOUD_DIST=asset` 直接用预构建产物；`NPM_REGISTRY=...` 更换构建用 npm 源；`SKIP_E2E=1`。

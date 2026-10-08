@@ -3,6 +3,10 @@
 # Prints only PASS/FAIL lines plus a final count. The admin username/password are read from
 # data/cloud-local/accounts.txt inside the test process and never printed; the session is logged out at the end.
 #   bash e2e-remote.sh
+#   PIG_BASE=https://193.112.22.18 PIG_REMOTE_ADMIN_PASSWORD=... bash e2e-remote.sh   # from another machine
+# Env: PIG_BASE (default http://127.0.0.1:8890), PIG_REMOTE_ADMIN_USER / PIG_REMOTE_ADMIN_PASSWORD (override
+# accounts.txt; default user "admin"), PIG_PACE_MS (delay per request; default 150 for non-local bases to stay
+# under the nginx limits), PIG_INSECURE_TLS=1 (skip certificate verification; only for a known self-signed host).
 # Covers: health, public HTTPS, web workbench, admin page + password login + overview, a real model run
 # with tool calls + approval + artifact, a follow-up conversation turn, A2A card / auth / message/send /
 # message/stream / tasks/get, schedules (cron + manual run + history + delete).
@@ -12,22 +16,32 @@ ACC=${PIG_ACCOUNTS:-$ROOT/data/cloud-local/accounts.txt}
 ENVF=${PIG_STACK_ENV:-$ROOT/data/cloud-local/stack.env}
 export BASE=${PIG_BASE:-http://127.0.0.1:8890}
 NODE_IMAGE=${NODE_IMAGE:-node:24-bookworm-slim}
-[ -r "$ACC" ] || { echo "FAIL accounts file not readable: $ACC"; exit 1; }
-ORIGIN=$(grep -m1 '^WEB_PUBLIC_ORIGIN=' "$ENVF" 2>/dev/null | cut -d= -f2- | tr -d "\"'" || true)
+case "$BASE" in http://127.0.0.1*|http://localhost*) LOCAL=1 ;; *) LOCAL=0 ;; esac
+if [ -z "${PIG_REMOTE_ADMIN_PASSWORD:-}" ] && ! [ -r "$ACC" ]; then
+  echo "FAIL admin credentials — $ACC not readable and PIG_REMOTE_ADMIN_PASSWORD not set"; exit 1
+fi
+if [ "$LOCAL" = 1 ]; then
+  ORIGIN=$(grep -m1 '^WEB_PUBLIC_ORIGIN=' "$ENVF" 2>/dev/null | cut -d= -f2- | tr -d "\"'" || true)
+else ORIGIN=$(sed -E 's#^(https?://[^/]+).*#\1#' <<<"$BASE"); fi
 export ORIGIN=${ORIGIN:-$BASE}
-if [[ "$ORIGIN" == https://* ]]; then
+export PIG_PACE_MS=${PIG_PACE_MS:-$([ "$LOCAL" = 1 ] && echo 0 || echo 150)}
+[ "${PIG_INSECURE_TLS:-0}" = 1 ] && export NODE_TLS_REJECT_UNAUTHORIZED=0 NODE_NO_WARNINGS=1
+PUB=0
+if [ "$LOCAL" = 1 ] && [[ "$ORIGIN" == https://* ]]; then
   host=${ORIGIN#https://}; host=${host%%/*}; host=${host%%:*}
   if curl -fsS -m 10 --connect-to "$host:443:127.0.0.1:443" "https://$host/health" 2>/dev/null | grep -q '"ok":true'; then echo "PASS public HTTPS https://$host/health (nginx)"; PUB=0; else echo "FAIL public HTTPS https://$host/health (nginx)"; PUB=1; fi
-else PUB=0; fi
+fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 cat > "$tmp/e2e.mjs" <<'JS'
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 const BASE = process.env.BASE, ORIGIN = process.env.ORIGIN;
 const RUN_MS = Number(process.env.E2E_RUN_TIMEOUT_S || 300) * 1000;
-const acc = readFileSync(process.env.ACCOUNTS || "/run/pig/accounts.txt", "utf8");
-const username = acc.match(/^Username:\s*(\S+)\s*$/m)?.[1];
-const password = acc.match(/^Password:\s*(\S+)\s*$/m)?.[1];
+const PACE = Number(process.env.PIG_PACE_MS || 0);
+let acc = "";
+try { acc = readFileSync(process.env.ACCOUNTS || "/run/pig/accounts.txt", "utf8"); } catch {}
+const username = process.env.PIG_REMOTE_ADMIN_USER || acc.match(/^Username:\s*(\S+)\s*$/m)?.[1] || "admin";
+const password = process.env.PIG_REMOTE_ADMIN_PASSWORD || acc.match(/^Password:\s*(\S+)\s*$/m)?.[1] || "";
 let session = "";
 let passed = 0, failed = 0;
 const scrub = (s) => {
@@ -42,6 +56,7 @@ async function test(name, fn) {
 const ok = (cond, msg) => { if (!cond) throw Error(msg); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function req(path, { method = "GET", body, auth = true, headers = {}, timeout = 30000 } = {}) {
+  if (PACE) await sleep(PACE);
   return fetch(BASE + path, {
     method,
     headers: { ...(auth && session ? { Authorization: `Bearer ${session}` } : {}), ...(body !== undefined ? { "content-type": "application/json" } : {}), ...headers },
@@ -85,7 +100,7 @@ await test("web workbench page + bundle", async () => {
 await test("admin console page", async () => { ok(String(await api("/admin/", { auth: false })).includes("app.js"), "admin/app.js not referenced"); });
 await test("API rejects anonymous calls", async () => { const r = await req("/v1/runs", { auth: false }); ok(r.status === 401, `HTTP ${r.status}`); });
 const loggedIn = await test("admin password login", async () => {
-  ok(username && password, "Username:/Password: lines not found in accounts.txt");
+  ok(password, "no admin password: accounts.txt has no Password: line — set PIG_REMOTE_ADMIN_PASSWORD (and PIG_REMOTE_ADMIN_USER if not admin)");
   const r = await req("/auth/web/login", { method: "POST", auth: false, headers: { Origin: ORIGIN }, body: { username, password } });
   const body = await r.json().catch(() => ({}));
   ok(r.status === 200, `HTTP ${r.status} ${body.error || ""}`);
@@ -139,6 +154,7 @@ const msg = (text, contextId) => ({ message: { role: "user", messageId: randomUU
 await test("A2A agent card", async () => {
   const c = await api("/.well-known/agent-card.json", { auth: false });
   ok(c.capabilities?.streaming === true, "streaming capability missing"); ok(/\/v1\/a2a$/.test(c.url), `url=${c.url}`);
+  if (ORIGIN.startsWith("https://")) ok(c.url === `${ORIGIN}/v1/a2a`, `card advertises ${c.url}, expected ${ORIGIN}/v1/a2a (bearer would go over plain http)`);
   return `protocol=${c.protocolVersion}, url=${c.url}, skills=${c.skills?.length ?? 0}`;
 });
 await test("A2A rejects anonymous calls", async () => { const r = await rpc("tasks/get", { id: "x" }, false); ok(r.status === 401, `HTTP ${r.status}`); });
@@ -205,8 +221,11 @@ run_node() {
   local major
   major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
   if [ "$major" -ge 22 ]; then ACCOUNTS=$ACC node "$tmp/e2e.mjs"; return; fi
-  docker run --rm --network host --user "$(id -u):$(id -g)" -e BASE -e ORIGIN -e E2E_RUN_TIMEOUT_S \
-    -v "$ACC":/run/pig/accounts.txt:ro -v "$tmp/e2e.mjs":/e2e.mjs:ro "$NODE_IMAGE" node /e2e.mjs
+  local mount=()
+  [ -r "$ACC" ] && mount=(-v "$ACC":/run/pig/accounts.txt:ro)
+  docker run --rm --network host --user "$(id -u):$(id -g)" -e BASE -e ORIGIN -e E2E_RUN_TIMEOUT_S -e PIG_PACE_MS \
+    -e PIG_REMOTE_ADMIN_USER -e PIG_REMOTE_ADMIN_PASSWORD -e NODE_TLS_REJECT_UNAUTHORIZED -e NODE_NO_WARNINGS \
+    "${mount[@]}" -v "$tmp/e2e.mjs":/e2e.mjs:ro "$NODE_IMAGE" node /e2e.mjs
 }
 run_node; rc=$?
 [ "$PUB" = 0 ] || rc=1
