@@ -41,6 +41,9 @@ try {
     ],
     steps: [],
     artifacts: [],
+    // Remote runs default to requireApproval=true since 711e574; this smoke has no human in the
+    // loop, so it pins explicit consent like a user who turned approvals off.
+    remoteRequireApproval: false,
   };
   const result = await runRemoteCloudAgent({
     session,
@@ -54,7 +57,7 @@ try {
   assert.equal(result.remoteState,"succeeded");
   assert.ok(
     result.messages.some(
-      (m) => m.role === "assistant" && m.content.includes("容器执行验收通过"),
+      (m) => m.role === "assistant" && m.content.includes("沙箱执行验收通过"),
     ),
   );
   assert.ok(result.artifacts.some((a) => a.path === "cloud-proof.txt"));
