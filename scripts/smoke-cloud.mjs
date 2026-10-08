@@ -160,7 +160,17 @@ const workerContainer = execFileSync(
 ).trim();
 execFileSync("docker", ["kill", workerContainer], { stdio: "pipe" });
 execFileSync("docker", [...compose, "start", "worker"], { stdio: "pipe" });
-assert.equal((await wait(crash.id)).state, "failed");
+// Since safe-checkpoint recovery (f7b1c0b) a worker crash no longer always fails the run: a run
+// killed at a safe checkpoint is re-queued and resumed (recovery_count 1); one killed mid-step
+// fails durably with the interruption error. Either way it must reach a terminal state, never hang
+// or be replayed more than once (or the kill may land after the run already finished).
+const crashed = await wait(crash.id);
+if (crashed.state === "failed") assert.match(crashed.error ?? "", /执行中断/);
+else {
+  assert.equal(crashed.state, "succeeded", crashed.error);
+  assert.ok(crashed.recovery_count <= 1, `recovery_count=${crashed.recovery_count}`);
+}
+console.log(`worker crash: run ${crashed.state} (recoveries=${crashed.recovery_count})`);
 const recovery = await create();
 assert.equal((await wait(recovery.id)).state, "succeeded");
 const overview = await (
