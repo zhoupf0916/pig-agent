@@ -31,6 +31,13 @@ jobs:
           package-manager-cache: false
       - uses: pnpm/action-setup@v6
       - run: pnpm install --frozen-lockfile
+      # Ubuntu 24.04 runners restrict unprivileged user namespaces via AppArmor, so bubblewrap
+      # cannot configure loopback in its net namespace ("Failed RTM_NEWADDR: Operation not permitted").
+      - name: Allow unprivileged user namespaces for bubblewrap
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - run: pnpm cluster:up
       - run: pnpm cluster:smoke
       - name: Completion delivery and generation fencing
