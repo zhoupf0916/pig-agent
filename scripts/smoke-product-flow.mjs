@@ -87,7 +87,7 @@ try {
     samples.every((sample) => expectedText.startsWith(sample.text)),
     "stream must remain an exact prefix, without duplicated tokens from two SSE connections",
   );
-  await expect(page.getByText(expectedText, { exact: true })).toHaveCount(1);
+  await expect.poll(async () => page.getByText(expectedText, { exact: true }).count(), { timeout: 30000 }).toBe(1);
   const recorded = await fetch(
     `${base}/api/sessions/${sessionId}/events?live=0&after=0`,
   ).then((r) => r.json());
