@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -207,6 +207,41 @@ describe("Milestone M local-turn recoverability", () => {
     expect(next.lastError).toBe(LOCAL_TURN_MESSAGES.gateway_unreachable);
     expect(next.localRetry).toBe("turn");
     expect(runningTurns.has(next.id)).toBe(false);
+  });
+
+  it("does not count benign exit 1 (grep no match) toward the consecutive-failure stop", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "pig-m-benign-"));
+    writeFileSync(join(workspaceRoot, "a.txt"), "hello\n");
+    let n = 0;
+    const grep = (_raw: string, res: ServerResponse) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      toolDelta(res, [{ id: `call_g${n++}`, name: "run_shell", args: { command: "grep -q FAIL a.txt" } }]);
+    };
+    const mock = await startScriptedLlm([
+      grep,
+      grep,
+      grep,
+      grep,
+      (_raw, res) => {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        sse(res, { choices: [{ delta: { content: "没有发现 FAIL。" } }] });
+      },
+    ]);
+    try {
+      const next = await runAgent({
+        session: emptySession(),
+        settings: pigSettings(workspaceRoot, { llmBaseUrl: mock.url }),
+        signal: new AbortController().signal,
+        emit: () => undefined,
+      });
+      const shells = next.messages.filter((m) => m.role === "tool");
+      expect(shells).toHaveLength(4);
+      expect(shells.every((m) => m.content.includes('"exit_code": 1'))).toBe(true);
+      expect(next.lastError).toBeFalsy();
+      expect(next.messages.at(-1)?.content).toBe("没有发现 FAIL。");
+    } finally {
+      await mock.close();
+    }
   });
 
   it("surfaces consecutive tool failures in Chinese and stays idle", async () => {
