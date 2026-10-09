@@ -218,6 +218,36 @@ await test("object storage: attachment round trip + verified copies", async () =
   const t = (await api("/v1/admin/storage")).tables;
   return `mode=${st.mode}, verified ${v.ok}/${v.checked}, attachments ${t.attachments.offloaded}/${t.attachments.total}, workspaces ${t.workspaces.offloaded}/${t.workspaces.total} offloaded, pending ${t.attachments.pending + t.workspaces.pending}`;
 });
+await test("knowledge base: ingest + search + cited answer in a project run", async () => {
+  // One reusable personal project (projects cannot be deleted); the test document is removed afterwards.
+  const name = "E2E 知识库（自动测试）";
+  const projects = (await api("/v1/projects")).projects;
+  const projectId = projects.find((p) => p.name === name && p.kind === "personal")?.id ?? (await api("/v1/projects", { method: "POST", status: 201, body: { name, description: "e2e-remote.sh 知识库检查使用，可忽略" } })).id;
+  const code = `KB-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const doc = `# 猪猪星球运维手册\n\n## 机房门禁\n\n进入猪猪星球三号机房需要出示紫色门禁卡，并报出本季度暗号 ${code}。暗号每季度轮换一次。\n\n## 值班\n\n值班表每周一上午更新。\n`;
+  const t0 = Date.now();
+  const up = await api(`/v1/projects/${projectId}/knowledge`, { method: "POST", status: 201, body: { name: `e2e-${code}.md`, data: Buffer.from(doc).toString("base64") } });
+  try {
+    let d;
+    for (let i = 0; i < 30; i++) { d = (await api(`/v1/projects/${projectId}/knowledge`)).documents.find((x) => x.id === up.document.id); if (d?.status === "ready" || d?.status === "failed") break; await sleep(1000); }
+    ok(d?.status === "ready", `ingestion status=${d?.status} ${d?.error || ""}`);
+    const ingestMs = Date.now() - t0;
+    const s = await api(`/v1/projects/${projectId}/knowledge/search`, { method: "POST", body: { query: "三号机房 门禁 暗号", k: 3 } });
+    ok(s.hits[0]?.content.includes(code), "search did not return the document");
+    const view = await api(`/v1/knowledge/chunks/${s.hits[0].id}`);
+    ok(view.chunk.heading.includes("机房门禁"), "citation view heading mismatch");
+    const created = await api("/v1/runs", { method: "POST", headers: { "Idempotency-Key": randomUUID() }, status: 201, body: { prompt: "根据项目知识库回答：进入猪猪星球三号机房需要报出的本季度暗号是什么？", projectId, requireApproval: false } });
+    const r = await finish(created.id); blockIf402(r.state, r.error); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
+    const reply = r.conversation_id ? await lastReply(r.conversation_id) : String(r.result || "");
+    const tools = (await api(`/v1/runs/${created.id}/eventlog`)).events.filter((e) => e.event?.type === "tool_start").map((e) => e.event.tool || e.event.name);
+    ok(tools.includes("knowledge_search"), `knowledge_search not called (tools=${tools.join(",")})`);
+    if (mode === "provider") {
+      ok(reply.includes(code), `answer lacks the code: ${reply.slice(0, 80)}`);
+      ok(/\(#knowledge:chunk_[a-f0-9]{32}\)/.test(reply), "answer has no clickable citation");
+    }
+    return `ingest ${ingestMs} ms, search ${s.tookMs} ms (${s.mode}), tools=[${tools.join(",")}], reply="${reply.replace(/\(#knowledge:chunk_[a-f0-9]+\)/g, "(#knowledge:…)").slice(0, 60)}"`;
+  } finally { await api(`/v1/projects/${projectId}/knowledge/${up.document.id}`, { method: "DELETE" }).catch(() => {}); }
+});
 // Opt-in (PIG_E2E_FAILOVER=1): briefly routes production through a broken primary with the real channel as
 // standby, proves the run still succeeds via failover, then restores the original primary.
 if (process.env.PIG_E2E_FAILOVER === "1") await test("model failover: broken primary -> standby (live)", async () => {
