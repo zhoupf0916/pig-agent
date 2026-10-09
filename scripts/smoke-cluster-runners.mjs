@@ -122,7 +122,8 @@ try {
   await until(
     async () =>
       (await Promise.all(killed.map((r) => state(r.id)))).every(
-        (r) => r.state === "failed",
+        // Started work fails without replay; an attempt killed before it started is retried (U3).
+        (r) => r.state === "failed" || (!r.started_at && r.state !== "cancelled"),
       ),
     "lease expiration after SIGKILL",
     35000,
@@ -188,7 +189,7 @@ try {
     const r = await state(graceful);
     return terminal(r) && r;
   }, "graceful shutdown result");
-  assert.equal(done.state, "failed");
+  assert.ok(done.state === "failed" || (!done.started_at && done.state === "succeeded"), done.state);
   evidence.push({
     scenario: "SIGTERM drain bounded shutdown",
     task: graceful,
