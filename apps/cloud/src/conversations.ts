@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, hash, terminal } from "./db.ts";
 import type { CloudEnv } from "./types.ts";
+import { STATIC_TOKEN_LIVE } from "./bootstrap-tokens.ts";
 
 const followSchema = z
   .object({
@@ -62,7 +63,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       let revision="",heartbeat=0;
       while (!stream.aborted) {
         // Re-read identity, session validity and project membership on every poll.
-        const principal=(await db.query(`SELECT id,role FROM principals WHERE id=$1 AND enabled AND (($3 AND token_hash=$2) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,[c.get("principal").id,credential,supplied.source === "bearer"])).rows[0];
+        const principal=(await db.query(`SELECT id,role FROM principals WHERE id=$1 AND enabled AND (($3 AND token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,[c.get("principal").id,credential,supplied.source === "bearer"])).rows[0];
         const conversation=principal && await conversationFor(id,principal);
         if (!conversation) { await stream.writeSSE({data:JSON.stringify({type:"access_revoked"})}); break; }
         const stamp=(await db.query(`SELECT r.id,r.state,r.error,r.updated_at,(SELECT count(*) FROM workspace_versions WHERE run_id=r.id) AS versions,

@@ -10,6 +10,7 @@ import { passwordAccountSchema } from "./password-schema.ts";
 import { clusterSchema } from "./cluster-schema.ts";
 import { createHash } from "node:crypto";
 import { collaborationSchema } from "./collaboration-schema.ts";
+import { bootstrapTokenSchema, syncBootstrapPrincipals } from "./bootstrap-tokens.ts";
 export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -88,17 +89,8 @@ export async function migrate() {
     await client.query(mcpServerSchema);
     await client.query(attachmentSchema);
     await client.query(clusterSchema);
-    for (const [id, name, role, token] of [
-      ["admin", "本机管理员", "admin", process.env.ADMIN_TOKEN],
-      ["member", "本机体验账号", "member", process.env.MEMBER_TOKEN],
-      ["member2", "隔离验证账号", "member", process.env.MEMBER2_TOKEN],
-    ]) {
-      if (!token) throw Error("Missing bootstrap credential");
-      await client.query(
-        "INSERT INTO principals(id,name,role,token_hash) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET token_hash=$4",
-        [id, name, role, hash(token)],
-      );
-    }
+    await client.query(bootstrapTokenSchema);
+    await syncBootstrapPrincipals(client);
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");
