@@ -1,3 +1,4 @@
+import { recordQueued } from "./observability.ts";
 import { recoverInterruptedSql } from "./recovery.ts";
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
@@ -228,7 +229,7 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
         // The short, database-wide claim lock makes every aggregate limit authoritative across control instances.
         const candidate = (
           await client.query(
-            `SELECT r.id,r.execution_profile,r.owner_id FROM runs r JOIN principals p ON p.id=r.owner_id LEFT JOIN dispatch_owners d ON d.owner_id=r.owner_id WHERE r.state='queued' AND p.enabled AND r.execution_profile IN (SELECT jsonb_array_elements_text($1::jsonb)) AND (r.project_id IS NULL OR project_access(r.project_id,r.owner_id,true)) AND (SELECT count(*) FROM runs a WHERE a.owner_id=r.owner_id AND a.${active})<$2 AND (r.project_id IS NULL OR (SELECT count(*) FROM runs a WHERE a.project_id=r.project_id AND a.${active})<$3) ORDER BY d.last_claimed_at NULLS FIRST,r.created_at,r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
+            `SELECT r.id,r.execution_profile,r.owner_id,r.created_at FROM runs r JOIN principals p ON p.id=r.owner_id LEFT JOIN dispatch_owners d ON d.owner_id=r.owner_id WHERE r.state='queued' AND p.enabled AND r.execution_profile IN (SELECT jsonb_array_elements_text($1::jsonb)) AND (r.project_id IS NULL OR project_access(r.project_id,r.owner_id,true)) AND (SELECT count(*) FROM runs a WHERE a.owner_id=r.owner_id AND a.${active})<$2 AND (r.project_id IS NULL OR (SELECT count(*) FROM runs a WHERE a.project_id=r.project_id AND a.${active})<$3) ORDER BY d.last_claimed_at NULLS FIRST,r.created_at,r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
             [
               JSON.stringify(worker.profiles),
               limits.userConcurrency,
@@ -263,6 +264,7 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
           [attemptId, candidate.id, workerId, resources],
         );
         await client.query("COMMIT");
+        recordQueued(candidate.id, new Date(candidate.created_at), workerId);
         return c.json({ id: candidate.id, token, resources });
       } catch (e) {
         await client.query("ROLLBACK");

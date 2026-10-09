@@ -4,14 +4,17 @@
  *   pnpm eval:tasks --real               # real model from LLM_BASE_URL/LLM_MODEL + DEEPSEEK_API_KEY|LLM_API_KEY
  *   --judge                              # + LLM-as-judge rubric scoring (PIG_JUDGE_MODEL, defaults to LLM_MODEL; real key required)
  *   --case <id>  --trials <n>  --out data/evals/tasks-latest.json  --min-pass 0.8 (exit 1 below)
+ *   --baseline <file>                    # regression gate: exit 1 when a baseline-passing case/check fails
+ *   --write-baseline <file>              # record this run as the new baseline (after an intended change)
  */
 import { createServer } from "node:http";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { taskCases } from "../apps/server/src/agent/evaluation/task-cases.ts";
 import { markdownTable, runTaskCase, summarize, type TaskResult } from "../apps/server/src/agent/evaluation/task-eval.ts";
 import { mockReply } from "../apps/server/src/dev/mock-scenarios.ts";
+import { compareToBaseline, toBaseline, type Baseline } from "../apps/server/src/agent/evaluation/eval-gate.ts";
 import { openAiJudge } from "../apps/server/src/agent/evaluation/judge.ts";
 
 const args = process.argv.slice(2);
@@ -21,6 +24,8 @@ const trials = Number(value("--trials", "1"));
 const filter = value("--case", "");
 const out = resolve(value("--out", `data/evals/tasks-${real ? "real" : "mock"}-latest.json`));
 const minPass = Number(value("--min-pass", "0"));
+const baselineFile = value("--baseline", "");
+const writeBaselineFile = value("--write-baseline", "");
 
 async function mockServer() {
   const server = createServer((req, res) => {
@@ -64,4 +69,20 @@ await mkdir(dirname(out), { recursive: true });
 await writeFile(out, JSON.stringify({ at: new Date().toISOString(), git, model: settings.llmModel, summary, results }, null, 2));
 await writeFile(out.replace(/\.json$/, ".md"), `# Task eval ${git} (${settings.llmModel})\n\n${JSON.stringify(summary)}\n\n${markdownTable(results)}\n`);
 console.log(JSON.stringify(summary));
-if (summary.passRate < minPass) { console.error(`pass rate ${summary.passRate} < ${minPass}`); process.exit(1); }
+let failed = false;
+if (summary.passRate < minPass) { console.error(`pass rate ${summary.passRate} < ${minPass}`); failed = true; }
+if (writeBaselineFile) {
+  await mkdir(dirname(resolve(writeBaselineFile)), { recursive: true });
+  await writeFile(resolve(writeBaselineFile), JSON.stringify(toBaseline(results, settings.llmModel), null, 2) + "\n");
+  console.log(`baseline written: ${writeBaselineFile}`);
+}
+if (baselineFile) {
+  const baseline = JSON.parse(await readFile(resolve(baselineFile), "utf8")) as Baseline;
+  const report = compareToBaseline(results, baseline, { partial: Boolean(filter) });
+  for (const line of report.improvements) console.log(`IMPROVED ${line}`);
+  for (const line of report.regressions) console.error(`REGRESSION ${line}`);
+  if (report.improvements.length) console.log(`refresh the baseline: pnpm eval:tasks --write-baseline ${baselineFile}`);
+  console.log(`eval gate: ${report.ok ? "OK" : "FAILED"} (${report.regressions.length} regressions, ${report.improvements.length} improvements)`);
+  if (!report.ok) failed = true;
+}
+if (failed) process.exit(1);

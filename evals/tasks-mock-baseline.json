@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "model": "mock",
+  "cases": {
+    "edit-existing": {
+      "pass": false,
+      "checks": {
+        "port updated": false,
+        "others kept": true
+      },
+      "modelCalls": 2,
+      "toolCalls": 1
+    },
+    "explain-bug": {
+      "pass": false,
+      "checks": {
+        "file untouched": true,
+        "mentions off-by-one fix": false
+      },
+      "modelCalls": 2,
+      "toolCalls": 1
+    },
+    "list-and-summarize": {
+      "pass": true,
+      "checks": {
+        "mentions both files": true,
+        "used a read tool": true
+      },
+      "modelCalls": 2,
+      "toolCalls": 1
+    },
+    "log-count": {
+      "pass": false,
+      "checks": {
+        "correct count (10)": false
+      },
+      "modelCalls": 1,
+      "toolCalls": 0
+    },
+    "multi-turn-memory": {
+      "pass": false,
+      "checks": {
+        "recalls branch": false
+      },
+      "modelCalls": 3,
+      "toolCalls": 1
+    },
+    "write-file": {
+      "pass": false,
+      "checks": {
+        "file content": false
+      },
+      "modelCalls": 3,
+      "toolCalls": 2
+    }
+  }
+}

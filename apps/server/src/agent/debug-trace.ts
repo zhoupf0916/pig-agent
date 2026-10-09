@@ -197,6 +197,11 @@ export function recordDebugSpan(span: DebugSpan, monoStart?: number): void {
   for (const listener of listeners) listener(span.sessionId);
 }
 
+/** Wall-clock epoch ms that `startedAtMs` of this session's spans is relative to. */
+export function debugTraceWallOrigin(sessionId: string): number | undefined {
+  return traces.get(sessionId)?.wallOrigin;
+}
+
 export function readDebugTrace(sessionId: string): DebugTraceView {
   const trace = traces.get(sessionId);
   return {

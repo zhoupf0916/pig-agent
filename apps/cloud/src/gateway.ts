@@ -4,13 +4,32 @@ import { streamSSE } from "hono/streaming";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
+import { controlPlaneExporter, Tracer } from "@pig-agent/contracts/telemetry";
+import { activeSpan, tracedFetch, tracingMiddleware } from "./tracing.ts";
+const control = process.env.CONTROL_URL || "http://cloud:8890";
+// Spans go to the control plane (which stores them and forwards to an OTLP collector if configured).
+const exporter = controlPlaneExporter(control, process.env.WORKER_TOKEN).start();
+const tracer = new Tracer("gateway", exporter.push);
+const controlOrigin = new URL(control).origin;
+// Every outbound call from a traced request becomes a client span; only control-plane calls carry traceparent.
+const fetch = tracedFetch(
+  tracer,
+  (url) => (url.origin === controlOrigin ? `cloud ${url.pathname.split("/").map((seg) => (seg.length >= 8 && /\d/.test(seg) ? ":id" : seg)).join("/")}` : `llm ${url.hostname}`),
+  undefined,
+  (url) => url.origin === controlOrigin,
+);
+const upstream = (attrs: Record<string, string | number | boolean>) => activeSpan.getStore()?.set(attrs);
 const app = new Hono();
+// Runner calls carry the run's traceparent; untraced calls are recorded only when they fail.
+app.use("*", tracingMiddleware(tracer, {
+  ignore: (path) => path === "/health",
+  shouldRecord: (r) => !!r.span.parent?.sampled || r.status >= 500,
+}));
 app.onError((error, c) => {
   console.error(error.name);
   return c.json({ error: "模型网关暂时无法连接上游服务" }, 502);
 });
 app.use("*", (c, next) => bodyLimit({ maxSize: c.req.path === "/checkpoint" ? 7 * 1024 * 1024 : 1024 * 1024 })(c, next));
-const control = process.env.CONTROL_URL || "http://cloud:8890";
 app.get("/health", (c) => c.json({ ok: true }));
 app.post("/checkpoint", async c => {
   const body = await c.req.json();
@@ -147,16 +166,19 @@ app.post("/v1/chat/completions", async (c) => {
     true,
     body,
   );
-  if (!auth.ok)
+  if (!auth.ok) {
+    upstream({ "pig.upstream.status": `rejected_${auth.status}` });
     return new Response(await auth.text(), {
       status: auth.status,
       headers: { "Content-Type": "application/json" },
     });
+  }
   const { provider, billingId } = (await auth.json()) as {
     billingId: string;
     provider?: { baseUrl: string; model: string; apiKey: string };
   };
   if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
+    upstream({ "pig.upstream.status": 200, "gen_ai.request.model": "mock", "gen_ai.system": "mock" });
     await new Promise((resolve) => setTimeout(resolve, Math.min(10000, Math.max(250, Number(process.env.PIG_MOCK_MODEL_DELAY_MS) || 250))));
     // The scenario restarts on every user turn: follow-ups carry earlier tool results in their
     // transcript, but each turn should still write/read (and so hit approval) like a real model.
@@ -307,6 +329,7 @@ app.post("/v1/chat/completions", async (c) => {
   }
   if (!provider?.apiKey && !process.env.MODEL_API_KEY) {
     await settle({prompt_tokens:0,completion_tokens:0});
+    upstream({ "pig.upstream.status": "no_key" });
     return c.json({ error: "平台尚未配置模型 Key" }, 503);
   }
   const response = await fetch(
@@ -336,6 +359,12 @@ app.post("/v1/chat/completions", async (c) => {
       signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90000)]),
     },
   );
+  upstream({
+    "pig.upstream.status": response.status,
+    "gen_ai.request.model": provider?.model || process.env.MODEL_NAME || "deepseek-chat",
+    "gen_ai.system": new URL(provider?.baseUrl || process.env.MODEL_BASE_URL || "https://api.deepseek.com/v1").hostname,
+    "pig.stream": Boolean(body.stream),
+  });
   if (!response.ok) {
     await settle({prompt_tokens:0,completion_tokens:0});
     return c.json({ error: `模型服务 HTTP ${response.status}` }, 502);

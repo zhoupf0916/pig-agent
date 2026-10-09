@@ -142,7 +142,11 @@ importers:
         specifier: ^6.2.2
         version: 6.4.3(@types/node@26.5.1)(jiti@1.21.7)(tsx@4.23.13)
 
-  apps/worker: {}
+  apps/worker:
+    dependencies:
+      '@pig-agent/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
 
   packages/contracts: {}
 

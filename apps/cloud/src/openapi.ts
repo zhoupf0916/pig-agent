@@ -34,6 +34,7 @@ export function openApiSpec(serverUrl?: string) {
       { name: "schedules", description: "定时任务" },
       { name: "webhooks", description: "签名的出站 Webhook、投递日志与重投" },
       { name: "a2a", description: "Agent-to-Agent (JSON-RPC)" },
+      { name: "observability", description: "追踪、指标与告警（管理接口需管理员）" },
       { name: "meta", description: "健康检查与发现" },
     ],
     paths: {
@@ -111,6 +112,27 @@ export function openApiSpec(serverUrl?: string) {
         }),
       },
       "/v1/webhooks/{id}/deliveries/{delivery}/redeliver": { post: op("webhooks", "重新投递（重置重试次数）", { parameters: [id(), id("delivery", "投递 ID")], responses: { "202": json({ type: "object" }), ...errors } }) },
+      "/v1/runs/{id}/trace": {
+        get: op("observability", "任务的分布式追踪（cloud / worker / runner / gateway 的 span 树）", { parameters: [id()], responses: { "200": json(ref("RunTrace")), ...errors } }),
+      },
+      "/v1/admin/metrics": {
+        get: op("observability", "Prometheus 指标（文本格式）", { responses: { "200": { description: "Prometheus text 0.0.4", content: { "text/plain": { schema: { type: "string" } } } }, "403": json(ref("Error"), "需要管理员权限"), ...errors } }),
+      },
+      "/v1/admin/traces": {
+        get: op("observability", "最近的追踪（可只看出错的）", {
+          parameters: [
+            { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 20 } },
+            { name: "status", in: "query", schema: { type: "string", enum: ["error"] } },
+          ],
+          responses: { "200": json({ type: "object", properties: { traces: { type: "array", items: { type: "object" } } } }), "403": json(ref("Error"), "需要管理员权限"), ...errors },
+        }),
+      },
+      "/v1/admin/alerts": {
+        get: op("observability", "当前告警、最近告警与规则", { responses: { "200": json({ type: "object", properties: { active: { type: "array", items: ref("Alert") }, recent: { type: "array", items: ref("Alert") }, rules: { type: "array", items: { type: "object" } } } }), "403": json(ref("Error"), "需要管理员权限"), ...errors } }),
+      },
+      "/v1/admin/alerts/test": {
+        post: op("observability", "向自己订阅了 alert.firing 的 Webhook 发送测试告警", { responses: { "202": json({ type: "object", properties: { eventId: { type: "string" } } }), "403": json(ref("Error"), "需要管理员权限"), ...errors } }),
+      },
       "/v1/a2a": { post: op("a2a", "A2A JSON-RPC 端点（message/send、message/stream、tasks/get、tasks/cancel）") },
     },
     components: {
@@ -120,6 +142,26 @@ export function openApiSpec(serverUrl?: string) {
       },
       schemas: {
         Error: { type: "object", properties: { error: { type: "string" } }, required: ["error"] },
+        Span: {
+          type: "object",
+          properties: {
+            traceId: { type: "string" }, spanId: { type: "string" }, parentSpanId: { type: "string" },
+            service: { type: "string", enum: ["cloud", "worker", "runner", "gateway"] }, name: { type: "string" },
+            kind: { type: "string", enum: ["internal", "server", "client", "consumer"] }, startTime: { type: "string", format: "date-time" },
+            durationMs: { type: "number" }, status: { type: "string", enum: ["ok", "error", "unset"] }, attributes: { type: "object" },
+          },
+        },
+        RunTrace: {
+          type: "object",
+          properties: { traceId: { type: "string" }, rootSpanId: { type: "string" }, services: { type: "array", items: { type: "string" } }, spanCount: { type: "integer" }, truncated: { type: "boolean", description: "超过 2000 个 span 时只返回根 span 和最早的部分" }, spans: { type: "array", items: ref("Span") } },
+        },
+        Alert: {
+          type: "object",
+          properties: {
+            id: { type: "integer" }, rule: { type: "string" }, severity: { type: "string", enum: ["info", "warning", "critical"] }, state: { type: "string", enum: ["firing", "resolved"] },
+            summary: { type: "string" }, value: { type: "number" }, startedAt: { type: "string", format: "date-time" }, resolvedAt: { type: "string", format: "date-time", nullable: true },
+          },
+        },
         RunCreate: {
           type: "object",
           required: ["prompt"],

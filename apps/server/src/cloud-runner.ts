@@ -7,7 +7,8 @@ import { mkdir, readdir, readFile, lstat, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { runAgent, ToolAuthorizationDenied } from "./agent/runtime.ts";
-import { recordDebugSpan, readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
+import { debugTraceWallOrigin, recordDebugSpan, readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
+import { runnerTelemetry } from "./agent/cloud/run-telemetry.ts";
 import { normalizeSettings } from "./store/settings.ts";
 import {
   extractWorkspaceSnapshot,
@@ -18,6 +19,10 @@ import type { Session } from "./types.ts";
 const APPROVAL_WAIT_MS = 3000;
 const gateway = process.env.GATEWAY_URL || "http://gateway:8891";
 const token = process.env.RUN_TOKEN || "";
+// Join the run trace (TRACEPARENT from the worker) and propagate it on gateway calls.
+const telemetry = runnerTelemetry(process.env, gateway);
+globalThis.fetch = telemetry.wrapFetch(globalThis.fetch);
+delete process.env.TRACEPARENT;
 let immutableAttachmentPaths: string[] = [];
 let debugSessionId = "";
 let stopDebug = () => {};
@@ -33,6 +38,15 @@ const workspaceRoot = process.env.WORKSPACE_ROOT || "/workspace";
 delete process.env.RUN_TOKEN;
 const emit = (value: unknown) =>
   process.stdout.write(JSON.stringify(value) + "\n");
+/** Hands finished spans to the worker (stdout protocol line); never fails the run. */
+const emitTelemetry = (ok: boolean) => {
+  try {
+    const spans = telemetry.finish(debugSessionId, ok, debugSessionId ? readDebugTrace(debugSessionId).spans : [], debugSessionId ? debugTraceWallOrigin(debugSessionId) : undefined);
+    if (spans.length) emit({ kind: "telemetry", spans });
+  } catch {
+    /* telemetry is best effort */
+  }
+};
 const abort = new AbortController();
 process.on("SIGTERM", () => abort.abort());
 try {
@@ -359,6 +373,7 @@ try {
     }
   }
   await collect("");
+  emitTelemetry(!result.lastError);
   emit({
     kind: "result",
     ok: !result.lastError,
@@ -368,6 +383,7 @@ try {
   });
 } catch (error) {
   if (debugSessionId) flushDebug(debugSessionId);
+  emitTelemetry(false);
   emit({
     kind: "result",
     ok: false,

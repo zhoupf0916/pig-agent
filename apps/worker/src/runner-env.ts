@@ -16,5 +16,7 @@ export function runnerProcessEnv(
     DATA_DIR: join(workspace, "data"),
     WORKSPACE_ROOT: workspace,
     PIG_AGENT_FORCE_NATIVE_SANDBOX: "1",
+    // W3C trace context of the runner.process span (not a secret).
+    ...(base.TRACEPARENT ? { TRACEPARENT: base.TRACEPARENT } : {}),
   };
 }

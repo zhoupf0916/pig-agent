@@ -1,0 +1,36 @@
+# Prometheus equivalents of the built-in cloud alert rules (apps/cloud/src/alerts.ts). The built-in rules
+# already notify admins through webhooks (alert.firing / alert.resolved); use these when an external
+# Prometheus/Alertmanager is preferred.
+groups:
+  - name: pig-agent
+    rules:
+      - alert: PigRunnersOffline
+        expr: pig_runners_online == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "没有在线的 Runner，任务无法执行" }
+      - alert: PigQueueStalled
+        expr: pig_queue_oldest_seconds > 300
+        labels: { severity: warning }
+        annotations: { summary: "最早排队任务已等待 {{ $value }} 秒" }
+      - alert: PigModelProviderErrors
+        expr: sum(increase(pig_model_requests_total{status!~"2.."}[10m])) >= 3 or sum(increase(pig_model_requests_total{status="402"}[10m])) > 0
+        labels: { severity: critical }
+        annotations: { summary: "模型服务出错（含 402 余额不足）" }
+      - alert: PigHttp5xx
+        expr: sum(rate(pig_http_requests_total{status="5xx"}[5m])) / sum(rate(pig_http_requests_total[5m])) >= 0.05 and sum(increase(pig_http_requests_total[5m])) >= 20
+        labels: { severity: warning }
+        annotations: { summary: "API 5xx 比例 ≥ 5%" }
+      - alert: PigWebhookDead
+        expr: pig_webhook_deliveries{state="dead"} > 0
+        labels: { severity: warning }
+        annotations: { summary: "1 小时内有 Webhook 投递失败" }
+      - alert: PigEventBusDown
+        expr: pig_event_bus_live == 0
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: "事件总线断开，实时推送退化为轮询" }
+      - alert: PigRunP95Slow
+        expr: histogram_quantile(0.95, sum by (le) (rate(pig_run_execution_seconds_bucket[30m]))) > 600
+        labels: { severity: info }
+        annotations: { summary: "任务执行 p95 超过 10 分钟" }
