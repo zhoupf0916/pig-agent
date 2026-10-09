@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { CloudConsole } from "./cloud/CloudConsole";
 import { CloudAppShell } from "./cloud/CloudAppShell";
 import { App } from "./App";
+import { PwaUpdateToast } from "./pwa/PwaUpdateToast";
+import { registerWorkbenchWorker } from "./pwa/pwa";
 import "./index.css";
 
 function Surface() {
@@ -16,10 +18,15 @@ function Surface() {
     fetch("/api/deployment")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (active) setMode(d?.surface === "local-dev" ? "local-dev" : "cloud");
+        if (!active) return;
+        const surface = d?.surface === "local-dev" ? "local-dev" : "cloud";
+        if (surface === "cloud") registerWorkbenchWorker();
+        setMode(surface);
       })
       .catch(() => {
-        if (active) setMode("cloud");
+        if (!active) return;
+        registerWorkbenchWorker();
+        setMode("cloud");
       });
     return () => {
       active = false;
@@ -27,7 +34,13 @@ function Surface() {
   }, []);
   if (mode === "loading") return <p role="status">正在连接工作台…</p>;
   if (location.pathname === "/debug/runs") return <CloudConsole />;
-  if (mode === "cloud") return <CloudAppShell />;
+  if (mode === "cloud")
+    return (
+      <>
+        <CloudAppShell />
+        <PwaUpdateToast />
+      </>
+    );
   return <App />;
 }
 createRoot(document.getElementById("root")!).render(

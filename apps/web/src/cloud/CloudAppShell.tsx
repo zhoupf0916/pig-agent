@@ -9,6 +9,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  WifiOff,
   X,
 } from "lucide-react";
 import { CloudProjectHome } from "./CloudProjectHome";
@@ -38,6 +39,8 @@ export function CloudAppShell() {
     [navigation, setNavigation] = useState(false),
     [collapsed, setCollapsed] = useState(false),
     [error, setError] = useState(""),
+    [offline, setOffline] = useState(false),
+    [attempt, setAttempt] = useState(0),
     [taskKey, setTaskKey] = useState(0),
     [options, setOptions] = useState<{
       expertId?: string;
@@ -56,12 +59,33 @@ export function CloudAppShell() {
     let active = true;
     void api("/v1/me")
       .then((a) => {
-        if (active) changeAccount(a);
+        if (!active) return;
+        setOffline(false);
+        changeAccount(a);
       })
-      .catch(() => {})
+      .catch((e) => {
+        // fetch() rejects with a TypeError only when the network is unreachable (e.g. the installed app
+        // opened offline from the cached shell); show that instead of a misleading login form.
+        if (active) setOffline(e instanceof TypeError);
+      })
       .finally(() => {
         if (active) setLoading(false);
       });
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
+  useEffect(() => {
+    if (!offline) return;
+    const retry = () => setAttempt((n) => n + 1);
+    const timer = setInterval(retry, 15000);
+    addEventListener("online", retry);
+    return () => {
+      clearInterval(timer);
+      removeEventListener("online", retry);
+    };
+  }, [offline]);
+  useEffect(() => {
     const changed = () => setHash(location.hash),
       expired = () => {
         changeAccount(null);
@@ -70,7 +94,6 @@ export function CloudAppShell() {
     addEventListener("hashchange", changed);
     addEventListener("cloud-auth-expired", expired);
     return () => {
-      active = false;
       removeEventListener("hashchange", changed);
       removeEventListener("cloud-auth-expired", expired);
     };
@@ -121,6 +144,16 @@ export function CloudAppShell() {
     return (
       <div className="cw-auth">
         <p role="status">正在连接工作台…</p>
+      </div>
+    );
+  if (!account && offline)
+    return (
+      <div className="pwa-offline">
+        <WifiOff size={28} aria-hidden />
+        <p role="status">当前离线，网络恢复后会自动重新连接。</p>
+        <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+          重试
+        </button>
       </div>
     );
   if (!account)
