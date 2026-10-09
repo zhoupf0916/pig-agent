@@ -7,6 +7,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdir, rm, readdir } from "node:fs/promises";
 import { runnerProcessEnv } from "./runner-env.ts";
 import { SlotPool } from "./slot-pool.ts";
+import { claimBlockedReason, memoryPolicyFromEnv, readMemorySample } from "./memory-pressure.ts";
 import { createInterface } from "node:readline";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -20,18 +21,22 @@ if (!Number.isInteger(slots) || slots < 1 || slots > 16)
 const profiles = (
   process.env.WORKER_PROFILES || "compact,standard,large"
 ).split(",");
+const memoryPolicy = memoryPolicyFromEnv();
+let lastPressureLog = 0;
 let draining = false;
 const activeStops = new Set<() => Promise<void>>();
+const CLAIM_WAIT_MS = Math.max(0, Math.min(10_000, Number(process.env.WORKER_CLAIM_WAIT_MS ?? 10_000) || 0));
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function api(path: string, body: unknown) {
+async function api(path: string, body: unknown, waitMs = 0) {
   const r = await fetch(control + path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+      ...(waitMs ? { "X-Pig-Wait-Ms": String(waitMs) } : {}),
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(4000 + waitMs),
   });
   if (!r.ok) throw Error(`Control ${r.status}`);
   return r.json() as Promise<any>;
@@ -334,15 +339,28 @@ await Promise.all(
   Array.from({ length: slots }, async () => {
     while (!draining) {
       try {
+        // Backpressure: do not take new work while this container or the host is short of memory.
+        const pressure = claimBlockedReason(readMemorySample(), memoryPolicy);
+        if (pressure) {
+          if (Date.now() - lastPressureLog > 60_000) {
+            lastPressureLog = Date.now();
+            console.error("Claim paused by memory pressure:", pressure);
+          }
+          await delay(2000);
+          continue;
+        }
         const slot = pool.acquire();
         if (!slot) {
           await delay(200);
           continue;
         }
         try {
-          const job = await api("/internal/claim", { workerId, instanceId });
+          // Long-poll: a current control plane holds the request until a run is claimable (or the
+          // wait ends); an older one answers at once, so keep the old 1 s pause in that case.
+          const asked = Date.now();
+          const job = await api("/internal/claim", { workerId, instanceId }, CLAIM_WAIT_MS);
           if (job) await execute(job, slot.workspace);
-          else await delay(1000);
+          else if (Date.now() - asked < CLAIM_WAIT_MS / 2) await delay(1000);
         } finally {
           await pool.release(slot);
         }

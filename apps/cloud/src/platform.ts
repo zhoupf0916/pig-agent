@@ -144,7 +144,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
     c.json({
       accounts: (
         await db.query(
-          "SELECT id,name,role,enabled,budget_micros,(SELECT COALESCE(sum(charged_micros),0) FROM model_usage WHERE owner_id=p.id) AS spent_micros,(SELECT COALESCE(sum(reserved_micros),0) FROM model_usage WHERE owner_id=p.id AND charged_micros IS NULL) AS reserved_micros,daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p ORDER BY id",
+          "SELECT id,name,role,enabled,token_expires_at,token_revoked_at,budget_micros,(SELECT COALESCE(sum(charged_micros),0) FROM model_usage WHERE owner_id=p.id) AS spent_micros,(SELECT COALESCE(sum(reserved_micros),0) FROM model_usage WHERE owner_id=p.id AND charged_micros IS NULL) AS reserved_micros,daily_call_limit,(SELECT count(*) FROM model_usage WHERE owner_id=p.id AND created_at>=date_trunc('day',now())) AS calls_today FROM principals p ORDER BY id",
         )
       ).rows,
     }),
@@ -187,6 +187,8 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
         dailyCallLimit: z.number().int().min(0).max(100000).optional(),
         budgetYuan: z.number().min(0).max(100000).multipleOf(0.01).optional(),
         revokeSessions: z.boolean().optional(),
+        // Revokes the account's static bearer token (env bootstrap or legacy); restarts cannot revive it.
+        revokeAccessToken: z.boolean().optional(),
       })
       .strict()
       .safeParse(await c.req.json());
@@ -214,6 +216,11 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
         await client.query("ROLLBACK");
         return c.json({ error: "账号不存在" }, 404);
       }
+      if (body.data.revokeAccessToken)
+        await client.query(
+          "UPDATE principals SET token_revoked_at=coalesce(token_revoked_at,now()) WHERE id=$1",
+          [c.req.param("id")],
+        );
       if (body.data.revokeSessions || body.data.enabled === false)
         await client.query("DELETE FROM auth_sessions WHERE owner_id=$1", [
           c.req.param("id"),

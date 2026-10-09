@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
-import { existsSync, realpathSync, mkdtempSync, openSync, closeSync, writeFileSync, rmSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, realpathSync, mkdtempSync, openSync, closeSync, writeFileSync, rmSync, readdirSync, readFileSync } from "node:fs";
+import type { Readable } from "node:stream";
 import { tmpdir, homedir } from "node:os";
 import { join, parse } from "node:path";
 import { normalizeWorkspaceRoot } from "./sandbox.ts";
@@ -56,6 +57,73 @@ export function linuxSandboxArgs(root: string, command: string, network: boolean
   args.push("--seccomp", "3", "/bin/sh", "-c", command);
   return args;
 }
+/** Signal a detached child's whole process group (seatbelt / plain spawn). */
+function groupKiller(child: ChildProcess) {
+  return (signal: NodeJS.Signals) => {
+    try { if (child.pid) process.kill(-child.pid, signal); else child.kill(signal); }
+    catch { try { child.kill(signal); } catch { /* already exited */ } }
+  };
+}
+/** All descendants of a Linux process (breadth-first, from /proc). */
+export function linuxDescendants(root: number): number[] {
+  const parents = new Map<number, number[]>();
+  try {
+    for (const entry of readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        const stat = readFileSync(`/proc/${entry}/stat`, "utf8");
+        const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+        parents.set(ppid, [...(parents.get(ppid) ?? []), Number(entry)]);
+      } catch { /* raced exit */ }
+    }
+  } catch { /* no procfs */ }
+  const out: number[] = [];
+  for (let queue = [root]; queue.length; ) for (const pid of parents.get(queue.shift()!) ?? []) { out.push(pid); queue.push(pid); }
+  return out;
+}
+/**
+ * Stops a bubblewrap sandbox without orphaning it.
+ * Signalling the outer bwrap first is unsafe: --new-session moves the command out of bwrap's process
+ * group, and the sandbox's PID-namespace init ignores SIGTERM from outside its namespace, so once the
+ * outer bwrap dies nothing can find the sandbox any more (the command keeps running and holds stdout).
+ * Instead wait for --info-fd to report the init PID: SIGTERM goes to the commands inside, SIGKILL to the
+ * init, which makes the kernel kill every process in the sandbox. A stop requested before setup
+ * finishes is applied as soon as the PID is known.
+ */
+function bubblewrapKiller(child: ChildProcess) {
+  let sandboxPid: number | undefined;
+  let pending: NodeJS.Signals | undefined;
+  let exited = false;
+  let info = "";
+  child.once("exit", () => { exited = true; });
+  const stream = child.stdio[4] as Readable | null | undefined;
+  stream?.setEncoding("utf8");
+  stream?.on("error", () => {});
+  const kill = (signal: NodeJS.Signals): void => {
+    if (exited) return;
+    if (sandboxPid === undefined) {
+      pending = pending === "SIGKILL" ? pending : signal;
+      // Setup normally reports within milliseconds; if bwrap stalls before reporting, fall back to its group.
+      if (signal === "SIGKILL") setTimeout(() => { if (!exited && sandboxPid === undefined) groupKiller(child)("SIGKILL"); }, 3000).unref();
+      return;
+    }
+    try {
+      const inside = signal === "SIGKILL" ? [] : linuxDescendants(sandboxPid);
+      // Nothing to stop gracefully (command not started yet, or SIGKILL): end the whole namespace.
+      if (!inside.length) process.kill(sandboxPid, "SIGKILL");
+      else for (const pid of inside) process.kill(pid, signal);
+    } catch { /* already gone */ }
+  };
+  stream?.on("data", (chunk: string) => {
+    info += chunk;
+    const match = /"child-pid"\s*:\s*(\d+)/.exec(info);
+    if (match && sandboxPid === undefined) {
+      sandboxPid = Number(match[1]);
+      if (pending) kill(pending);
+    }
+  });
+  return kill;
+}
 export function nativeCommand(workspace: string, command: string, network = false, options: { trustedReadPaths?: string[]; stdin?: boolean; helper?: boolean } = {}) {
   const root = normalizeWorkspaceRoot(workspace);
   assertSafeNativeWorkspace(root);
@@ -69,15 +137,16 @@ export function nativeCommand(workspace: string, command: string, network = fals
     if (process.platform === "darwin") {
       env.TMPDIR = temporary;
       const child = spawn("/usr/bin/sandbox-exec", ["-p",seatbeltProfile(root,temporary,network,options.trustedReadPaths),"/bin/sh","-c",command], { cwd:root, env, detached:true, stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe"] });
-      return {child,cleanup,backend:"seatbelt" as const};
+      return {child,cleanup,backend:"seatbelt" as const,kill:groupKiller(child)};
     }
     if (process.platform !== "linux") throw new Error("当前系统尚未配置原生沙箱；请使用 macOS 或 Linux。不会自动切换到主机执行。");
     const filterPath = join(temporary,"seccomp.bpf");
     writeFileSync(filterPath,seccompFilter(process.arch)); descriptor=openSync(filterPath,"r");
     const args = linuxSandboxArgs(root, command, network, env, options.trustedReadPaths || []);
-    const child = spawn("bwrap",args,{cwd:root,env,detached:true,stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe",descriptor]});
+    // fd 4 = --info-fd: bwrap reports the sandbox's PID-namespace init once setup has finished.
+    const child = spawn("bwrap",["--info-fd","4",...args],{cwd:root,env,detached:true,stdio:[options.stdin ? "pipe" : "ignore","pipe","pipe",descriptor,"pipe"]});
     closeSync(descriptor); descriptor=undefined;
-    return {child,cleanup,backend:"bubblewrap" as const};
+    return {child,cleanup,backend:"bubblewrap" as const,kill:bubblewrapKiller(child)};
   } catch (error) { if(descriptor !== undefined) closeSync(descriptor); cleanup(); throw error; }
 }
 export async function nativeSandboxStatus() {

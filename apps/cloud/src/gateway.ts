@@ -50,6 +50,10 @@ app.post("/approvals/:id/poll", async (c) => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+        // Long-poll hint from newer runners; the control plane caps it.
+        ...(/^\d{1,5}$/.test(c.req.header("x-pig-wait-ms") ?? "")
+          ? { "X-Pig-Wait-Ms": c.req.header("x-pig-wait-ms")! }
+          : {}),
       },
       body: JSON.stringify({
         requestId: body?.requestId,

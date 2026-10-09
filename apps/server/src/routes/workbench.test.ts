@@ -261,12 +261,16 @@ describe("delivery review and recovery", () => {
   });
   it("can stop an approved long-running command and requires review after interruption", async () => {
     const session=await createSession(); const state=await loadWorkbench(session.id,root);
-    const op=await stageOperation(state,"slow","run_shell",{command:"sleep 20"}); await saveWorkbench(session.id,state);
+    // The command outlives the test timeout on purpose: a stop that fails shows up as an assertion, not a timeout.
+    const op=await stageOperation(state,"slow","run_shell",{command:"sleep 60"}); await saveWorkbench(session.id,state);
     const approval=post(`/api/sessions/${session.id}/workbench/${op.id}/approve`);
     for(let i=0;i<100 && !runningTurns.has(session.id);i++) await new Promise((resolve)=>setTimeout(resolve,10));
     expect(runningTurns.has(session.id)).toBe(true);
+    const stopped=Date.now();
     expect((await post(`/api/sessions/${session.id}/abort`)).status).toBe(200);
-    expect((await approval).status).toBe(409);
+    const settled=await Promise.race([approval.then((r)=>r.status),new Promise((resolve)=>setTimeout(()=>resolve("still running"),10000))]);
+    expect(settled).toBe(409);
+    expect(Date.now()-stopped).toBeLessThan(10000);
     expect((await loadWorkbench(session.id,root)).operations[0]?.status).toBe("error");
   }, 20000);
   it("persists custom templates", async () => {

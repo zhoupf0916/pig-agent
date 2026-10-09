@@ -15,6 +15,7 @@ import {
   shouldSkipCloudHandoffName,
 } from "./agent/cloud/snapshot.ts";
 import type { Session } from "./types.ts";
+const APPROVAL_WAIT_MS = 3000;
 const gateway = process.env.GATEWAY_URL || "http://gateway:8891";
 const token = process.env.RUN_TOKEN || "";
 let immutableAttachmentPaths: string[] = [];
@@ -115,7 +116,7 @@ try {
     tool: string;
     args: unknown;
   }) => {
-    async function approvalRequest(path: string, body: unknown) {
+    async function approvalRequest(path: string, body: unknown, waitMs = 0) {
       for (let attempt = 0; ; attempt++) {
         try {
           const r = await fetch(gateway + path, {
@@ -123,9 +124,10 @@ try {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
+              ...(waitMs ? { "X-Pig-Wait-Ms": String(waitMs) } : {}),
             },
             body: JSON.stringify(body),
-            signal: AbortSignal.any([deadline, AbortSignal.timeout(4000)]),
+            signal: AbortSignal.any([deadline, AbortSignal.timeout(4000 + waitMs)]),
           });
           if (!r.ok) {
             const error = Object.assign(
@@ -167,13 +169,17 @@ try {
       },
     });
     while (!deadline.aborted) {
+      const asked = Date.now();
+      // Long-poll: a current control plane answers as soon as the decision changes (or after the
+      // wait); an older one answers immediately, so keep the old pause in that case.
       const decision = await approvalRequest(`/approvals/${approval.id}/poll`, {
         requestId,
-      });
+      }, APPROVAL_WAIT_MS);
       if (decision.state === "approved") return true;
       if (decision.state === "rejected") return false;
       if (decision.state !== "pending")
         throw Error("授权已被领取，执行结果需核验；不会自动重复操作");
+      if (Date.now() - asked >= APPROVAL_WAIT_MS / 2) continue;
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(done, 700);
         function done() {

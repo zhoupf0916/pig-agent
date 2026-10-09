@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { createHash } from "node:crypto";
 const state = vi.hoisted(() => ({
   count: 0,
+  buckets: new Map<string, number>(),
   queries: [] as string[],
   account: { id: "member1", role: "member", name: "Member" },
   valid: true,
@@ -12,8 +13,16 @@ const state = vi.hoisted(() => ({
 vi.mock("./db.ts", () => {
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
     state.queries.push(sql);
-    if (sql.includes("webAuthRate"))
-      return { rows: [{ count: ++state.count }], rowCount: 1 };
+    if (sql.startsWith("INSERT INTO auth_rate_limits")) {
+      const key = String(values?.[0]);
+      const count = (state.buckets.get(key) ?? 0) + Number(values?.[2]);
+      state.buckets.set(key, count);
+      return { rows: [{ count }], rowCount: 1 };
+    }
+    if (sql.startsWith("DELETE FROM auth_rate_limits WHERE bucket")) {
+      state.buckets.delete(String(values?.[0]));
+      return { rows: [], rowCount: 1 };
+    }
     if (sql.startsWith("SELECT id,role,name"))
       return {
         rows: state.valid ? [state.account] : [],
@@ -57,6 +66,8 @@ const request = (
   });
 beforeEach(() => {
   state.count = 0;
+  state.buckets.clear();
+  process.env.TRUST_PROXY_HEADER = "x-forwarded-for";
   state.queries = [];
   state.valid = true;
   state.sessionHash = "";
@@ -172,23 +183,68 @@ describe("cloud web authentication", () => {
       ).status,
     ).toBe(401);
   });
-  it("shares throttling across app instances and allows logout even when login is throttled", async () => {
-    state.count = 119;
-    expect(
-      (await request(app(), "/auth/web/login", { token: "x" })).status,
-    ).toBe(200);
-    const limited = await request(app(), "/auth/web/login", { token: "x" });
+  it("throttles per client IP without locking out other clients, and still allows logout", async () => {
+    const application = app();
+    const from = (ip: string) => ({ "X-Forwarded-For": ip });
+    for (let i = 0; i < 30; i++)
+      expect((await request(application, "/auth/web/login", { token: "x" }, from("198.51.100.7"))).status).toBe(200);
+    const limited = await request(application, "/auth/web/login", { token: "x" }, from("198.51.100.7"));
     expect(limited.status).toBe(429);
     expect(limited.headers.get("retry-after")).toBe("60");
+    expect((await request(application, "/auth/web/login", { token: "x" }, from("203.0.113.9"))).status).toBe(200);
     const logout = await request(
-      app(),
+      application,
       "/auth/web/logout",
       {},
-      { Cookie: "pig_web_session=opaque", Authorization: "Bearer preserve-me" },
+      { ...from("198.51.100.7"), Cookie: "pig_web_session=opaque", Authorization: "Bearer preserve-me" },
     );
     expect(logout.status).toBe(200);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     expect(state.queries.at(-1)).toContain("DELETE FROM auth_sessions");
+  });
+  it("regression: many distributed senders cannot exhaust a shared login budget", async () => {
+    const application = app();
+    state.valid = false;
+    for (let i = 0; i < 300; i++)
+      expect(
+        (await request(application, "/auth/web/login", { token: "bad" }, { "X-Forwarded-For": `198.51.${i >> 8}.${i & 255}` })).status,
+      ).toBe(401);
+    state.valid = true;
+    expect(
+      (await request(application, "/auth/web/login", { token: "x" }, { "X-Forwarded-For": "203.0.113.50" })).status,
+    ).toBe(200);
+  });
+  it("blocks repeated token failures from one IP", async () => {
+    const application = app();
+    state.valid = false;
+    const ip = { "X-Forwarded-For": "198.51.100.20" };
+    for (let i = 0; i < 10; i++)
+      expect((await request(application, "/auth/web/login", { token: "bad" }, ip)).status).toBe(401);
+    state.valid = true;
+    const blocked = await request(application, "/auth/web/login", { token: "x" }, ip);
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get("retry-after")).toBe("900");
+  });
+  it("limits password failures per account+IP and per account, not per everyone", async () => {
+    const application = app();
+    const login = (ip: string, username = "alice") =>
+      request(application, "/auth/web/login", { username, password: "wrong-password" }, { "X-Forwarded-For": ip });
+    for (let i = 0; i < 5; i++) expect((await login("198.51.100.30")).status).toBe(401);
+    expect((await login("198.51.100.30")).status).toBe(429);
+    expect((await login("198.51.100.31")).status).toBe(401);
+    expect((await login("198.51.100.30", "bob")).status).toBe(401);
+    for (let i = 0; i < 44; i++) await login(`203.0.113.${i + 1}`);
+    expect((await login("203.0.113.200")).status).toBe(429);
+    expect((await login("203.0.113.200", "bob")).status).toBe(401);
+  }, 30_000);
+  it("ignores spoofable proxy headers unless explicitly trusted", async () => {
+    delete process.env.TRUST_PROXY_HEADER;
+    const application = app();
+    for (let i = 0; i < 30; i++)
+      await request(application, "/auth/web/login", { token: "x" }, { "X-Forwarded-For": `198.51.100.${i}` });
+    expect(
+      (await request(application, "/auth/web/login", { token: "x" }, { "X-Forwarded-For": "203.0.113.77" })).status,
+    ).toBe(429);
   });
   it("accepts invites through the existing transaction helper with a 12-hour cookie", async () => {
     state.invite.mockResolvedValue({

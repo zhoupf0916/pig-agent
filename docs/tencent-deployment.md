@@ -20,7 +20,26 @@ docker compose --env-file /home/ubuntu/pig-agent/data/cloud-local/stack.env \
   -f infra/cloud/compose.yml -f infra/tencent/compose.yml up -d --build --wait
 ```
 
-覆盖文件配置四个 Runner，每节点并发 1、内存 768 MiB、CPU 1 核；仅接收 compact/standard 任务。控制面和数据库各 512 MiB，网关 256 MiB。管理后台全局并发设置为 2，用户和项目并发均为 1，队列长度 30，排队超时 1800 秒。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
+覆盖文件配置四个 Runner：每节点并发 1、CPU 1 核、内存 `RUNNER_MEM_LIMIT`（默认 512 MiB），仅接收 compact/standard 任务。
+
+内存预算按主机可用 3718 MiB 计算：容器上限是天花板而不是预留，合计必须给系统、dockerd、Nginx 和页缓存留出余量。
+
+| 服务 | 内存上限 | oom_score_adj |
+|---|---|---|
+| postgres | 512 MiB | −900 |
+| cloud | 512 MiB | −500 |
+| gateway | 192 MiB | −500 |
+| runner ×4 | 512 MiB | +500 |
+| **合计** | **3264 MiB**（约 450 MiB 余量；旧配置为 4352 MiB，超出物理内存） | |
+
+主机真正 OOM 时，内核先杀任务进程，最后才动数据库和控制面。Runner 在以下情况会暂停领取新任务，每分钟最多记一条 `Claim paused by memory pressure` 日志：
+
+- 自身容器工作集（扣除非活跃文件缓存）达到上限的 85%（`WORKER_MAX_MEMORY_RATIO`）；
+- 主机 MemAvailable 低于 400 MiB（`WORKER_MIN_HOST_AVAILABLE_MB`）。
+
+需要更大的单任务内存时，可减少 Runner 数量后调高 `RUNNER_MEM_LIMIT`，不要只调高上限。
+
+管理后台全局并发设置为 2，用户和项目并发均为 1，队列长度 30，排队超时 1800 秒。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
 
 只有构建阶段使用 host 网络来下载软件包。运行期仍走 bridge；数据库和 Runner 仅接内部网络，网关与控制面允许出站访问模型/MCP。任务使用 Bubblewrap + seccomp，沙箱失败拒绝执行，不挂载 Docker socket。
 
@@ -46,7 +65,55 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+### 更新 Nginx 配置（安全头 / HTTP/2 / 静态资源压缩）
+
+`infra/tencent/nginx.conf` 包含以下内容：
+
+- `http2 on`；
+- HSTS、CSP、Permissions-Policy 三个安全头；
+- `/assets/` 的 gzip 压缩与一年 immutable 缓存；
+- 登录类接口 `/auth/web/(login|register|invite|demo)` 按 IP 限速（5 次/分钟）。
+
+CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修改该脚本时，`apps/cloud/src/deploy-headers.test.ts` 会提示更新哈希。
+
+**隐藏版本号**：`server_tokens off;` 要写在 `/etc/nginx/nginx.conf` 的 `http {}` 中，不要写进站点文件。Ubuntu 自带的 `nginx.conf` 已经声明了 `server_tokens`（通常是注释掉的 `# server_tokens off;`），站点文件再写一次会报 `"server_tokens" directive is duplicate`，导致 `nginx -t` 失败。
+
+```sh
+grep -n 'server_tokens' /etc/nginx/nginx.conf
+# 若是注释行，取消注释；若没有该行，在 http { 下一行加入 server_tokens off;
+sudo sed -i 's/^\s*#\s*server_tokens off;/\tserver_tokens off;/' /etc/nginx/nginx.conf
+```
+
+更新步骤：先备份，再检查语法，最后平滑重载，不中断现有连接。
+
+- `sites-enabled/` 里通常是指向 `sites-available/` 的软链接，要用 `readlink -f` 找到真实文件，并写入真实文件。
+- **备份不要放在 `sites-enabled/`（或 `conf.d/`）里。** nginx 会把该目录下所有文件都 include 进来，备份会导致 `limit_req_zone "pig_api" is already bound` 等错误，`nginx -t` 直接失败。
+
+```sh
+CONF=$(sudo nginx -T 2>/dev/null | awk '/^# configuration file /{f=$4} /zone=pig_api/{sub(":$","",f); print f; exit}')
+REAL=$(readlink -f "$CONF"); echo "$CONF -> $REAL"   # 例如 /etc/nginx/sites-enabled/pig-agent -> /etc/nginx/sites-available/pig-agent
+BK=/home/ubuntu/pig-agent/backups/nginx; sudo mkdir -p "$BK"
+TS=$(date +%Y%m%d%H%M%S); sudo cp -a "$REAL" "$BK/$(basename "$REAL").bak-$TS"
+sudo diff -u "$REAL" /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf   # 确认只有预期改动（证书路径、域名/IP 与线上一致）
+sudo install -m 0644 /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf "$REAL"
+sudo nginx -t && sudo systemctl reload nginx
+# 回滚：sudo cp -a "$BK/$(basename "$REAL").bak-$TS" "$REAL" && sudo nginx -t && sudo systemctl reload nginx
+```
+
 `WEB_PUBLIC_ORIGIN=https://193.112.22.18` 必须写入 stack.env 后重建控制面。Nginx 禁止公网访问 `/internal/`，关闭响应缓冲以支持 SSE，HTTP 自动跳转 HTTPS。登录 cookie 为 Secure + HttpOnly。
+
+## 引导令牌（ADMIN_TOKEN 等）
+
+`stack.env` 中的 `ADMIN_TOKEN`、`MEMBER_TOKEN`、`MEMBER2_TOKEN` 是本机 / 开发栈的引导 Bearer。生产叠加文件（`infra/tencent/compose.yml`）的设置：
+
+- `BOOTSTRAP_TOKEN_TTL_HOURS=24`：管理员引导令牌自某个值首次生效起 24 小时后过期。重启不会延长；若管理员已吊销，重启也不会恢复。
+- `MEMBER_TOKEN`、`MEMBER2_TOKEN` 置空：对应令牌被吊销，测试账号 `member2` 被禁用，并各写一条 `audit` 记录（actor=`system`）。
+
+日常登录使用账号密码会话（12 小时）。若需再次使用管理员引导令牌（例如运行 `scripts/setup-admin-password.mjs`）：
+
+1. 在 `stack.env` 中把 `ADMIN_TOKEN` 换成新的随机值；
+2. 重建控制面，开启新的 24 小时窗口；
+3. 用完后可在管理接口 `PATCH /v1/admin/accounts/admin`（`{"revokeAccessToken":true}`）立即吊销。
 
 IP 证书只有约六天有效期。安装 `pig-cert-renew.service` 与 timer 到 `/etc/systemd/system/`，安装 `renew-hook.sh` 到 `/etc/letsencrypt/renewal-hooks/deploy/pig-nginx` 并赋予执行权限，然后启用 timer。每六小时检查续期；80 端口不能关闭。
 

@@ -1,8 +1,16 @@
 # Overlay for a four-GB single-host deployment. Database and API stay private.
+#
+# Memory budget (host: 3718 MiB usable). Container limits are ceilings, not reservations, so their sum
+# must leave room for the OS, dockerd, Nginx and page cache:
+#   postgres 512 + cloud 512 + gateway 192 + 4 runners x RUNNER_MEM_LIMIT (512) = 3264 MiB  (~450 MiB headroom)
+# If the host still runs out of memory, oom_score_adj makes the kernel kill runner (task) processes
+# first and stateful services last. Runners also stop claiming new work while their own container is
+# >=85% of its limit or host MemAvailable drops below WORKER_MIN_HOST_AVAILABLE_MB.
 services:
   postgres:
     restart: unless-stopped
     mem_limit: 512m
+    oom_score_adj: -900
     logging: &logs
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
@@ -12,8 +20,17 @@ services:
       network: host
     restart: unless-stopped
     mem_limit: 512m
+    oom_score_adj: -500
     logging: *logs
     networks: [control, egress]
+    environment:
+      # Production: the admin env bearer expires 24h after it is first configured (rotate the value in
+      # stack.env to open a new window); the demo/test bearer accounts are revoked and member2 is disabled.
+      BOOTSTRAP_TOKEN_TTL_HOURS: "24"
+      MEMBER_TOKEN: ""
+      MEMBER2_TOKEN: ""
+      # Host Nginx overwrites X-Forwarded-For with $remote_addr; auth throttling keys on it.
+      TRUST_PROXY_HEADER: x-forwarded-for
   gateway:
     build:
       network: host
@@ -23,7 +40,8 @@ services:
       # Target addresses are still screened for SSRF and pinned before connecting.
       NETWORK_DNS_MODE: public
       NETWORK_DNS_PROVIDER: alidns
-    mem_limit: 256m
+    mem_limit: 192m
+    oom_score_adj: -500
     logging: *logs
   worker:
     build:
@@ -33,7 +51,9 @@ services:
     environment:
       WORKER_CAPACITY: "1"
       WORKER_PROFILES: "compact,standard"
-    mem_limit: 768m
+      WORKER_MIN_HOST_AVAILABLE_MB: "400"
+    mem_limit: ${RUNNER_MEM_LIMIT:-512m}
+    oom_score_adj: 500
     cpus: 1.0
     stop_grace_period: 40s
     logging: *logs
@@ -48,7 +68,9 @@ services:
     environment:
       WORKER_CAPACITY: "1"
       WORKER_PROFILES: "compact,standard"
-    mem_limit: 768m
+      WORKER_MIN_HOST_AVAILABLE_MB: "400"
+    mem_limit: ${RUNNER_MEM_LIMIT:-512m}
+    oom_score_adj: 500
     cpus: 1.0
     stop_grace_period: 40s
     logging: *logs
