@@ -252,7 +252,7 @@ export function registerMcpRoutes(app: Hono<CloudEnv>) {
       return c.json({ error: "账号已停用，未连接 MCP" }, 403);
     if (run.input?.projectId) {
       const project = (
-        await db.query("SELECT space_id FROM projects WHERE id=$1", [
+        await db.query("SELECT space_id FROM shared_projects WHERE id=$1", [
           run.input.projectId,
         ])
       ).rows[0];
@@ -368,7 +368,7 @@ export function registerMcpRoutes(app: Hono<CloudEnv>) {
       }
       if (run.input?.projectId) {
         const project = (
-          await client.query("SELECT space_id FROM projects WHERE id=$1", [
+          await client.query("SELECT space_id FROM shared_projects WHERE id=$1", [
             run.input.projectId,
           ])
         ).rows[0];
