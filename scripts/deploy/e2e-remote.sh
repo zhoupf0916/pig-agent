@@ -266,6 +266,16 @@ await test("parallel subtasks: real fan-out, parent yields and resumes", async (
   const t = g.tokens;
   return `${((Date.now() - t0) / 1000).toFixed(1)}s wall, ${good}/${g.items.length} ok, retries=${g.items.filter((i) => i.attempts > 1).length}, child tokens in=${t.input} cached=${t.cached} (${t.input ? Math.round((100 * t.cached) / t.input) : 0}%) out=${t.output}`;
 });
+await test("feishu bot: flag state + bind endpoint", async () => {
+  const f = await api("/v1/feishu");
+  if (!f.enabled) {
+    const r = await req("/v1/feishu/bind-code", { method: "POST", body: {} });
+    ok(r.status === 404, `bind-code while dark -> HTTP ${r.status}`);
+    return "dark (FEISHU_APP_ID unset), bind-code 404";
+  }
+  ok(f.connected, `enabled but not connected: ${f.lastError || "?"}`);
+  return `enabled, connected, bot=${f.botName || "?"}, bound=${f.bound}, lastEvent=${f.lastEventAt || "none"}`;
+});
 await test("knowledge base: ingest + search + cited answer in a project run", async () => {
   // One reusable personal project (projects cannot be deleted); the test document is removed afterwards.
   const name = "E2E 知识库（自动测试）";

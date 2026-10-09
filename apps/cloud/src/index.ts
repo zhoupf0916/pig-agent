@@ -55,6 +55,8 @@ import { offloadLater, prepareWorkspaceVersion, registerStorageRoutes, startStor
 import { queueDeadLetters, queueRetries } from "./observability.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
 import { requestErrorLine } from "./error-log.ts";
+import { registerFeishuRoutes } from "./feishu/routes.ts";
+import { feishuEnabled, inProcessApi } from "./feishu/service.ts";
 import { advanceForChild, advanceOpenGroups, enterWaiting, registerChildrenRoutes } from "./children.ts";
 import { MAX_PRESTART_ATTEMPTS, backoffSql, classifyFailure, registerQueueRoutes } from "./queue.ts";
 import { registerAlertRoutes, startAlerts } from "./alerts.ts";
@@ -157,6 +159,7 @@ registerAttachmentRoutes(app);
 registerStorageRoutes(app);
 registerQueueRoutes(app);
 registerChildrenRoutes(app);
+registerFeishuRoutes(app);
 setInterval(() => void advanceOpenGroups().catch(() => {}), 3000).unref();
 registerKnowledgeRoutes(app);
 registerApprovalRoutes(app, runFor);
@@ -966,3 +969,8 @@ setInterval(
   5000,
 ).unref();
 serve({ fetch: app.fetch, port: 8890 });
+// F3 Feishu bot: dark unless FEISHU_APP_ID and FEISHU_APP_SECRET are set (docs/feishu.md).
+if (feishuEnabled())
+  void import("./feishu/client.ts")
+    .then((m) => m.startFeishu(inProcessApi((path, init) => app.request(path, init))))
+    .catch((e) => console.error("feishu: start failed", e instanceof Error ? e.message.slice(0, 160) : "error"));
