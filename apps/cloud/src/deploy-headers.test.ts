@@ -32,8 +32,13 @@ describe("production security headers", () => {
     expect(headers(server).length).toBe(6);
     expect(headers(assets)).toEqual(headers(server));
   });
-  it("hides the version, enables HTTP/2 and only compresses static assets", () => {
-    expect(nginx).toMatch(/^server_tokens off;$/m);
+  it("rate-limits every password entry point, including the demo login", () => {
+    expect(nginx).toMatch(/\$pig_auth_ip \{[^}]*\(login\|register\|invite\|demo\)/);
+  });
+  it("enables HTTP/2 and only compresses static assets", () => {
+    // server_tokens belongs in /etc/nginx/nginx.conf: Ubuntu already declares it there, and a second
+    // http-level server_tokens from this included file is a duplicate directive that fails nginx -t.
+    expect(nginx).not.toMatch(/^\s*server_tokens/m);
     expect(nginx).toMatch(/^\s+http2 on;$/m);
     expect((nginx.match(/gzip on;/g) || []).length).toBe(1);
     const api = nginx.slice(nginx.indexOf(PROXY_ROOT));
