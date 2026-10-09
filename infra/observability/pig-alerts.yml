@@ -34,3 +34,11 @@ groups:
         expr: histogram_quantile(0.95, sum by (le) (rate(pig_run_execution_seconds_bucket[30m]))) > 600
         labels: { severity: info }
         annotations: { summary: "任务执行 p95 超过 10 分钟" }
+      - alert: PigModelFailover
+        expr: sum(increase(pig_model_failovers_total[10m])) >= 3
+        labels: { severity: warning }
+        annotations: { summary: "主模型渠道异常，调用已切换到备用渠道" }
+      - alert: PigModelOutputCapped
+        expr: sum(increase(pig_model_output_capped_total[1h])) > 0
+        labels: { severity: info }
+        annotations: { summary: "模型提供商未遵守 max_tokens，流已在输出上限处截断" }

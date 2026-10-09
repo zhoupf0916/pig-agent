@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { db } from "./db.ts";
 import { bus } from "./event-bus.ts";
-import { adminOnly, recentHttp, recentModel, spanStore, trim } from "./observability.ts";
+import { adminOnly, recentFailover, recentHttp, recentModel, spanStore, trim } from "./observability.ts";
 import type { CloudEnv } from "./types.ts";
 
 /**
@@ -54,6 +54,18 @@ export const rules: Rule[] = [
         value: errors.length,
         summary: has402 ? `模型服务返回 HTTP 402（余额不足），10 分钟内错误 ${errors.length}/${window.length}` : `模型服务 10 分钟内错误 ${errors.length}/${window.length}`,
       };
+    },
+  },
+  {
+    id: "model_failover",
+    severity: "warning",
+    forS: 0,
+    description: "10 分钟内至少 3 次模型调用切换到备用渠道（主渠道异常）",
+    async check() {
+      trim(recentFailover, 30 * 60_000);
+      const since = Date.now() - 10 * 60_000;
+      const n = recentFailover.filter((f) => f.t >= since).reduce((a, f) => a + f.failed, 0);
+      return { firing: n >= 3, value: n, summary: `10 分钟内 ${n} 次主渠道失败后切换备用渠道` };
     },
   },
   {
