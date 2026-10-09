@@ -49,5 +49,4 @@ pending  0002 add_run_priority
 - `0004 observability` 回滚后：`trace_spans` / `alerts` 两张表留着不用，旧版本不读写它们；重新部署新版本后接着写。保留期（默认 7 天）的清理也由新版本负责，回滚期间数据不会增长。
 - `0005 model_routing` 回滚后：主渠道仍是唯一启用的渠道，旧版本照常使用；备用顺序和输出上限两列会被忽略，旧版本按固定 4096 输出上限工作，不做故障转移。
 - `0006 storage` 回滚后：`dual` 模式下附件与工作区快照的原件仍完整保存在 Postgres，旧版本直接读取，对象存储中的副本被忽略（MinIO 容器可保留或停止）。若已切到 `object` 模式，回滚前需先把对象回填到 Postgres——因此 `object` 模式须单独审批后再启用。
-- `0007 knowledge` 回滚后：`knowledge_documents` / `knowledge_chunks` 两张表留着不用，旧版本没有知识库入口；重新部署后数据仍在。
 - 不要手工删除 `schema_migrations` 里的行。确实需要撤销时，写一个新的迁移来撤销。

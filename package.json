@@ -44,7 +44,8 @@
     "product:smoke": "pnpm build && node scripts/smoke-product.mjs",
     "eval:context": "tsx scripts/eval-context.ts",
     "eval:tasks": "tsx scripts/eval-tasks.ts",
-    "eval:gate": "tsx scripts/eval-tasks.ts --baseline evals/tasks-mock-baseline.json --out data/evals/tasks-gate.json"
+    "eval:gate": "tsx scripts/eval-tasks.ts --baseline evals/tasks-mock-baseline.json --out data/evals/tasks-gate.json",
+    "eval:rag": "tsx scripts/eval-rag.ts --min-recall5 0.9 --out data/evals/rag.json"
   },
   "engines": {
     "node": ">=22.13"

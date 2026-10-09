@@ -725,3 +725,28 @@ describe("settings type smoke", () => {
     expect(settings.codexNetworkAccess).toBe(false);
   });
 });
+
+describe("project knowledge tool", () => {
+  it("is offered only with a knowledge backend and returns cited passages to the model", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-knowledge-"));
+    const toolNames: string[][] = [];
+    let toolMessage = "";
+    const mock = await startScriptedLlm([
+      (raw, res) => { toolNames.push(JSON.parse(raw).tools.map((t: { function: { name: string } }) => t.function.name)); toolDelta(res, [{ id: "kb-1", name: "knowledge_search", args: { query: "签名校验" } }]); },
+      (raw, res) => { toolMessage = JSON.parse(raw).messages.find((m: { role: string; tool_call_id?: string }) => m.role === "tool" && m.tool_call_id === "kb-1")?.content ?? ""; sse(res, { choices: [{ delta: { content: "按 HMAC 校验 [K1](#knowledge:chunk_1)。" } }] }); },
+    ]);
+    try {
+      const calls: Array<Record<string, unknown>> = [];
+      const result = await runAgent({ session: emptySession(), settings: pigSettings(root, { llmBaseUrl: mock.url }), signal: new AbortController().signal, emit: () => {}, knowledgeSearch: async (args) => (calls.push(args), "[K1](#knowledge:chunk_1) 《webhooks.md》 › 签名\nv1 = HMAC-SHA256") });
+      expect(toolNames[0]).toContain("knowledge_search");
+      expect(calls).toEqual([{ query: "签名校验" }]);
+      expect(toolMessage).toContain("#knowledge:chunk_1");
+      expect(result.lastError).toBeFalsy();
+    } finally { await mock.close(); }
+    const plain = await startScriptedLlm([(raw, res) => { toolNames.push(JSON.parse(raw).tools.map((t: { function: { name: string } }) => t.function.name)); sse(res, { choices: [{ delta: { content: "完成" } }] }); }]);
+    try {
+      await runAgent({ session: emptySession(), settings: pigSettings(root, { llmBaseUrl: plain.url }), signal: new AbortController().signal, emit: () => {} });
+      expect(toolNames[1]).not.toContain("knowledge_search");
+    } finally { await plain.close(); }
+  });
+});

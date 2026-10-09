@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
+  BookOpen,
   FileText,
   FolderKanban,
   MessageSquare,
@@ -12,6 +13,7 @@ import type {
   CloudProjectWorkspace,
 } from "@pig-agent/contracts/cloud";
 import { cloudRequest } from "./cloud-api";
+import { KnowledgePanel } from "./KnowledgePanel";
 import "./cloud-project-home.css";
 
 export function CloudProjectHome({
@@ -32,8 +34,9 @@ export function CloudProjectHome({
   const [project, setProject] = useState<CloudProject>();
   const [workspace, setWorkspace] = useState<CloudProjectWorkspace>();
   const [tab, setTab] = useState<
-    "overview" | "conversations" | "files" | "about"
+    "overview" | "conversations" | "files" | "knowledge" | "about"
   >("overview");
+  const [knowledgeCount, setKnowledgeCount] = useState<number>();
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -47,8 +50,10 @@ export function CloudProjectHome({
     Promise.all([
       cloudRequest("/v1/projects"),
       cloudRequest(`/v1/projects/${projectId}/workspace`),
+      cloudRequest(`/v1/projects/${projectId}/knowledge`).catch(() => undefined),
     ])
-      .then(([catalog, files]) => {
+      .then(([catalog, files, knowledge]) => {
+        if (active && knowledge) setKnowledgeCount(knowledge.totals.documents);
         if (!active) return;
         const found = catalog.projects.find(
           (p: CloudProject) => p.id === projectId,
@@ -122,6 +127,7 @@ export function CloudProjectHome({
             ["overview", "概览"],
             ["conversations", "项目对话"],
             ["files", "工作区与文件"],
+            ["knowledge", "知识库"],
             ["about", "项目说明"],
           ] as const
         ).map(([value, label]) => (
@@ -158,6 +164,11 @@ export function CloudProjectHome({
               <FolderKanban size={20} />
               <span>保存的任务版本</span>
               <strong>{versions}</strong>
+            </button>
+            <button onClick={() => setTab("knowledge")}>
+              <BookOpen size={20} />
+              <span>知识库文档</span>
+              <strong>{knowledgeCount ?? "—"}</strong>
             </button>
           </div>
           <section className="project-section">
@@ -284,6 +295,7 @@ export function CloudProjectHome({
           </section>
         </>
       )}
+      {tab === "knowledge" && <KnowledgePanel projectId={projectId} onCount={setKnowledgeCount} />}
       {tab === "about" && (
         <section className="project-section project-about">
           <h2>项目说明</h2>

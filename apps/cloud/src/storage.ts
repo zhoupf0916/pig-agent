@@ -43,6 +43,7 @@ export { storageFallbacks };
 export const sha256 = (data: Uint8Array) => createHash("sha256").update(data).digest("hex");
 export const attachmentKey = (owner: string, id: string) => `attachments/${owner}/${id}`;
 export const workspaceKey = (conversation: string, run: string) => `workspaces/${conversation}/${run}.tar.gz`;
+export const knowledgeKey = (project: string, id: string) => `knowledge/${project}/${id}`;
 
 let bucketReady: Promise<void> | undefined;
 async function ready(c: S3Client) {
@@ -119,17 +120,27 @@ export async function offloadWorkspace(runId: string) {
   return true;
 }
 
+export async function offloadKnowledge(id: string) {
+  const row = (await db.query("SELECT id,project_id,mime,data,blob_key FROM knowledge_documents WHERE id=$1", [id])).rows[0];
+  if (!row || row.blob_key || !row.data) return false;
+  const key = knowledgeKey(row.project_id, row.id);
+  const digest = await putVerified(key, row.data, row.mime);
+  await db.query("UPDATE knowledge_documents SET blob_key=$2, blob_sha256=$3, blob_verified_at=now() WHERE id=$1 AND blob_key IS NULL", [id, key, digest]);
+  return true;
+}
+
 /** Fire-and-forget offload after a commit; failures leave the row pending for the backfill sweep. */
-export function offloadLater(kind: "attachment" | "workspace", id: string) {
+export function offloadLater(kind: "attachment" | "workspace" | "knowledge", id: string) {
   if (storageMode() === "pg" || !s3()) return;
-  void (kind === "attachment" ? offloadAttachment(id) : offloadWorkspace(id)).catch(() => console.error(`Object storage offload pending: ${kind}`));
+  void (kind === "attachment" ? offloadAttachment(id) : kind === "knowledge" ? offloadKnowledge(id) : offloadWorkspace(id)).catch(() => console.error(`Object storage offload pending: ${kind}`));
 }
 
 export async function backfill(limit = 100) {
   const result = { copied: 0, failed: 0, remaining: 0 };
   const attachments = (await db.query("SELECT id FROM attachments WHERE blob_key IS NULL AND data IS NOT NULL ORDER BY created_at LIMIT $1", [limit])).rows;
   const workspaces = (await db.query("SELECT run_id FROM workspace_versions WHERE blob_key IS NULL AND snapshot ? 'data' ORDER BY created_at LIMIT $1", [limit])).rows;
-  for (const [fn, ids] of [[offloadAttachment, attachments.map((r) => r.id)], [offloadWorkspace, workspaces.map((r) => r.run_id)]] as const)
+  const knowledge = (await db.query("SELECT id FROM knowledge_documents WHERE blob_key IS NULL AND data IS NOT NULL ORDER BY created_at LIMIT $1", [limit])).rows;
+  for (const [fn, ids] of [[offloadAttachment, attachments.map((r) => r.id)], [offloadWorkspace, workspaces.map((r) => r.run_id)], [offloadKnowledge, knowledge.map((r) => r.id)]] as const)
     for (const id of ids) {
       try {
         if (await fn(id)) result.copied++;
@@ -145,10 +156,11 @@ async function pendingCounts() {
   const r = (
     await db.query(
       `SELECT (SELECT count(*) FROM attachments WHERE blob_key IS NULL AND data IS NOT NULL)::int AS a,
-              (SELECT count(*) FROM workspace_versions WHERE blob_key IS NULL AND snapshot ? 'data')::int AS w`,
+              (SELECT count(*) FROM workspace_versions WHERE blob_key IS NULL AND snapshot ? 'data')::int AS w,
+              (SELECT count(*) FROM knowledge_documents WHERE blob_key IS NULL AND data IS NOT NULL)::int AS k`,
     )
   ).rows[0];
-  return { attachments: r.a, workspaces: r.w, total: r.a + r.w };
+  return { attachments: r.a, workspaces: r.w, knowledge: r.k, total: r.a + r.w + r.k };
 }
 
 /** Re-reads every offloaded object and compares it with the recorded digest and the Postgres original. */
@@ -159,7 +171,9 @@ export async function verifyAll(limit = 500) {
   const rows = [
     ...(await db.query("SELECT 'attachment' AS kind, id, blob_key, blob_sha256, data AS pg FROM attachments WHERE blob_key IS NOT NULL ORDER BY created_at LIMIT $1", [limit])).rows,
     ...(await db.query("SELECT 'workspace' AS kind, run_id AS id, blob_key, blob_sha256, decode(snapshot->>'data','base64') AS pg FROM workspace_versions WHERE blob_key IS NOT NULL ORDER BY created_at LIMIT $1", [limit])).rows,
+    ...(await db.query("SELECT 'knowledge' AS kind, id, blob_key, blob_sha256, data AS pg FROM knowledge_documents WHERE blob_key IS NOT NULL ORDER BY created_at LIMIT $1", [limit])).rows,
   ];
+  const TABLE: Record<string, [string, string]> = { attachment: ["attachments", "id"], workspace: ["workspace_versions", "run_id"], knowledge: ["knowledge_documents", "id"] };
   for (const row of rows) {
     report.checked++;
     const bytes = await c.get(row.blob_key);
@@ -173,7 +187,8 @@ export async function verifyAll(limit = 500) {
       continue;
     }
     report.ok++;
-    await db.query(`UPDATE ${row.kind === "attachment" ? "attachments" : "workspace_versions"} SET blob_verified_at=now() WHERE ${row.kind === "attachment" ? "id" : "run_id"}=$1`, [row.id]);
+    const [table, idCol] = TABLE[row.kind]!;
+    await db.query(`UPDATE ${table} SET blob_verified_at=now() WHERE ${idCol}=$1`, [row.id]);
   }
   return report;
 }
@@ -185,7 +200,7 @@ export async function collectGarbage(graceMs = 24 * 3600_000, now = Date.now()) 
   await ready(c);
   let scanned = 0,
     deleted = 0;
-  for (const [prefix, table, column] of [["attachments/", "attachments", "blob_key"], ["workspaces/", "workspace_versions", "blob_key"]] as const) {
+  for (const [prefix, table, column] of [["attachments/", "attachments", "blob_key"], ["workspaces/", "workspace_versions", "blob_key"], ["knowledge/", "knowledge_documents", "blob_key"]] as const) {
     const batch: string[] = [];
     const flush = async () => {
       if (!batch.length) return;
@@ -223,7 +238,10 @@ export async function storageStatus() {
               count(*) FILTER (WHERE data IS NOT NULL)::int AS in_pg, coalesce(sum(size) FILTER (WHERE blob_key IS NOT NULL),0)::bigint AS bytes FROM attachments
        UNION ALL
        SELECT 'workspaces', count(*)::int, count(blob_key)::int, count(blob_verified_at)::int,
-              count(*) FILTER (WHERE snapshot ? 'data')::int, coalesce(sum(blob_size),0)::bigint FROM workspace_versions`,
+              count(*) FILTER (WHERE snapshot ? 'data')::int, coalesce(sum(blob_size),0)::bigint FROM workspace_versions
+       UNION ALL
+       SELECT 'knowledge', count(*)::int, count(blob_key)::int, count(blob_verified_at)::int,
+              count(*) FILTER (WHERE data IS NOT NULL)::int, coalesce(sum(size) FILTER (WHERE blob_key IS NOT NULL),0)::bigint FROM knowledge_documents`,
     )
   ).rows;
   for (const r of t) {

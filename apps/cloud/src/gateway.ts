@@ -434,6 +434,18 @@ app.post("/v1/chat/completions", async (c) => {
     headers: { "Content-Type": "text/event-stream" },
   });
 });
+// Runner tool: project knowledge search, authorized by the run token on the control plane.
+app.post("/knowledge/search", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
+  const response = await fetch(control + "/internal/knowledge/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    body: JSON.stringify({ token, query: body.query, k: body.k }),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30000)]),
+  });
+  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+});
 app.post("/mcp/tools", async (c) => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
   const response = await fetch(control + "/internal/mcp/tools", {

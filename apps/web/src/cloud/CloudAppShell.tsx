@@ -29,6 +29,7 @@ import "./resource-details.css";
 import "./responsive.css";
 import "./workbench-layout.css";
 import { useDialog } from "../lib/use-dialog";
+import { KnowledgeCitationHost } from "./KnowledgeCitation";
 type Account = { id: string; name: string };
 export function CloudAppShell() {
   const [account, setAccount] = useState<Account | null>(null),
@@ -133,6 +134,7 @@ export function CloudAppShell() {
     );
   return (
     <div className={`app-layout cloud-app cloud-app-${route} ${collapsed ? "rail-collapsed" : ""}`} key={account.id}>
+      <KnowledgeCitationHost />
       {navigation && (
         <button
           className="navigation-scrim"
