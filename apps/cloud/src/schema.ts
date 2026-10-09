@@ -15,6 +15,7 @@ import { storageSchemaSql } from "./storage-schema.ts";
 import { knowledgeSchemaSql } from "./knowledge-schema.ts";
 import { queueSchemaSql } from "./queue-schema.ts";
 import { childrenSchemaSql } from "./children-schema.ts";
+import { feishuSchemaSql } from "./feishu/schema.ts";
 import { bootstrapTokenSchema } from "./bootstrap-tokens.ts";
 import { authRateLimitSchema } from "./auth-rate-limit-schema.ts";
 import type { Migration } from "./migrations.ts";
@@ -200,4 +201,5 @@ export const migrations = (): Migration[] => [
   { version: 7, name: "knowledge", sql: knowledgeSchemaSql },
   { version: 8, name: "queue_retry", sql: queueSchemaSql },
   { version: 9, name: "parallel_children", sql: childrenSchemaSql },
+  { version: 10, name: "feishu", sql: feishuSchemaSql },
 ];
