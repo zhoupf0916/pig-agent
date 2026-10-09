@@ -236,9 +236,9 @@ deploy() {
   if [ "$FAILS" != 0 ]; then echo "DEPLOY FAIL ($FAILS) — roll back with: bash $SELF rollback"; echo "log: $LOG"; exit 1; fi
   echo "DEPLOY OK — previous release kept: $PREV ; rollback: bash $SELF rollback"
   if [ "${SKIP_E2E:-0}" = 1 ] || [ ! -f "$HERE/e2e-remote.sh" ]; then echo "e2e: bash $HERE/e2e-remote.sh"
-  elif [ -n "${PIG_REMOTE_ADMIN_PASSWORD:-}" ] || grep -q '^Password:' "$ACC" 2>/dev/null; then
+  elif [ -n "${PIG_REMOTE_ADMIN_PASSWORD:-}" ] || grep -qE '^Password:[[:space:]]*[^[:space:]]+[[:space:]]*$' "$ACC" 2>/dev/null; then
     step "e2e (bash $HERE/e2e-remote.sh)"; bash "$HERE/e2e-remote.sh" || true
-  else echo "e2e: skipped here (no stored admin password on this server); run from another machine: PIG_BASE=$(origin) PIG_REMOTE_ADMIN_PASSWORD=... bash e2e-remote.sh"; fi
+  else echo "e2e: skipped here (no usable 'Password: <value>' line in accounts.txt); run from another machine: PIG_BASE=$(origin) PIG_REMOTE_ADMIN_PASSWORD=... bash e2e-remote.sh"; fi
   echo "log: $LOG"
 }
 
