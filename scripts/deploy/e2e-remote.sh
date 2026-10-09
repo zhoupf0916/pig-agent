@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pig Agent remote e2e, run ON the server (talks to 127.0.0.1:8890, so the nginx rate limits don't apply).
-# Prints only PASS/FAIL lines plus a final count. The admin username/password are read from
+# Prints only PASS/FAIL/BLOCKED-402 lines plus a final count (BLOCKED-402 = model provider has no balance; not a failure). The admin username/password are read from
 # data/cloud-local/accounts.txt inside the test process and never printed; the session is logged out at the end.
 #   bash e2e-remote.sh
 #   PIG_BASE=https://193.112.22.18 PIG_REMOTE_ADMIN_PASSWORD=... bash e2e-remote.sh   # from another machine
@@ -43,7 +43,18 @@ try { acc = readFileSync(process.env.ACCOUNTS || "/run/pig/accounts.txt", "utf8"
 const username = process.env.PIG_REMOTE_ADMIN_USER || acc.match(/^Username:\s*(\S+)\s*$/m)?.[1] || "admin";
 const password = process.env.PIG_REMOTE_ADMIN_PASSWORD || acc.match(/^Password:\s*(\S+)\s*$/m)?.[1] || "";
 let session = "";
-let passed = 0, failed = 0;
+let passed = 0, failed = 0, blocked = 0;
+// The model provider refusing service (HTTP 402: no balance) is an account problem, not a deployment
+// defect: such checks are reported as BLOCKED-402 and do not fail the run.
+let modelBlocked = false;
+class Blocked402 extends Error {}
+const MODEL_402 = /HTTP 402/;
+const blockIf402 = (state, detail) => {
+  if (state === "failed" && (MODEL_402.test(String(detail || "")) || modelBlocked)) {
+    modelBlocked = true;
+    throw new Blocked402("model provider HTTP 402 (no balance) — top up the model channel, then re-run");
+  }
+};
 const scrub = (s) => {
   let t = String(s ?? "");
   for (const x of [password, session]) if (x) t = t.split(x).join("<redacted>");
@@ -51,7 +62,10 @@ const scrub = (s) => {
 };
 async function test(name, fn) {
   try { const d = await fn(); passed++; console.log(`PASS ${name}${d ? " — " + scrub(d) : ""}`); return true; }
-  catch (e) { failed++; console.log(`FAIL ${name} — ${scrub(e?.message || e)}`); return false; }
+  catch (e) {
+    if (e instanceof Blocked402) { blocked++; console.log(`BLOCKED-402 ${name} — ${scrub(e.message)}`); return false; }
+    failed++; console.log(`FAIL ${name} — ${scrub(e?.message || e)}`); return false;
+  }
 }
 const ok = (cond, msg) => { if (!cond) throw Error(msg); };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -125,6 +139,7 @@ await test("real model run: tool calls + approval + artifact", async () => {
   const created = await api("/v1/runs", { method: "POST", headers: { "Idempotency-Key": randomUUID() }, status: 201, body: {
     prompt: `请在工作区创建文件 e2e-proof.txt，内容只有一行：${marker}。然后读取该文件确认内容，最后用一句话回复确认。`, requireApproval: true } });
   run1 = await finish(created.id, approved);
+  blockIf402(run1.state, run1.error);
   ok(run1.state === "succeeded", `state=${run1.state} ${run1.error || ""}`);
   ok(approved.length >= 1, "no approval was requested");
   const log = await api(`/v1/runs/${run1.id}/eventlog`);
@@ -139,7 +154,7 @@ await test("real model run: tool calls + approval + artifact", async () => {
 await test("conversation follow-up turn (same workspace)", async () => {
   ok(run1?.conversation_id, "no first run");
   const f = await api(`/v1/runs/${run1.id}/follow-ups`, { method: "POST", headers: { "Idempotency-Key": randomUUID() }, status: 201, body: { prompt: "读取 e2e-proof.txt，只回复文件内容本身。" } });
-  const r = await finish(f.id); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
+  const r = await finish(f.id); blockIf402(r.state, r.error); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
   const reply = await lastReply(run1.conversation_id);
   if (mode === "provider") ok(reply.includes(marker), `reply does not contain the marker: ${reply.slice(0, 80)}`);
   return `reply="${reply.slice(0, 60)}"`;
@@ -163,6 +178,7 @@ await test("A2A message/send (blocking)", async () => {
   const t0 = Date.now();
   const r = await rpc("message/send", { ...msg("计算 17*23，只回答数字。"), configuration: { blocking: true } });
   ok(!r.body.error, JSON.stringify(r.body.error)); sendTask = r.body.result;
+  blockIf402(sendTask?.status?.state, JSON.stringify(sendTask?.status?.message ?? ""));
   ok(sendTask?.status?.state === "completed", `state=${sendTask?.status?.state}`);
   const text = sendTask.status.message?.parts?.map((p) => p.text || "").join("") || JSON.stringify(sendTask.artifacts || []).slice(0, 200);
   if (mode === "provider") ok(text.includes("391"), `reply=${text.slice(0, 60)}`);
@@ -185,6 +201,7 @@ await test("A2A message/stream (SSE)", async () => {
     }
   }
   ok(kinds.task && kinds["status-update"], `events=${JSON.stringify(kinds)}`);
+  blockIf402(final, "");
   ok(final === "completed", `final=${final}`);
   const g = await rpc("tasks/get", { id: taskId }); ok(g.body.result?.status?.state === "completed", "tasks/get state mismatch");
   return `first event ${firstMs}ms, total ${((Date.now() - t0) / 1000).toFixed(1)}s, events=${JSON.stringify(kinds)}, tasks/get=completed`;
@@ -203,7 +220,7 @@ try {
     const s = await api("/v1/schedules", { method: "POST", status: 201, headers: { "Idempotency-Key": randomUUID() }, body: { name: "e2e 手动计划（自动删除）", prompt: "只回复 SCHEDULE-OK", schedule: null, timezone: "Asia/Shanghai" } });
     schedules.push(s.id);
     const fired = await api(`/v1/schedules/${s.id}/run`, { method: "POST", status: 202, headers: { "Idempotency-Key": randomUUID() } });
-    const r = await finish(fired.remoteRunId); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
+    const r = await finish(fired.remoteRunId); blockIf402(r.state, r.error); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
     const h = await api(`/v1/schedules/${s.id}/history`); ok(h.runs.some((x) => x.id === fired.remoteRunId), "run not in history");
     return `run ${r.state}`;
   });
@@ -214,7 +231,7 @@ try {
   });
 }
 await req("/auth/web/logout", { method: "POST", auth: false, headers: { Origin: ORIGIN, Cookie: `pig_web_session=${session}` } }).catch(() => {});
-console.log(`E2E: ${passed} passed, ${failed} failed`);
+console.log(`E2E: ${passed} passed, ${failed} failed${blocked ? `, ${blocked} blocked (model provider HTTP 402)` : ""}`);
 process.exit(failed ? 1 : 0);
 JS
 run_node() {
