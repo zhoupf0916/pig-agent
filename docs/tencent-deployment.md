@@ -46,6 +46,27 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+### 更新 Nginx 配置（安全头 / HTTP/2 / 静态资源压缩）
+
+`infra/tencent/nginx.conf` 包含以下内容：
+
+- `server_tokens off`、`http2 on`；
+- HSTS、CSP、Permissions-Policy 三个安全头；
+- `/assets/` 的 gzip 压缩与一年 immutable 缓存。
+
+CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修改该脚本时，`apps/web/src/deploy-headers.test.ts` 会提示更新哈希。
+
+更新步骤：先备份，再检查语法，最后平滑重载，不中断现有连接。
+
+```sh
+CONF=$(sudo nginx -T 2>/dev/null | awk '/^# configuration file /{f=$4} /zone=pig_api/{sub(":$","",f); print f; exit}')
+echo "$CONF"   # 例如 /etc/nginx/conf.d/pig-agent.conf
+sudo cp -a "$CONF" "$CONF.bak-$(date +%Y%m%d%H%M%S)"
+sudo install -m 0644 /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf "$CONF"
+sudo nginx -t && sudo systemctl reload nginx
+# 回滚：sudo cp -a "$CONF.bak-<时间>" "$CONF" && sudo nginx -t && sudo systemctl reload nginx
+```
+
 `WEB_PUBLIC_ORIGIN=https://193.112.22.18` 必须写入 stack.env 后重建控制面。Nginx 禁止公网访问 `/internal/`，关闭响应缓冲以支持 SSE，HTTP 自动跳转 HTTPS。登录 cookie 为 Secure + HttpOnly。
 
 ## 引导令牌（ADMIN_TOKEN 等）
