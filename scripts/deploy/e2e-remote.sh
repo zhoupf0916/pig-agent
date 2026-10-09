@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pig Agent remote e2e, run ON the server (talks to 127.0.0.1:8890, so the nginx rate limits don't apply).
-# Prints only PASS/FAIL/BLOCKED-402 lines plus a final count (BLOCKED-402 = model provider has no balance; not a failure). The admin username/password are read from
+# Prints only PASS/FAIL/BLOCKED-402/SKIP lines plus a final count (BLOCKED-402 = model provider has no balance; not a failure). The admin username/password are read from
 # data/cloud-local/accounts.txt inside the test process and never printed; the session is logged out at the end.
 #   bash e2e-remote.sh
 #   PIG_BASE=https://193.112.22.18 PIG_REMOTE_ADMIN_PASSWORD=... bash e2e-remote.sh   # from another machine
@@ -9,7 +9,9 @@
 # under the nginx limits), PIG_INSECURE_TLS=1 (skip certificate verification; only for a known self-signed host).
 # Covers: health, public HTTPS, web workbench, admin page + password login + overview, a real model run
 # with tool calls + approval + artifact, a follow-up conversation turn, A2A card / auth / message/send /
-# message/stream / tasks/get, schedules (cron + manual run + history + delete).
+# message/stream / tasks/get, schedules (cron + manual run + history + delete), OpenAPI (/openapi.json +
+# /api-docs), signed webhooks (create, SSRF guard, ping + run.cancelled delivered to the built-in sink at the
+# public origin, forged signature rejected, redeliver, delete). SKIP = check not applicable on this host.
 set -uo pipefail
 ROOT=${PIG_DEPLOY_ROOT:-/home/ubuntu/pig-agent}
 ACC=${PIG_ACCOUNTS:-$ROOT/data/cloud-local/accounts.txt}
@@ -43,7 +45,8 @@ try { acc = readFileSync(process.env.ACCOUNTS || "/run/pig/accounts.txt", "utf8"
 const username = process.env.PIG_REMOTE_ADMIN_USER || acc.match(/^Username:\s*(\S+)\s*$/m)?.[1] || "admin";
 const password = process.env.PIG_REMOTE_ADMIN_PASSWORD || acc.match(/^Password:\s*(\S+)\s*$/m)?.[1] || "";
 let session = "";
-let passed = 0, failed = 0, blocked = 0;
+let passed = 0, failed = 0, blocked = 0, skipped = 0;
+class Skip extends Error {}
 // The model provider refusing service (HTTP 402: no balance) is an account problem, not a deployment
 // defect: such checks are reported as BLOCKED-402 and do not fail the run.
 let modelBlocked = false;
@@ -58,12 +61,13 @@ const blockIf402 = (state, detail) => {
 const scrub = (s) => {
   let t = String(s ?? "");
   for (const x of [password, session]) if (x) t = t.split(x).join("<redacted>");
-  return t.replace(/\b[0-9a-f]{40,}\b/gi, "<redacted>").replace(/\s+/g, " ").slice(0, 200);
+  return t.replace(/whsec_[A-Za-z0-9_-]+/g, "whsec_<redacted>").replace(/\b[0-9a-f]{40,}\b/gi, "<redacted>").replace(/\s+/g, " ").slice(0, 200);
 };
 async function test(name, fn) {
   try { const d = await fn(); passed++; console.log(`PASS ${name}${d ? " — " + scrub(d) : ""}`); return true; }
   catch (e) {
     if (e instanceof Blocked402) { blocked++; console.log(`BLOCKED-402 ${name} — ${scrub(e.message)}`); return false; }
+    if (e instanceof Skip) { skipped++; console.log(`SKIP ${name} — ${scrub(e.message)}`); return false; }
     failed++; console.log(`FAIL ${name} — ${scrub(e?.message || e)}`); return false;
   }
 }
@@ -207,6 +211,82 @@ await test("A2A message/stream (SSE)", async () => {
   return `first event ${firstMs}ms, total ${((Date.now() - t0) / 1000).toFixed(1)}s, events=${JSON.stringify(kinds)}, tasks/get=completed`;
 });
 
+await test("OpenAPI spec /openapi.json", async () => {
+  const spec = await api("/openapi.json", { auth: false });
+  ok(spec.openapi === "3.1.0", `openapi=${spec.openapi}`);
+  for (const p of ["/v1/runs", "/v1/webhooks", "/v1/webhooks/{id}/deliveries"]) ok(spec.paths?.[p], `missing path ${p}`);
+  return `${Object.keys(spec.paths).length} paths, ${Object.keys(spec.components.schemas).length} schemas`;
+});
+await test("API docs page /api-docs", async () => {
+  ok(String(await api("/api-docs", { auth: false })).includes("/api-docs.js"), "script not referenced");
+  const r = await req("/api-docs.js", { auth: false }); ok(r.ok && (await r.text()).includes("/openapi.json"), `api-docs.js -> ${r.status}`);
+});
+
+// Webhooks: deliveries go server -> its own public origin (built-in signature-verifying sink), so this
+// also proves cloud egress, DNS/IP pinning and TLS to the public certificate.
+const SINK = /^https:\/\//.test(ORIGIN) ? `${ORIGIN}/v1/webhook-sink` : "";
+let hook;
+const deliveriesOf = async () => (await api(`/v1/webhooks/${hook.id}/deliveries`)).deliveries;
+async function delivered(match, ms = 90000) {
+  const end = Date.now() + ms; let last;
+  while (Date.now() < end) {
+    last = (await deliveriesOf()).find(match);
+    if (last?.state === "succeeded") return last;
+    if (last?.state === "dead") break;
+    await sleep(1000);
+  }
+  if (last && !last.lastStatus && /ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|timeout|aborted/i.test(last.lastError || ""))
+    throw new Skip(`server cannot reach its own public address (${last.lastError}); hairpin NAT? verify with an external receiver`);
+  throw Error(last ? `delivery ${last.state}, attempts=${last.attempts}, status=${last.lastStatus}, error=${last.lastError}` : "no delivery recorded");
+}
+try {
+  await test("webhooks: create (secret shown once) + SSRF guard", async () => {
+    if (!SINK) throw new Skip(`public origin ${ORIGIN} is not HTTPS`);
+    const bad = await req("/v1/webhooks", { method: "POST", body: { url: "https://127.0.0.1/x", events: ["run.succeeded"] } });
+    ok(bad.status === 400, `private target accepted: HTTP ${bad.status}`);
+    hook = await api("/v1/webhooks", { method: "POST", status: 201, body: { url: SINK, events: ["run.succeeded", "run.failed", "run.cancelled"], description: "e2e 部署验收（自动删除）" } });
+    ok(/^whsec_/.test(hook.secret || ""), "no signing secret returned");
+    const again = await api(`/v1/webhooks/${hook.id}`); ok(!("secret" in again), "secret readable after creation");
+    return `${hook.id} -> ${SINK}`;
+  });
+  await test("webhooks: signed ping delivered + verified by receiver", async () => {
+    if (!hook) throw new Skip("no webhook");
+    const t0 = Date.now();
+    const p = await api(`/v1/webhooks/${hook.id}/ping`, { method: "POST", status: 202 });
+    const d = await delivered((x) => x.id === p.deliveryId);
+    const receipts = (await api(`/v1/webhooks/${hook.id}/sink-receipts`)).receipts;
+    const r = receipts.find((x) => x.deliveryId === p.deliveryId);
+    ok(r?.verified && r.eventId === p.eventId, "receiver has no verified receipt for this delivery");
+    return `HTTP ${d.lastStatus}, attempts=${d.attempts}, ${Date.now() - t0}ms incl. polling`;
+  });
+  await test("webhooks: run.cancelled event for a cancelled run (no model call)", async () => {
+    if (!hook) throw new Skip("no webhook");
+    const t0 = Date.now();
+    const created = await api("/v1/runs", { method: "POST", headers: { "Idempotency-Key": randomUUID() }, status: 201, body: { prompt: "e2e webhook 测试：立即取消", requireApproval: true } });
+    await api(`/v1/runs/${created.id}/abort`, { method: "POST" });
+    const r = await finish(created.id); ok(r.state === "cancelled", `state=${r.state}`);
+    const d = await delivered((x) => x.event === "run.cancelled" && Date.parse(x.createdAt) >= t0 - 5000);
+    return `HTTP ${d.lastStatus}, attempts=${d.attempts}`;
+  });
+  await test("webhooks: receiver rejects a forged signature", async () => {
+    if (!hook) throw new Skip("no webhook");
+    const r = await req("/v1/webhook-sink", { method: "POST", auth: false, headers: { "X-Pig-Webhook-Id": hook.id, "X-Pig-Signature": `t=${Math.floor(Date.now() / 1000)},v1=${"0".repeat(64)}` }, body: { id: "evt_forged", type: "ping" } });
+    ok(r.status === 401, `HTTP ${r.status}`);
+  });
+  await test("webhooks: delivery log + redeliver", async () => {
+    if (!hook) throw new Skip("no webhook");
+    const list = await deliveriesOf(); ok(list.length >= 1, "empty delivery log");
+    const first = list.find((x) => x.state === "succeeded"); ok(first, "no succeeded delivery to redeliver");
+    await api(`/v1/webhooks/${hook.id}/deliveries/${first.id}/redeliver`, { method: "POST", status: 202 });
+    const d = await delivered((x) => x.id === first.id && x.attempts === 1 && Date.parse(x.lastAttemptAt) > Date.parse(first.lastAttemptAt));
+    return `${list.length} log entries, redelivered HTTP ${d.lastStatus}`;
+  });
+} finally {
+  if (hook) await test("webhooks: delete test webhook", async () => {
+    await api(`/v1/webhooks/${hook.id}`, { method: "DELETE" }); await api(`/v1/webhooks/${hook.id}`, { status: 404 });
+  });
+}
+
 const schedules = [];
 try {
   await test("schedules: create cron (Asia/Shanghai)", async () => {
@@ -231,7 +311,7 @@ try {
   });
 }
 await req("/auth/web/logout", { method: "POST", auth: false, headers: { Origin: ORIGIN, Cookie: `pig_web_session=${session}` } }).catch(() => {});
-console.log(`E2E: ${passed} passed, ${failed} failed${blocked ? `, ${blocked} blocked (model provider HTTP 402)` : ""}`);
+console.log(`E2E: ${passed} passed, ${failed} failed${blocked ? `, ${blocked} blocked (model provider HTTP 402)` : ""}${skipped ? `, ${skipped} skipped` : ""}`);
 process.exit(failed ? 1 : 0);
 JS
 run_node() {
