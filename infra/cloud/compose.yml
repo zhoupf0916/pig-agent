@@ -22,6 +22,19 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+  minio:
+    # S3-compatible object store for attachments and workspace snapshots (private network only).
+    # Default: Chainguard's source build of MinIO (patched; Docker Hub no longer serves minio/minio),
+    # pinned by digest. Override with MINIO_IMAGE; any S3 endpoint works via S3_ENDPOINT (e.g. COS).
+    image: ${MINIO_IMAGE:-cgr.dev/chainguard/minio@sha256:25bc63a89475bc494bfbce9bbeddb0421aece3f3968d77c809db5104d07b4545}
+    command: ["server", "/data", "--quiet"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Run pnpm cloud:setup}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Run pnpm cloud:setup}
+      MINIO_BROWSER: "off"
+      MINIO_UPDATE: "off"
+    volumes: ["objects:/data"]
+    networks: [storage]
   cloud:
     image: pig-agent-cloud:local
     build:
@@ -43,10 +56,17 @@ services:
       WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-}
       # Set only behind a proxy that overwrites the header (see infra/tencent/compose.yml).
       TRUST_PROXY_HEADER: ${TRUST_PROXY_HEADER:-}
+      # Object storage (docs/object-storage.md). dual = Postgres keeps originals, verified copies in S3.
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-pig-agent}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER}}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD}}
+      STORAGE_MODE: ${STORAGE_MODE:-dual}
     ports: ["127.0.0.1:8890:8890"]
-    networks: [control]
+    networks: [control, storage]
     depends_on:
       postgres: { condition: service_healthy }
+      minio: { condition: service_started }
     healthcheck:
       test:
         [
@@ -105,6 +125,9 @@ services:
 volumes:
   worker-outbox:
   database:
+  objects:
 networks:
   control:
   egress:
+  storage:
+    internal: true

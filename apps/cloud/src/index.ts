@@ -50,6 +50,7 @@ import { registerFileEditRoutes, loadFileOverrides } from "./file-edits.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
 import { registerApiDocs } from "./api-docs.ts";
+import { offloadLater, prepareWorkspaceVersion, registerStorageRoutes, startStorage } from "./storage.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
 import { registerAlertRoutes, startAlerts } from "./alerts.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
@@ -147,6 +148,7 @@ registerEcosystemPluginRoutes(app);
 registerMcpRoutes(app);
 registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
+registerStorageRoutes(app);
 registerApprovalRoutes(app, runFor);
 registerWebhookRoutes(app);
 registerObservabilityRoutes(app, runFor);
@@ -624,6 +626,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
   const tokenHash = hash(body.token);
   const payloadHash = hash(JSON.stringify(body));
   const client = await db.connect();
+  let offloadAfterCommit = false;
   try {
     await client.query("BEGIN");
     // Lock the run first, including terminal runs, so completion replay and cancellation serialize.
@@ -684,10 +687,12 @@ app.post("/internal/runs/:id/finish", async (c) => {
       snapshot.data?.snapshot &&
       !snapshot.data.snapshot.truncated
     ) {
+      const version = await prepareWorkspaceVersion(r.rows[0].conversation_id, id, snapshot.data.snapshot);
       await client.query(
-        "INSERT INTO workspace_versions(run_id,conversation_id,snapshot) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-        [id, r.rows[0].conversation_id, snapshot.data.snapshot],
+        "INSERT INTO workspace_versions(run_id,conversation_id,snapshot,blob_key,blob_sha256,blob_size,blob_verified_at) VALUES($1,$2,$3,$4,$5,$6,CASE WHEN $4::text IS NULL THEN NULL ELSE now() END) ON CONFLICT DO NOTHING",
+        [id, r.rows[0].conversation_id, version.snapshot, version.blob?.key ?? null, version.blob?.sha ?? null, version.blob?.size ?? null],
       );
+      if (!version.blob) offloadAfterCommit = true;
       await client.query(
         "UPDATE conversations SET updated_at=now() WHERE id=$1",
         [r.rows[0].conversation_id],
@@ -714,6 +719,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
     );
     await client.query("COMMIT");
     void recordRunRoot(id).catch(() => {});
+    if (offloadAfterCommit) offloadLater("workspace", id);
     return c.json({ ok: true, state });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -885,6 +891,7 @@ await migrate();
 await bus.start();
 webhookDispatcher.start();
 startObservability();
+startStorage();
 startAlerts();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {

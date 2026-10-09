@@ -42,3 +42,7 @@ groups:
         expr: sum(increase(pig_model_output_capped_total[1h])) > 0
         labels: { severity: info }
         annotations: { summary: "模型提供商未遵守 max_tokens，流已在输出上限处截断" }
+      - alert: PigStorageFallback
+        expr: sum(increase(pig_storage_fallback_total[15m])) > 0 or sum(increase(pig_storage_ops_total{result=~"error|mismatch|missing"}[15m])) > 0
+        labels: { severity: warning }
+        annotations: { summary: "对象存储读写异常，读取回退到 Postgres 原件" }

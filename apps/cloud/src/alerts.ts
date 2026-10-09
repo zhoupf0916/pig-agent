@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { db } from "./db.ts";
 import { bus } from "./event-bus.ts";
 import { adminOnly, recentFailover, recentHttp, recentModel, spanStore, trim } from "./observability.ts";
+import { storageHealth } from "./storage.ts";
 import type { CloudEnv } from "./types.ts";
 
 /**
@@ -110,6 +111,17 @@ export const rules: Rule[] = [
     description: "事件总线 LISTEN 连接断开，实时推送退化为轮询",
     async check() {
       return { firing: !bus.live, value: bus.live ? 1 : 0, summary: bus.live ? "事件总线正常" : "事件总线未连接" };
+    },
+  },
+  {
+    id: "storage_degraded",
+    severity: "warning",
+    forS: 300,
+    description: "对象存储不可达或有数据长时间未复制（读取回退到 Postgres 原件）",
+    async check() {
+      const h = await storageHealth();
+      const firing = h.configured && (!h.reachable || h.pending > 0);
+      return { firing, value: h.reachable ? h.pending : -1, summary: !h.configured ? "未启用对象存储" : !h.reachable ? "对象存储不可达" : `${h.pending} 个文件待复制` };
     },
   },
   {

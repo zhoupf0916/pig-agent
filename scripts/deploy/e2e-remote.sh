@@ -200,6 +200,24 @@ await test("model routing: channel fields + output cap on gateway spans", async 
   ok(chats.length && chats.every((s) => Number(s.attributes["pig.output.cap"]) > 0 && Number(s.attributes["pig.failover.attempts"]) >= 1), "gateway spans lack routing attributes");
   return `primary=${primary ? `${primary.name}/${primary.model} cap=${primary.max_output_tokens}` : "env"}, standby=${channels.filter((c) => c.fallback_rank).length}, attempts=[${chats.map((s) => s.attributes["pig.failover.attempts"]).join(",")}]`;
 });
+await test("object storage: attachment round trip + verified copies", async () => {
+  const st = await api("/v1/admin/storage");
+  if (st.mode === "pg") throw new Skip("object storage not configured (STORAGE_MODE=pg)");
+  ok(st.reachable, "object store unreachable");
+  const text = `e2e 对象存储 ${randomUUID()}`;
+  const up = await api("/v1/attachments", { method: "POST", status: 201, body: { name: "e2e-storage.txt", contentType: "text/plain", data: Buffer.from(text).toString("base64") } });
+  try {
+    let after;
+    for (let i = 0; i < 10; i++) { after = await api("/v1/admin/storage"); if (after.tables.attachments.offloaded > st.tables.attachments.offloaded) break; await sleep(1000); }
+    ok(after.tables.attachments.offloaded > st.tables.attachments.offloaded, "new attachment was not copied to the object store");
+    const body = await (await req(`/v1/attachments/${up.attachment.id}/download`)).text();
+    ok(body === text, "downloaded bytes differ from upload");
+  } finally { await api(`/v1/attachments/${up.attachment.id}`, { method: "DELETE" }); }
+  const v = await api("/v1/admin/storage/verify", { method: "POST", body: {} });
+  ok(!v.missing.length && !v.mismatched.length, `verify: missing=${v.missing.length} mismatched=${v.mismatched.length}`);
+  const t = (await api("/v1/admin/storage")).tables;
+  return `mode=${st.mode}, verified ${v.ok}/${v.checked}, attachments ${t.attachments.offloaded}/${t.attachments.total}, workspaces ${t.workspaces.offloaded}/${t.workspaces.total} offloaded, pending ${t.attachments.pending + t.workspaces.pending}`;
+});
 // Opt-in (PIG_E2E_FAILOVER=1): briefly routes production through a broken primary with the real channel as
 // standby, proves the run still succeeds via failover, then restores the original primary.
 if (process.env.PIG_E2E_FAILOVER === "1") await test("model failover: broken primary -> standby (live)", async () => {

@@ -36,6 +36,7 @@ run                       cloud    创建 → 终态（任务结束时写入）
 | `pig_http_request_duration_seconds{route}` | 延迟直方图（SSE / 长轮询除外） |
 | `pig_model_requests_total{status}` / `pig_model_request_duration_seconds` | 网关模型调用（上游状态码，`no_key`、`rejected_*`） |
 | `pig_model_failovers_total{recovered}` / `pig_model_output_capped_total` | 故障转移次数、因超出输出上限被截断的流 |
+| `pig_storage_ops_total{op,result}` / `pig_storage_fallback_total{kind}` / `pig_storage_blobs{table,location}` | 对象存储读写（put/get/gc_delete × ok/error/missing/mismatch）、回退到 Postgres 原件的读取次数、各表在对象存储与 Postgres 中的数量 |
 | `pig_run_execution_seconds{outcome}` | 每次执行尝试耗时 |
 | `pig_runs{state}`、`pig_queue_oldest_seconds`、`pig_runners_online` | 队列与 Runner |
 | `pig_webhook_deliveries{state}`、`pig_event_bus_live`、`pig_pg_pool_connections{state}` | 依赖健康 |
@@ -45,7 +46,7 @@ run                       cloud    创建 → 终态（任务结束时写入）
 
 ## 告警
 
-cloud 每 30 秒评估一次 9 条内置规则（多实例时用 advisory lock 保证只有一个实例评估），状态写入 `alerts` 表：
+cloud 每 30 秒评估一次 10 条内置规则（多实例时用 advisory lock 保证只有一个实例评估），状态写入 `alerts` 表：
 
 | 规则 | 级别 | 条件 |
 | --- | --- | --- |
@@ -57,6 +58,7 @@ cloud 每 30 秒评估一次 9 条内置规则（多实例时用 advisory lock �
 | `http_5xx` | warning | 5 分钟内请求 ≥ 20 个且 5xx ≥ 5% |
 | `webhook_dead` | warning | 1 小时内有投递重试 8 次后仍失败 |
 | `event_bus_down` | warning | LISTEN 连接断开持续 60 秒 |
+| `storage_degraded` | warning | 已启用对象存储但不可达，或有文件待复制，持续 5 分钟（见 [object-storage.md](object-storage.md)） |
 | `telemetry_dropping` | info | span 队列满导致丢弃 |
 
 触发和恢复时，会给所有启用的管理员中订阅了 `alert.firing` / `alert.resolved` 的 Webhook 发送签名事件（与任务事件同一套投递、重试、日志）。`GET /v1/admin/alerts` 返回当前和最近的告警及规则；`POST /v1/admin/alerts/test` 只给调用者自己的 Webhook 发送一条测试告警。

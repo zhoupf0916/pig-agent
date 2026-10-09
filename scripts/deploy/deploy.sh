@@ -164,7 +164,7 @@ deploy() {
   local START CUR PREV active queued avail dump cfg entries got i
   START=$(date +%s)
   step "0/7 preflight"
-  for c in docker curl tar sha256sum timeout; do command -v $c >/dev/null || die "missing command: $c"; done
+  for c in docker curl tar sha256sum timeout openssl; do command -v $c >/dev/null || die "missing command: $c"; done
   docker compose version >/dev/null || die "docker compose plugin missing"
   [ -f "$ENVF" ] || die "missing $ENVF"
   [ -L "$ROOT/current" ] || die "$ROOT/current is not a symlink"
@@ -215,6 +215,13 @@ deploy() {
   step "4/7 keep data/ and stack.env; schema diff"
   if [ -e "$PREV/data" ] && [ ! -e "$NEW/data" ]; then ln -s "$(readlink -f "$PREV/data")" "$NEW/data"; echo "linked data/ like previous release"; fi
   if [ "$(schema_sum "$PREV")" = "$(schema_sum "$NEW")" ]; then echo same > "$STATE.schema"; else echo changed > "$STATE.schema"; fi
+  # Object storage credentials: generated once when missing (new keys, never rotated or printed here).
+  for k in MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+    if ! grep -q "^$k=" "$ENVF"; then
+      if [ $k = MINIO_ROOT_USER ]; then v="pig$(openssl rand -hex 8)"; else v="$(openssl rand -hex 32)"; fi
+      (umask 077; printf '\n%s=%s\n' "$k" "$v" >> "$ENVF"); unset v; echo "added $k to stack.env (value not printed)"
+    fi
+  done
   pass "data/ untouched ($ROOT/data + docker volumes), stack.env $(wc -l <"$ENVF") lines (not printed); schema files vs previous: $(cat "$STATE.schema")"
 
   step "5/7 tag running images as before-$REL"
