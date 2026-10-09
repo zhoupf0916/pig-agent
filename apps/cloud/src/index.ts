@@ -34,6 +34,8 @@ import {
 import { sharedProjectContext } from "./conversation-state.ts";
 import { registerClusterRoutes, sweepRuns } from "./cluster.ts";
 import { Hono } from "hono";
+import { bus } from "./event-bus.ts";
+import { AUTH_RECHECK_MS, HEARTBEAT_MS, heartbeatDue, STREAM_COALESCE_MS } from "./stream-timing.ts";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { streamSSE } from "hono/streaming";
@@ -399,56 +401,77 @@ app.get("/v1/runs/:id/events", async (c) => {
   return streamSSE(c, async (stream) => {
     let lastActivity = Date.now();
     let lastHeartbeat = 0;
-    while (!stream.aborted) {
-      const credential = getRequestCredential(c);
-      const fresh = (
-        await db.query(
-          credential.source === "cookie"
-            ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
-            : `SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND ((token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,
-          [c.get("principal").id, hash(credential.token)],
-        )
-      ).rows[0];
-      if (!fresh || !(await runFor(id, fresh))) break;
-      const rows = await db.query(
-        "SELECT seq,event FROM events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 200",
-        [id, after],
-      );
-      if (rows.rowCount) lastActivity = Date.now();
-      for (const r of rows.rows) {
-        await stream.writeSSE({
-          id: String(r.seq),
-          data: JSON.stringify(r.event),
-        });
-        after = Number(r.seq);
-      }
-      const r = (
-        await db.query("SELECT state,error FROM runs WHERE id=$1", [id])
-      ).rows[0];
-      if (terminal(r.state) && rows.rowCount === 0) {
-        if (r.state === "failed")
+    let lastAuth = 0;
+    let fired = new Set<string>(["auth"]);
+    const sub = bus.subscribe([`run:${id}`, `ev:${id}`, "auth"]);
+    const abort = new AbortController();
+    stream.onAbort(() => abort.abort());
+    try {
+      while (!stream.aborted) {
+        // Access is re-checked on identity/membership changes (bus "auth"), after a bus resync,
+        // at least every 30 s, and on every poll while the bus is down.
+        if (fired.has("auth") || fired.has("resync") || !bus.live || Date.now() - lastAuth >= AUTH_RECHECK_MS) {
+          const credential = getRequestCredential(c);
+          const fresh = (
+            await db.query(
+              credential.source === "cookie"
+                ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
+                : `SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND ((token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,
+              [c.get("principal").id, hash(credential.token)],
+            )
+          ).rows[0];
+          if (!fresh || !(await runFor(id, fresh))) break;
+          lastAuth = Date.now();
+        }
+        const rows = await db.query(
+          "SELECT seq,event FROM events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 200",
+          [id, after],
+        );
+        if (rows.rowCount) lastActivity = Date.now();
+        for (const r of rows.rows) {
+          await stream.writeSSE({
+            id: String(r.seq),
+            data: JSON.stringify(r.event),
+          });
+          after = Number(r.seq);
+        }
+        const r = (
+          await db.query("SELECT state,error FROM runs WHERE id=$1", [id])
+        ).rows[0];
+        if (terminal(r.state) && rows.rowCount === 0) {
+          if (r.state === "failed")
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "error",
+                message: r.error || "容器执行失败",
+              }),
+            });
           await stream.writeSSE({
             data: JSON.stringify({
-              type: "error",
-              message: r.error || "容器执行失败",
+              type: "status",
+              status: r.state === "failed" ? "error" : "idle",
             }),
           });
-        await stream.writeSSE({
-          data: JSON.stringify({
-            type: "status",
-            status: r.state === "failed" ? "error" : "idle",
-          }),
-        });
-        break;
+          break;
+        }
+        if (heartbeatDue(lastHeartbeat)) {
+          await stream.writeSSE({ event: "heartbeat", data: "{}" });
+          lastHeartbeat = Date.now();
+        }
+        // Drain catch-up pages immediately. Otherwise sleep until the event bus reports a new event,
+        // a run change or an access change; heartbeats double as a periodic resync. Without the bus
+        // this is the previous polling cadence. Durable sequence IDs remain authoritative.
+        if ((rows.rowCount || 0) < 200) {
+          fired = await sub.wait({
+            liveMs: HEARTBEAT_MS - (Date.now() - lastHeartbeat),
+            pollMs: Date.now() - lastActivity < 2500 ? 100 : 700,
+            signal: abort.signal,
+          });
+          if (bus.live && fired.size) await stream.sleep(STREAM_COALESCE_MS);
+        } else fired = new Set();
       }
-      if (Date.now() - lastHeartbeat >= 10000) {
-        await stream.writeSSE({ event: "heartbeat", data: "{}" });
-        lastHeartbeat = Date.now();
-      }
-      // Drain catch-up pages immediately; keep active text responsive without
-      // polling idle queues at token cadence. Durable sequence IDs remain authoritative.
-      if ((rows.rowCount || 0) < 200)
-        await stream.sleep(Date.now() - lastActivity < 2500 ? 100 : 700);
+    } finally {
+      sub.close();
     }
   });
 });
@@ -835,6 +858,7 @@ app.get("/api/deployment", (c) => c.json({ surface: "cloud" }));
 app.all("/api/*", (c) => c.json({ error: "云端 Web 不提供本机执行接口" }, 404));
 app.get("/", serveStatic({ path: "/app/web/index.html" }));
 await migrate();
+await bus.start();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {
   if (scheduling) return;

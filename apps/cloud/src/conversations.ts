@@ -1,3 +1,5 @@
+import { bus } from "./event-bus.ts";
+import { AUTH_RECHECK_MS, HEARTBEAT_MS, heartbeatDue, STREAM_COALESCE_MS } from "./stream-timing.ts";
 import { attachmentIdsSchema, resolveAttachments, bindAttachments } from "./attachments.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import { resolveCapabilityContext, resolveSkillSnapshots } from "./capabilities.ts";
@@ -60,12 +62,22 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
     c.header("Cache-Control","no-cache, no-transform");
     c.header("X-Accel-Buffering","no");
     return streamSSE(c,async stream=>{
-      let revision="",heartbeat=0;
+      let revision="",heartbeat=0,lastAuth=0;
+      let principal:any,conversation:any;
+      let fired=new Set<string>(["auth"]);
+      const sub=bus.subscribe([`conv:${id}`,`convrow:${id}`,"auth"]);
+      const abort=new AbortController();
+      stream.onAbort(()=>abort.abort());
+      try {
       while (!stream.aborted) {
-        // Re-read identity, session validity and project membership on every poll.
-        const principal=(await db.query(`SELECT id,role FROM principals WHERE id=$1 AND enabled AND (($3 AND token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,[c.get("principal").id,credential,supplied.source === "bearer"])).rows[0];
-        const conversation=principal && await conversationFor(id,principal);
-        if (!conversation) { await stream.writeSSE({data:JSON.stringify({type:"access_revoked"})}); break; }
+        // Re-read identity, session validity and project membership whenever the event bus reports an
+        // access or conversation change, after a resync, at least every 30 s, and on every poll without the bus.
+        if (fired.has("auth")||fired.has("resync")||fired.has(`convrow:${id}`)||!bus.live||Date.now()-lastAuth>=AUTH_RECHECK_MS) {
+          principal=(await db.query(`SELECT id,role FROM principals WHERE id=$1 AND enabled AND (($3 AND token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,[c.get("principal").id,credential,supplied.source === "bearer"])).rows[0];
+          conversation=principal && await conversationFor(id,principal);
+          if (!conversation) { await stream.writeSSE({data:JSON.stringify({type:"access_revoked"})}); break; }
+          lastAuth=Date.now();
+        }
         const stamp=(await db.query(`SELECT r.id,r.state,r.error,r.updated_at,(SELECT count(*) FROM workspace_versions WHERE run_id=r.id) AS versions,
           (SELECT max(seq) FROM events WHERE run_id=r.id AND event->>'type' IN ('done','approval')) AS terminal_event FROM runs r WHERE conversation_id=$1 ORDER BY r.created_at,r.id`,[id])).rows;
         const next=JSON.stringify([conversation,stamp]);
@@ -78,10 +90,15 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
           await stream.writeSSE({id:String(row.seq),data:JSON.stringify({type:"run_event",runId:row.run_id,seq:Number(row.seq),event:row.event})});
           after=Number(row.seq);
         }
-        if(Date.now()-heartbeat>10000){await stream.writeSSE({event:"heartbeat",data:"{}"});heartbeat=Date.now();}
-        // A conversation remains subscribed through idle time and subsequent turns.
-        if(events.length<200) await stream.sleep(events.length ? 100 : 500);
+        if(heartbeatDue(heartbeat)){await stream.writeSSE({event:"heartbeat",data:"{}"});heartbeat=Date.now();}
+        // A conversation remains subscribed through idle time and subsequent turns: sleep until the
+        // event bus reports a change (heartbeats double as a periodic resync), else poll as before.
+        if(events.length<200){
+          fired=await sub.wait({liveMs:HEARTBEAT_MS-(Date.now()-heartbeat),pollMs:events.length ? 100 : 500,signal:abort.signal});
+          if(bus.live&&fired.size) await stream.sleep(STREAM_COALESCE_MS);
+        } else fired=new Set();
       }
+      } finally { sub.close(); }
     });
   });
   app.get("/v1/conversations/:id/workspace/:run", async (c) => {
