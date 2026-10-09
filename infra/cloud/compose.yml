@@ -36,6 +36,8 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN}
       MEMBER_TOKEN: ${MEMBER_TOKEN}
       MEMBER2_TOKEN: ${MEMBER2_TOKEN}
+      # Hours a bootstrap bearer stays valid after first use of that value; empty = never expires (local dev).
+      BOOTSTRAP_TOKEN_TTL_HOURS: ${BOOTSTRAP_TOKEN_TTL_HOURS:-}
       WORKER_TOKEN: ${WORKER_TOKEN}
       MODEL_MODE: ${MODEL_MODE:-mock}
       WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-}

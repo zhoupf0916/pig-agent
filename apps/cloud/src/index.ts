@@ -56,6 +56,7 @@ import { inputSchema } from "./input.ts";
 import { registerScheduleRoutes, tickSchedules } from "./schedules.ts";
 import type { CloudEnv } from "./types.ts";
 import { db, hash, migrate, terminal } from "./db.ts";
+import { STATIC_TOKEN_LIVE } from "./bootstrap-tokens.ts";
 type Principal = { id: string; role: string; name: string };
 const app = new Hono<CloudEnv>();
 const credentialSchema = z.object({ token: z.string().min(1).max(200) });
@@ -404,7 +405,7 @@ app.get("/v1/runs/:id/events", async (c) => {
         await db.query(
           credential.source === "cookie"
             ? "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now())"
-            : "SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND (token_hash=$2 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))",
+            : `SELECT id,role,name FROM principals WHERE id=$1 AND enabled AND ((token_hash=$2 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$2 AND expires_at>now()))`,
           [c.get("principal").id, hash(credential.token)],
         )
       ).rows[0];

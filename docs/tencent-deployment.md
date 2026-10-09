@@ -48,6 +48,19 @@ sudo systemctl reload nginx
 
 `WEB_PUBLIC_ORIGIN=https://193.112.22.18` 必须写入 stack.env 后重建控制面。Nginx 禁止公网访问 `/internal/`，关闭响应缓冲以支持 SSE，HTTP 自动跳转 HTTPS。登录 cookie 为 Secure + HttpOnly。
 
+## 引导令牌（ADMIN_TOKEN 等）
+
+`stack.env` 中的 `ADMIN_TOKEN`、`MEMBER_TOKEN`、`MEMBER2_TOKEN` 是本机 / 开发栈的引导 Bearer。生产叠加文件（`infra/tencent/compose.yml`）的设置：
+
+- `BOOTSTRAP_TOKEN_TTL_HOURS=24`：管理员引导令牌自某个值首次生效起 24 小时后过期。重启不会延长；若管理员已吊销，重启也不会恢复。
+- `MEMBER_TOKEN`、`MEMBER2_TOKEN` 置空：对应令牌被吊销，测试账号 `member2` 被禁用，并各写一条 `audit` 记录（actor=`system`）。
+
+日常登录使用账号密码会话（12 小时）。若需再次使用管理员引导令牌（例如运行 `scripts/setup-admin-password.mjs`）：
+
+1. 在 `stack.env` 中把 `ADMIN_TOKEN` 换成新的随机值；
+2. 重建控制面，开启新的 24 小时窗口；
+3. 用完后可在管理接口 `PATCH /v1/admin/accounts/admin`（`{"revokeAccessToken":true}`）立即吊销。
+
 IP 证书只有约六天有效期。安装 `pig-cert-renew.service` 与 timer 到 `/etc/systemd/system/`，安装 `renew-hook.sh` 到 `/etc/letsencrypt/renewal-hooks/deploy/pig-nginx` 并赋予执行权限，然后启用 timer。每六小时检查续期；80 端口不能关闭。
 
 ```sh

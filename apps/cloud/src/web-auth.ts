@@ -13,6 +13,7 @@ import { z } from "zod";
 import { db, hash } from "./db.ts";
 import { acceptInvitation } from "./platform.ts";
 import type { CloudEnv } from "./types.ts";
+import { STATIC_TOKEN_LIVE } from "./bootstrap-tokens.ts";
 
 export const WEB_SESSION_COOKIE = "pig_web_session";
 const SESSION_SECONDS = 12 * 60 * 60;
@@ -58,7 +59,7 @@ export const authenticateWebOrBearer: MiddlewareHandler<CloudEnv> = async (
   const found = await db.query(
     credential.source === "cookie"
       ? "SELECT id,role,name FROM principals WHERE enabled AND id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now())"
-      : "SELECT id,role,name FROM principals WHERE enabled AND (token_hash=$1 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now()))",
+      : `SELECT id,role,name FROM principals WHERE enabled AND ((token_hash=$1 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now()))`,
     [hash(credential.token)],
   );
   if (!found.rowCount) return c.json({ error: "登录已失效，请重新登录" }, 401);
@@ -136,7 +137,7 @@ export function registerWebAuthRoutes(app: Hono<CloudEnv>) {
           ).rows[0]
         : (
             await client.query(
-              "SELECT id,role,name FROM principals WHERE enabled AND (token_hash=$1 OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now())) FOR UPDATE",
+              `SELECT id,role,name FROM principals WHERE enabled AND ((token_hash=$1 AND ${STATIC_TOKEN_LIVE}) OR id IN (SELECT owner_id FROM auth_sessions WHERE token_hash=$1 AND expires_at>now())) FOR UPDATE`,
               ["token" in parsed.data ? hash(parsed.data.token) : ""],
             )
           ).rows[0];
