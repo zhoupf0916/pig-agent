@@ -7,6 +7,8 @@ import { z } from "zod";
 import type { Hono } from "hono";
 import type { CloudEnv } from "./types.ts";
 import { db, hash } from "./db.ts";
+import { bus } from "./event-bus.ts";
+import { longPollMs } from "./stream-timing.ts";
 type Access = (
   id: string,
   p: CloudEnv["Variables"]["principal"],
@@ -30,6 +32,7 @@ const schema = z
       .refine((v) => JSON.stringify(v).length <= 64000),
   })
   .strict();
+const MAX_APPROVAL_WAIT_MS = 3000;
 export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
   app.get("/v1/runs/:id/approvals", async (c) => {
     if (!(await access(c.req.param("id"), c.get("principal"))))
@@ -194,50 +197,68 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       .strict()
       .safeParse(await c.req.json().catch(() => null));
     if (!body.success) return c.json({ error: "无效令牌" }, 400);
-    const client = await db.connect();
+    // Optional long-poll (new runners send X-Pig-Wait-Ms): hold the request without a database
+    // connection until the decision changes or the wait ends. Old runners get an immediate answer.
+    const waitMs = longPollMs(c.req.header("x-pig-wait-ms"), MAX_APPROVAL_WAIT_MS);
+    const deadline = Date.now() + waitMs;
+    const sub = waitMs ? bus.subscribe([`approval:${c.req.param("id")}`]) : undefined;
+    const once = async () => {
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        const run = (
+          await client.query(
+            "SELECT id FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true)) FOR UPDATE",
+            [hash(body.data.token)],
+          )
+        ).rows[0];
+        if (!run) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "运行已失效" }, 401);
+        }
+        const approval = (
+          await client.query(
+            "SELECT state,receipt_id,tool FROM approvals WHERE id=$1 AND run_id=$2 FOR UPDATE",
+            [c.req.param("id"), run.id],
+          )
+        ).rows[0];
+        if (!approval) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "审批不存在" }, 404);
+        }
+        if (approval.state === "approved" && approval.tool !== "http_fetch")
+          await client.query(
+            "UPDATE approvals SET state='consumed',receipt_id=$2 WHERE id=$1",
+            [c.req.param("id"), body.data.requestId || null],
+          );
+        await client.query("COMMIT");
+        return c.json({
+          state:
+            approval.state === "consumed" &&
+            body.data.requestId &&
+            approval.receipt_id === body.data.requestId
+              ? "approved"
+              : approval.state,
+        });
+      } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+      } finally {
+        client.release();
+      }
+    };
     try {
-      await client.query("BEGIN");
-      const run = (
-        await client.query(
-          "SELECT id FROM runs WHERE attempt_token=$1 AND state='running' AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true)) FOR UPDATE",
-          [hash(body.data.token)],
-        )
-      ).rows[0];
-      if (!run) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "运行已失效" }, 401);
+      for (;;) {
+        const res = await once();
+        if (!sub || res.status !== 200 || Date.now() >= deadline || c.req.raw.signal.aborted) return res;
+        if (((await res.clone().json()) as { state?: string })?.state !== "pending") return res;
+        await sub.wait({ liveMs: deadline - Date.now(), pollMs: 500, signal: c.req.raw.signal });
       }
-      const approval = (
-        await client.query(
-          "SELECT state,receipt_id,tool FROM approvals WHERE id=$1 AND run_id=$2 FOR UPDATE",
-          [c.req.param("id"), run.id],
-        )
-      ).rows[0];
-      if (!approval) {
-        await client.query("ROLLBACK");
-        return c.json({ error: "审批不存在" }, 404);
-      }
-      if (approval.state === "approved" && approval.tool !== "http_fetch")
-        await client.query(
-          "UPDATE approvals SET state='consumed',receipt_id=$2 WHERE id=$1",
-          [c.req.param("id"), body.data.requestId || null],
-        );
-      await client.query("COMMIT");
-      return c.json({
-        state:
-          approval.state === "consumed" &&
-          body.data.requestId &&
-          approval.receipt_id === body.data.requestId
-            ? "approved"
-            : approval.state,
-      });
-    } catch (e) {
-      await client.query("ROLLBACK");
-      throw e;
     } finally {
-      client.release();
+      sub?.close();
     }
   });
+
   app.post("/internal/network/claim", async (c) => {
     const body = z
       .object({
