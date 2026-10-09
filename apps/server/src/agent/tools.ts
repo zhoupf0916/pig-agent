@@ -3,7 +3,7 @@ import { nativeFileTool, FILE_TOOLS } from "./file-helper-client.ts";
 import { nativeCommand, toolEnvironment } from "./native-sandbox.ts";
 import { spawn } from "node:child_process";
 import { access, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { constants, readdirSync, readFileSync } from "node:fs";
+import { constants } from "node:fs";
 import { dirname, join, posix } from "node:path";
 import { HTTP_FETCH_ALLOWLIST } from "../config.ts";
 import type { Artifact, ArtifactAction } from "../types.ts";
@@ -74,21 +74,6 @@ const PREFERRED_SHELL = [
 export type ArtifactPatch = Partial<Pick<Artifact, "fromPath" | "before" | "after">>;
 
 /** Direct children of `parent` (Linux /proc scan). */
-function linuxChildPids(parent: number): number[] {
-  const out: number[] = [];
-  try {
-    for (const entry of readdirSync("/proc")) {
-      if (!/^\d+$/.test(entry)) continue;
-      try {
-        const stat = readFileSync(`/proc/${entry}/stat`, "utf8");
-        const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
-        if (ppid === parent) out.push(Number(entry));
-      } catch { /* raced exit */ }
-    }
-  } catch { /* no procfs */ }
-  return out;
-}
-
 export type ToolContext = {
   /** Supplied by the runtime, never selected by model session/account IDs. */
   transcript?: () => ChatMessage[];
@@ -807,11 +792,8 @@ async function runShell(
       return hostSandbox(ctx);
     };
     const killProcess = (signal: NodeJS.Signals) => {
-      // bwrap --new-session moves the sandboxed tree into its own session/process group,
-      // so killing the outer bwrap group alone leaves the command running (and holding stdout).
-      if (container && process.platform === "linux" && child.pid) for (const pid of linuxChildPids(child.pid)) {
-        try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch { /* gone */ } }
-      }
+      // Sandboxes know how to stop their own tree (bwrap: via the PID-namespace init, see nativeCommand).
+      if (container) return container.kill(signal);
       try {
         if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
         else child.kill(signal);

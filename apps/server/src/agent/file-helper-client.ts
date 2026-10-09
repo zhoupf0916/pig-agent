@@ -48,11 +48,7 @@ export async function nativeFileTool(
     let stdout = "",
       stderr = "",
       settled = false;
-    const stop = () => {
-      try {
-        if (execution.child.pid) process.kill(-execution.child.pid, "SIGKILL");
-      } catch {}
-    };
+    const stop = () => execution.kill("SIGKILL");
     const timer = setTimeout(stop, 30000);
     const finish = (error?: Error, result?: ToolResult) => {
       if (settled) return;
