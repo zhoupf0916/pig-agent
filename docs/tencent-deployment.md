@@ -69,22 +69,35 @@ sudo systemctl reload nginx
 
 `infra/tencent/nginx.conf` 包含以下内容：
 
-- `server_tokens off`、`http2 on`；
+- `http2 on`；
 - HSTS、CSP、Permissions-Policy 三个安全头；
-- `/assets/` 的 gzip 压缩与一年 immutable 缓存。
+- `/assets/` 的 gzip 压缩与一年 immutable 缓存；
+- 登录类接口 `/auth/web/(login|register|invite|demo)` 按 IP 限速（5 次/分钟）。
 
 CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修改该脚本时，`apps/cloud/src/deploy-headers.test.ts` 会提示更新哈希。
 
+**隐藏版本号**：`server_tokens off;` 要写在 `/etc/nginx/nginx.conf` 的 `http {}` 中，不要写进站点文件。Ubuntu 自带的 `nginx.conf` 已经声明了 `server_tokens`（通常是注释掉的 `# server_tokens off;`），站点文件再写一次会报 `"server_tokens" directive is duplicate`，导致 `nginx -t` 失败。
+
+```sh
+grep -n 'server_tokens' /etc/nginx/nginx.conf
+# 若是注释行，取消注释；若没有该行，在 http { 下一行加入 server_tokens off;
+sudo sed -i 's/^\s*#\s*server_tokens off;/\tserver_tokens off;/' /etc/nginx/nginx.conf
+```
+
 更新步骤：先备份，再检查语法，最后平滑重载，不中断现有连接。
+
+- `sites-enabled/` 里通常是指向 `sites-available/` 的软链接，要用 `readlink -f` 找到真实文件，并写入真实文件。
+- **备份不要放在 `sites-enabled/`（或 `conf.d/`）里。** nginx 会把该目录下所有文件都 include 进来，备份会导致 `limit_req_zone "pig_api" is already bound` 等错误，`nginx -t` 直接失败。
 
 ```sh
 CONF=$(sudo nginx -T 2>/dev/null | awk '/^# configuration file /{f=$4} /zone=pig_api/{sub(":$","",f); print f; exit}')
-echo "$CONF"   # 例如 /etc/nginx/conf.d/pig-agent.conf
-sudo cp -a "$CONF" "$CONF.bak-$(date +%Y%m%d%H%M%S)"
-sudo diff -u "$CONF" /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf   # 确认只有预期改动（证书路径、域名/IP 与线上一致）
-sudo install -m 0644 /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf "$CONF"
+REAL=$(readlink -f "$CONF"); echo "$CONF -> $REAL"   # 例如 /etc/nginx/sites-enabled/pig-agent -> /etc/nginx/sites-available/pig-agent
+BK=/home/ubuntu/pig-agent/backups/nginx; sudo mkdir -p "$BK"
+TS=$(date +%Y%m%d%H%M%S); sudo cp -a "$REAL" "$BK/$(basename "$REAL").bak-$TS"
+sudo diff -u "$REAL" /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf   # 确认只有预期改动（证书路径、域名/IP 与线上一致）
+sudo install -m 0644 /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf "$REAL"
 sudo nginx -t && sudo systemctl reload nginx
-# 回滚：sudo cp -a "$CONF.bak-<时间>" "$CONF" && sudo nginx -t && sudo systemctl reload nginx
+# 回滚：sudo cp -a "$BK/$(basename "$REAL").bak-$TS" "$REAL" && sudo nginx -t && sudo systemctl reload nginx
 ```
 
 `WEB_PUBLIC_ORIGIN=https://193.112.22.18` 必须写入 stack.env 后重建控制面。Nginx 禁止公网访问 `/internal/`，关闭响应缓冲以支持 SSE，HTTP 自动跳转 HTTPS。登录 cookie 为 Secure + HttpOnly。
