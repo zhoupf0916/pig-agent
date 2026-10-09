@@ -10,6 +10,7 @@
  * /v1 routes in-process with the caller's own credentials, so auth, quotas, execution policy,
  * approvals and idempotency (messageId → Idempotency-Key) are exactly those of the web API.
  */
+import { bus } from "./event-bus.ts";
 import { createHash } from "node:crypto";
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -148,12 +149,18 @@ export async function handleA2a(forward: Forward, req: Json, headers: Record<str
       if ("error" in created) return fail(created.error, created.data);
       const runId = created.runId;
       const deadline = Date.now() + (params.configuration?.blocking ? opts.blockingTimeoutMs ?? 60_000 : 0);
-      let task = await buildTask(forward, runId, headers);
-      while (task && !TERMINAL.has(task.status.state) && task.status.state !== "input-required" && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
-        task = await buildTask(forward, runId, headers);
+      // Woken by the event bus on run changes; without the bus this is the previous poll interval.
+      const sub = bus.subscribe([`run:${runId}`]);
+      try {
+        let task = await buildTask(forward, runId, headers);
+        while (task && !TERMINAL.has(task.status.state) && task.status.state !== "input-required" && Date.now() < deadline) {
+          await sub.wait({ liveMs: Math.min(deadline - Date.now(), 15_000), pollMs: opts.pollMs ?? 1000 });
+          task = await buildTask(forward, runId, headers);
+        }
+        return task ? ok(task) : fail(A2A_ERRORS.taskNotFound);
+      } finally {
+        sub.close();
       }
-      return task ? ok(task) : fail(A2A_ERRORS.taskNotFound);
     }
     if (req.method === "tasks/get") {
       if (typeof params.id !== "string") return fail(A2A_ERRORS.invalidParams, "id 必填");

@@ -3,7 +3,10 @@ import { createHash } from "node:crypto";
 import { syncBootstrapPrincipals } from "./bootstrap-tokens.ts";
 import { MIGRATION_LOCK, runMigrations } from "./migrations.ts";
 import { migrations } from "./schema.ts";
-export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+// Explicit pool size: SSE streams and long-polls hold no connection while waiting, so a small pool
+// serves many clients. The event bus uses one extra dedicated connection per process.
+export const POOL_MAX = Math.max(2, Math.min(100, Number(process.env.PG_POOL_MAX) || 10));
+export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: POOL_MAX });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export async function migrate() {

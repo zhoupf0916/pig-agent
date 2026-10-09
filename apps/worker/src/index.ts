@@ -25,16 +25,18 @@ const memoryPolicy = memoryPolicyFromEnv();
 let lastPressureLog = 0;
 let draining = false;
 const activeStops = new Set<() => Promise<void>>();
+const CLAIM_WAIT_MS = Math.max(0, Math.min(10_000, Number(process.env.WORKER_CLAIM_WAIT_MS ?? 10_000) || 0));
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function api(path: string, body: unknown) {
+async function api(path: string, body: unknown, waitMs = 0) {
   const r = await fetch(control + path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
+      ...(waitMs ? { "X-Pig-Wait-Ms": String(waitMs) } : {}),
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(4000),
+    signal: AbortSignal.timeout(4000 + waitMs),
   });
   if (!r.ok) throw Error(`Control ${r.status}`);
   return r.json() as Promise<any>;
@@ -353,9 +355,12 @@ await Promise.all(
           continue;
         }
         try {
-          const job = await api("/internal/claim", { workerId, instanceId });
+          // Long-poll: a current control plane holds the request until a run is claimable (or the
+          // wait ends); an older one answers at once, so keep the old 1 s pause in that case.
+          const asked = Date.now();
+          const job = await api("/internal/claim", { workerId, instanceId }, CLAIM_WAIT_MS);
           if (job) await execute(job, slot.workspace);
-          else await delay(1000);
+          else if (Date.now() - asked < CLAIM_WAIT_MS / 2) await delay(1000);
         } finally {
           await pool.release(slot);
         }

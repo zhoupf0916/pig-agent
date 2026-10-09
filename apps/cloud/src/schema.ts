@@ -93,4 +93,97 @@ const baseline = () => [
   authRateLimitSchema,
 ].join(";\n");
 
-export const migrations = (): Migration[] => [{ version: 1, name: "baseline", sql: baseline() }];
+// Wake-up notifications for the in-process event bus (event-bus.ts). Payloads are keys, never data.
+const eventBusTriggers = `
+CREATE OR REPLACE FUNCTION pig_bus_events() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', k) FROM (
+    SELECT DISTINCT 'ev:' || n.run_id AS k FROM pig_new_events n
+    UNION SELECT DISTINCT 'conv:' || r.conversation_id FROM pig_new_events n JOIN runs r ON r.id = n.run_id WHERE r.conversation_id IS NOT NULL
+  ) keys;
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_events ON events;
+CREATE TRIGGER pig_bus_events AFTER INSERT ON events REFERENCING NEW TABLE AS pig_new_events
+  FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_events();
+
+CREATE OR REPLACE FUNCTION pig_bus_runs() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'run:' || NEW.id);
+  IF NEW.conversation_id IS NOT NULL THEN PERFORM pg_notify('pig_bus', 'conv:' || NEW.conversation_id); END IF;
+  IF TG_OP = 'UPDATE' AND OLD.conversation_id IS NOT NULL AND OLD.conversation_id IS DISTINCT FROM NEW.conversation_id THEN
+    PERFORM pg_notify('pig_bus', 'conv:' || OLD.conversation_id);
+  END IF;
+  -- New work, requeues and freed concurrency all change what a worker can claim.
+  IF TG_OP = 'INSERT' OR OLD.state IS DISTINCT FROM NEW.state THEN PERFORM pg_notify('pig_bus', 'queue'); END IF;
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_runs_insert ON runs;
+CREATE TRIGGER pig_bus_runs_insert AFTER INSERT ON runs FOR EACH ROW EXECUTE FUNCTION pig_bus_runs();
+DROP TRIGGER IF EXISTS pig_bus_runs_update ON runs;
+CREATE TRIGGER pig_bus_runs_update AFTER UPDATE ON runs FOR EACH ROW
+  WHEN (OLD.state IS DISTINCT FROM NEW.state OR OLD.error IS DISTINCT FROM NEW.error
+    OR OLD.updated_at IS DISTINCT FROM NEW.updated_at OR OLD.conversation_id IS DISTINCT FROM NEW.conversation_id)
+  EXECUTE FUNCTION pig_bus_runs();
+
+CREATE OR REPLACE FUNCTION pig_bus_approvals() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'approval:' || NEW.id);
+  PERFORM pg_notify('pig_bus', 'run:' || NEW.run_id);
+  PERFORM pg_notify('pig_bus', 'conv:' || r.conversation_id) FROM runs r WHERE r.id = NEW.run_id AND r.conversation_id IS NOT NULL;
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_approvals ON approvals;
+CREATE TRIGGER pig_bus_approvals AFTER INSERT OR UPDATE OF state ON approvals FOR EACH ROW EXECUTE FUNCTION pig_bus_approvals();
+
+CREATE OR REPLACE FUNCTION pig_bus_versions() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'conv:' || NEW.conversation_id);
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_versions ON workspace_versions;
+CREATE TRIGGER pig_bus_versions AFTER INSERT ON workspace_versions FOR EACH ROW EXECUTE FUNCTION pig_bus_versions();
+
+CREATE OR REPLACE FUNCTION pig_bus_conversations() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'convrow:' || OLD.id);
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_conversations ON conversations;
+CREATE TRIGGER pig_bus_conversations AFTER UPDATE OR DELETE ON conversations FOR EACH ROW EXECUTE FUNCTION pig_bus_conversations();
+
+CREATE OR REPLACE FUNCTION pig_bus_workers() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'worker:' || NEW.id);
+  PERFORM pg_notify('pig_bus', 'queue');
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_workers ON workers;
+CREATE TRIGGER pig_bus_workers AFTER UPDATE ON workers FOR EACH ROW
+  WHEN (OLD.enabled IS DISTINCT FROM NEW.enabled OR OLD.capacity IS DISTINCT FROM NEW.capacity
+    OR OLD.draining IS DISTINCT FROM NEW.draining OR OLD.reported_capacity IS DISTINCT FROM NEW.reported_capacity
+    OR OLD.instance_id IS DISTINCT FROM NEW.instance_id)
+  EXECUTE FUNCTION pig_bus_workers();
+
+-- Identity, session and membership changes: open streams re-check access immediately.
+CREATE OR REPLACE FUNCTION pig_bus_auth() RETURNS trigger AS $$
+BEGIN
+  PERFORM pg_notify('pig_bus', 'auth');
+  RETURN NULL;
+END $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS pig_bus_auth ON principals;
+CREATE TRIGGER pig_bus_auth AFTER UPDATE OR DELETE ON principals FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_auth();
+DROP TRIGGER IF EXISTS pig_bus_auth ON auth_sessions;
+CREATE TRIGGER pig_bus_auth AFTER UPDATE OR DELETE ON auth_sessions FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_auth();
+DROP TRIGGER IF EXISTS pig_bus_auth ON space_members;
+CREATE TRIGGER pig_bus_auth AFTER INSERT OR UPDATE OR DELETE ON space_members FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_auth();
+DROP TRIGGER IF EXISTS pig_bus_auth ON shared_projects;
+CREATE TRIGGER pig_bus_auth AFTER UPDATE OR DELETE ON shared_projects FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_auth();
+DROP TRIGGER IF EXISTS pig_bus_auth ON spaces;
+CREATE TRIGGER pig_bus_auth AFTER UPDATE OR DELETE ON spaces FOR EACH STATEMENT EXECUTE FUNCTION pig_bus_auth();
+`;
+
+export const migrations = (): Migration[] => [
+  { version: 1, name: "baseline", sql: baseline() },
+  { version: 2, name: "event_bus_triggers", sql: eventBusTriggers },
+];
