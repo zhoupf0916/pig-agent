@@ -41,4 +41,22 @@ describe("native sandbox",()=>{
    expect((await run(root,"curl --connect-timeout 1 http://127.0.0.1:8890")).code).not.toBe(0);
   } finally {await rm(parent,{recursive:true,force:true})}
  },15000);
+ it.skipIf(process.platform!=="linux")("stops a bubblewrap sandbox even when the stop races sandbox setup",async()=>{
+  // Regression: signalling the outer bwrap first orphaned the sandbox (sleep kept running and held stdout).
+  const root=realpathSync(await mkdtemp(join(tmpdir(),"pig-sandbox-stop-")));
+  try {
+   for (const delay of [0,0,1,2,3,5,10,25,50,100]) {
+    const x=nativeCommand(root,"sleep 30");
+    const started=Date.now();
+    const closed=new Promise<void>(resolve=>x.child.once("close",()=>resolve()));
+    await new Promise(r=>setTimeout(r,delay));
+    x.kill("SIGTERM");
+    const escalate=setTimeout(()=>x.kill("SIGKILL"),1500);
+    const result=await Promise.race([closed.then(()=>"closed"),new Promise(r=>setTimeout(()=>r("hung"),8000))]);
+    clearTimeout(escalate); x.cleanup();
+    expect({delay,result}).toEqual({delay,result:"closed"});
+    expect(Date.now()-started).toBeLessThan(8000);
+   }
+  } finally { await rm(root,{recursive:true,force:true}); }
+ },120000);
 });
