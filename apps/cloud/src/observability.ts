@@ -27,6 +27,13 @@ export const storageGauge = registry.register(new Gauge("pig_storage_blobs", "At
 export const spansIngested = registry.register(new Counter("pig_trace_spans_total", "Spans received by service"));
 const runsByState = registry.register(new Gauge("pig_runs", "Runs by state (non-terminal) or finished in the last hour (terminal)"));
 const queueAge = registry.register(new Gauge("pig_queue_oldest_seconds", "Age of the oldest queued run"));
+const queueGauge = registry.register(new Gauge("pig_queue_runs", "Queued runs ready to claim or waiting for a retry delay, and open dead letters"));
+export const queueRetries = registry.register(new Counter("pig_queue_retries_total", "Runs automatically requeued with backoff, by error class"));
+export const queueDeadLetters = registry.register(new Counter("pig_queue_dead_letters_total", "Runs moved to the dead-letter list, by error class"));
+const claimDuration = registry.register(new Histogram("pig_queue_claim_seconds", "Candidate selection time under the claim lock, by result"));
+export function observeClaim(result: "claimed" | "empty", seconds: number) {
+  claimDuration.observe(seconds, { result });
+}
 const runnersOnline = registry.register(new Gauge("pig_runners_online", "Enabled runners with a heartbeat in the last 30 s"));
 const webhookDeliveries = registry.register(new Gauge("pig_webhook_deliveries", "Webhook deliveries by state (dead/succeeded: last hour)"));
 const busLive = registry.register(new Gauge("pig_event_bus_live", "1 when the LISTEN connection is up"));
@@ -233,6 +240,12 @@ registry.onCollect(async () => {
   for (const state of ["queued", "preparing", "running", "cancelling", "succeeded", "failed", "cancelled"]) runsByState.set(rows.find((r) => r.state === state)?.n ?? 0, { state });
   const q = (await db.query("SELECT coalesce(extract(epoch FROM now()-min(created_at)),0) AS age FROM runs WHERE state='queued'")).rows[0];
   queueAge.set(Math.round(Number(q.age)));
+  const qs = (await db.query(
+    "SELECT count(*) FILTER (WHERE state='queued' AND (next_attempt_at IS NULL OR next_attempt_at<=now()))::int AS ready, count(*) FILTER (WHERE state='queued' AND next_attempt_at>now())::int AS delayed, count(*) FILTER (WHERE dead_lettered_at IS NOT NULL AND replayed_as IS NULL AND state='failed')::int AS dead FROM runs WHERE state='queued' OR dead_lettered_at IS NOT NULL",
+  )).rows[0];
+  queueGauge.set(qs.ready, { kind: "ready" });
+  queueGauge.set(qs.delayed, { kind: "delayed" });
+  queueGauge.set(qs.dead, { kind: "dead_letter" });
   runnersOnline.set((await db.query("SELECT count(*)::int AS n FROM workers WHERE enabled AND seen_at > now() - interval '30 seconds'")).rows[0].n);
   const w = (await db.query(
     "SELECT state, count(*)::int AS n FROM webhook_deliveries WHERE state IN ('pending','delivering') OR created_at > now() - interval '1 hour' GROUP BY state",

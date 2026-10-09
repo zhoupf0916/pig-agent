@@ -1,5 +1,7 @@
 import { recordQueued } from "./observability.ts";
-import { recoverInterruptedSql } from "./recovery.ts";
+import { recoverInterrupted } from "./recovery.ts";
+import { selectCandidate } from "./queue.ts";
+import { observeClaim } from "./observability.ts";
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -46,9 +48,7 @@ export async function sweepRuns() {
   await db.query(
     `UPDATE runs r SET state='failed',error='任务创建者已停用或失去共享项目执行权限',updated_at=now() WHERE state='queued' AND (NOT EXISTS(SELECT 1 FROM principals p WHERE p.id=r.owner_id AND p.enabled) OR (r.project_id IS NOT NULL AND NOT project_access(r.project_id,r.owner_id,true)))`,
   );
-  await db.query(
-    recoverInterruptedSql + "(lease_until<now() OR deadline_at<now())",
-  );
+  await recoverInterrupted(db, "(lease_until<now() OR deadline_at<now())");
   await db.query(
     `UPDATE runs SET state='failed',error='等待执行资源超时，请检查 Runner 容量后重试',updated_at=now() WHERE state='queued' AND created_at<now()-make_interval(secs=>COALESCE((SELECT (value->>'queueTimeoutSeconds')::int FROM platform_settings WHERE key='executionPolicy'),3600))`,
   );
@@ -136,10 +136,7 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
         [workerId, instanceId],
       );
       if (old && old.instance_id !== instanceId)
-        await client.query(
-          recoverInterruptedSql + "worker_id=$1",
-          [workerId],
-        );
+        await recoverInterrupted(client, "worker_id=$1", [workerId]);
       await client.query(
         `INSERT INTO workers(id,instance_id,reported_capacity,capacity,profiles) VALUES($1,$2,$3,$3,$4) ON CONFLICT(id) DO UPDATE SET instance_id=$2,reported_capacity=$3,profiles=$4,seen_at=now(),draining=false`,
         [workerId, instanceId, capacity, JSON.stringify(capabilities)],
@@ -226,17 +223,11 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
           await client.query("COMMIT");
           return c.json(null);
         }
-        // The short, database-wide claim lock makes every aggregate limit authoritative across control instances.
-        const candidate = (
-          await client.query(
-            `SELECT r.id,r.execution_profile,r.owner_id,r.created_at FROM runs r JOIN principals p ON p.id=r.owner_id LEFT JOIN dispatch_owners d ON d.owner_id=r.owner_id WHERE r.state='queued' AND p.enabled AND r.execution_profile IN (SELECT jsonb_array_elements_text($1::jsonb)) AND (r.project_id IS NULL OR project_access(r.project_id,r.owner_id,true)) AND (SELECT count(*) FROM runs a WHERE a.owner_id=r.owner_id AND a.${active})<$2 AND (r.project_id IS NULL OR (SELECT count(*) FROM runs a WHERE a.project_id=r.project_id AND a.${active})<$3) ORDER BY d.last_claimed_at NULLS FIRST,r.created_at,r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
-            [
-              JSON.stringify(worker.profiles),
-              limits.userConcurrency,
-              limits.projectConcurrency,
-            ],
-          )
-        ).rows[0];
+        // The short, database-wide claim lock makes every aggregate limit authoritative across control instances;
+        // owner-first selection (queue.ts) keeps the time under that lock independent of the queue length.
+        const claimStarted = performance.now();
+        const candidate = await selectCandidate(client, worker.profiles, limits);
+        observeClaim(candidate ? "claimed" : "empty", (performance.now() - claimStarted) / 1000);
         if (!candidate) {
           retry = true;
           await client.query("COMMIT");

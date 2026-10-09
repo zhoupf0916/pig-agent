@@ -15,7 +15,7 @@ function declared() {
     /CREATE (?:UNLOGGED )?TABLE (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)/gi,
     /CREATE (?:OR REPLACE )?(?:MATERIALIZED )?VIEW (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)/gi,
     /(?:NEW|OLD) TABLE AS ([a-z_][a-z0-9_]*)/gi,
-    /(?:WITH|,)\s*([a-z_][a-z0-9_]*)\s+AS\s*(?:MATERIALIZED\s*)?\(/gi,
+    /(?:WITH(?:\s+RECURSIVE)?|,)\s*([a-z_][a-z0-9_]*)\s*(?:\([a-z0-9_, ]*\))?\s+AS\s*(?:MATERIALIZED\s*)?\(/gi,
   ];
   for (const { text } of sources)
     for (const pattern of patterns)
