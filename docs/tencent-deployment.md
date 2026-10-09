@@ -81,6 +81,7 @@ CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修�
 CONF=$(sudo nginx -T 2>/dev/null | awk '/^# configuration file /{f=$4} /zone=pig_api/{sub(":$","",f); print f; exit}')
 echo "$CONF"   # 例如 /etc/nginx/conf.d/pig-agent.conf
 sudo cp -a "$CONF" "$CONF.bak-$(date +%Y%m%d%H%M%S)"
+sudo diff -u "$CONF" /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf   # 确认只有预期改动（证书路径、域名/IP 与线上一致）
 sudo install -m 0644 /home/ubuntu/pig-agent/current/infra/tencent/nginx.conf "$CONF"
 sudo nginx -t && sudo systemctl reload nginx
 # 回滚：sudo cp -a "$CONF.bak-<时间>" "$CONF" && sudo nginx -t && sudo systemctl reload nginx
