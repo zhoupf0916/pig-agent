@@ -461,7 +461,8 @@ app.get("/v1/runs/:id/events", async (c) => {
         // Drain catch-up pages immediately. Otherwise sleep until the event bus reports a new event,
         // a run change or an access change; heartbeats double as a periodic resync. Without the bus
         // this is the previous polling cadence. Durable sequence IDs remain authoritative.
-        if ((rows.rowCount || 0) < 200) {
+        // A finished run gets no further notifications: loop straight to the closing status.
+        if ((rows.rowCount || 0) < 200 && !terminal(r.state)) {
           fired = await sub.wait({
             liveMs: HEARTBEAT_MS - (Date.now() - lastHeartbeat),
             pollMs: Date.now() - lastActivity < 2500 ? 100 : 700,
