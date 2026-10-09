@@ -50,7 +50,7 @@ export async function sweepRuns() {
   );
   await recoverInterrupted(db, "(lease_until<now() OR deadline_at<now())");
   await db.query(
-    `UPDATE runs SET state='failed',error='等待执行资源超时，请检查 Runner 容量后重试',updated_at=now() WHERE state='queued' AND created_at<now()-make_interval(secs=>COALESCE((SELECT (value->>'queueTimeoutSeconds')::int FROM platform_settings WHERE key='executionPolicy'),3600))`,
+    `UPDATE runs SET state='failed',error='等待执行资源超时，请检查 Runner 容量后重试',updated_at=now() WHERE state='queued' AND coalesce(resumed_at,created_at)<now()-make_interval(secs=>COALESCE((SELECT (value->>'queueTimeoutSeconds')::int FROM platform_settings WHERE key='executionPolicy'),3600))`,
   );
 }
 export function registerClusterRoutes(app: Hono<CloudEnv>) {

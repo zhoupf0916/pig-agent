@@ -2,7 +2,7 @@ import { networkFailure } from "./network-errors.ts";
 import { requestErrorLine } from "./error-log.ts";
 import { networkRequestSchema, fetchApprovedNetwork } from "./network-fetch.ts";
 import { streamSSE } from "hono/streaming";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
 import { controlPlaneExporter, Tracer } from "@pig-agent/contracts/telemetry";
@@ -219,6 +219,23 @@ app.post("/v1/chat/completions", async (c) => {
           t.function?.name?.endsWith("__" + mcpTarget),
         )
       : undefined;
+    // Deterministic parallel-subtask probe (F7): the parent fans out, each child answers JSON.
+    const userText = (m: { role: string; content?: string }) => (m.role === "user" ? m.content || "" : "");
+    const childPrompt = (body.messages || []).map(userText).find((t: string) => t.includes("[PARALLEL_CHILD]"));
+    const parallelParent = !childPrompt && (body.messages || []).some((m: { role: string; content?: string }) => userText(m).includes("[PARALLEL_ACCEPTANCE]"));
+    if (childPrompt || (parallelParent && tools.length > 0)) {
+      const item = childPrompt?.match(/本项（第 \d+\/\d+ 项）：(.*)/)?.[1]?.trim() ?? "";
+      const content = childPrompt
+        ? item === "坏格式" && !childPrompt.includes("上一次的回答不符合要求")
+          ? "这一项我用文字回答，不是 JSON。"
+          : JSON.stringify({ item, length: [...item].length })
+        : "并行汇总：" + String((tools.at(-1) as { content?: string })?.content || "").split("\n")[0];
+      return mockReply(c, body.stream, { role: "assistant", content }, null);
+    }
+    if (parallelParent && (body.tools || []).some((t: { function?: { name?: string } }) => t.function?.name === "spawn_parallel")) {
+      const call = { id: "parallel-proof", type: "function", function: { name: "spawn_parallel", arguments: JSON.stringify({ items: ["苹果", "香蕉", "坏格式"], instruction: "返回这一项的名称和字符数", output_schema: { type: "object", properties: { item: { type: "string" }, length: { type: "integer", minimum: 1 } }, required: ["item", "length"], additionalProperties: false }, max_parallel: 2 }) } };
+      return mockReply(c, body.stream, { role: "assistant", content: null, tool_calls: [call] }, call);
+    }
     const call = mcpTarget
       ? tools.length === 0 && mcpTool
         ? {
@@ -443,6 +460,26 @@ app.post("/knowledge/search", async (c) => {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
     body: JSON.stringify({ token, query: body.query, k: body.k }),
+    signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30000)]),
+  });
+  return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });
+});
+function mockReply(c: Context, stream: unknown, message: { role: string; content: string | null; tool_calls?: unknown[] }, call: object | null) {
+  if (!stream) return c.json({ choices: [{ message, finish_reason: call ? "tool_calls" : "stop" }] });
+  const delta = call ? { tool_calls: [{ index: 0, ...call }] } : { content: message.content };
+  return c.body(
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: call ? "tool_calls" : "stop" }] })}\n\ndata: [DONE]\n\n`,
+    200,
+    { "Content-Type": "text/event-stream" },
+  );
+}
+app.post("/children", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const token = c.req.header("Authorization")?.replace(/^Bearer /, "") || "";
+  const response = await fetch(control + "/internal/children", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.WORKER_TOKEN}` },
+    body: JSON.stringify({ token, callId: body.callId, items: body.items, instruction: body.instruction, outputSchema: body.outputSchema, maxParallel: body.maxParallel }),
     signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(30000)]),
   });
   return new Response(response.body, { status: response.status, headers: { "Content-Type": "application/json" } });

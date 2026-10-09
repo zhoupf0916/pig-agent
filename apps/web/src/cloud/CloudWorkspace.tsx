@@ -1,4 +1,5 @@
 import { FileEditor } from "../components/FileEditor";
+import { ParallelChildren } from "./ParallelChildren";
 import type { CloudConversationMessage } from "@pig-agent/contracts/cloud";
 import { TurnTranscript } from "../components/TurnTranscript";
 import { ContextUsageButton } from "../components/ContextUsageButton";
@@ -83,6 +84,7 @@ const labels: Record<string, string> = {
   preparing: "准备环境",
   running: "执行中",
   cancelling: "正在停止",
+  waiting: "等待子任务",
   cancelled: "已停止",
   succeeded: "已完成",
   failed: "执行失败",
@@ -1299,6 +1301,9 @@ export function CloudWorkspace({
                 lastError: last?.state === "failed" ? last.error || "执行失败" : undefined,
               })}
             />
+          )}
+          {last && (last.state === "waiting" || events.some((e) => (e as { type?: string; name?: string }).type === "tool_start" && (e as { name?: string }).name === "spawn_parallel")) && (
+            <ParallelChildren runId={last.id} active={!terminal(last.state)} waiting={last.state === "waiting"} canWrite={canWrite} request={(path, method, body) => request(path, method, body)} />
           )}
           {approvals
             .filter((a) => a.state === "pending" && active)

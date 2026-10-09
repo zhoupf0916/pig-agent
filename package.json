@@ -34,6 +34,7 @@
     "cloud:smoke:platform": "node scripts/smoke-cloud-platform.mjs",
     "cloud:smoke:collaboration": "node scripts/smoke-cloud-collaboration.mjs",
     "cloud:smoke:approvals": "node scripts/smoke-cloud-approvals.mjs",
+    "cloud:smoke:parallel": "node scripts/smoke-cloud-parallel.mjs",
     "cloud:backup": "node scripts/cloud-backup.mjs",
     "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore",
     "cluster:up": "pnpm cloud:build && node scripts/cluster-local.mjs up",

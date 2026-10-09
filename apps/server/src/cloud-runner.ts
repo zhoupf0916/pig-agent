@@ -7,6 +7,7 @@ import { mkdir, readdir, readFile, lstat, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { resolveInWorkspace } from "./agent/sandbox.ts";
 import { runAgent, ToolAuthorizationDenied } from "./agent/runtime.ts";
+import { RunYield } from "./agent/parallel-tool.ts";
 import { debugTraceWallOrigin, recordDebugSpan, readDebugTrace, setDebugContent, subscribeDebugSpans } from "./agent/debug-trace.ts";
 import { runnerTelemetry } from "./agent/cloud/run-telemetry.ts";
 import { normalizeSettings } from "./store/settings.ts";
@@ -74,6 +75,7 @@ try {
       attachments?: Array<{ id: string; name: string; mime: string; kind: string; workspacePath: string; data: string; text?: string; warning?: string }>;
       messages: Session["messages"];
       debugContent?: boolean;
+      childOf?: { parentRunId: string; callId: string; index: number };
       workspace?: { snapshot: Parameters<typeof extractWorkspaceSnapshot>[0] };
     };
   };
@@ -210,7 +212,7 @@ try {
   };
   const mcpTargets = new Map<string, { url: string; credentialVersion: number }>();
   let mcpTools: Array<{ type: "function"; function: { name: string; description?: string; parameters: unknown } }> = [];
-  try {
+  if (!input.childOf) try {
     const listed = await fetch(gateway + "/mcp/tools", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -278,6 +280,18 @@ try {
       if (!response.ok) throw new Error(payload.error || "MCP 调用失败");
       return payload.output || "";
     },
+    spawnParallel: input.childOf
+      ? undefined
+      : async (args, callId) => {
+          const response = await fetch(gateway + "/children", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ callId, items: args.items, instruction: args.instruction, outputSchema: args.output_schema, maxParallel: args.max_parallel }),
+            signal: AbortSignal.any([deadline, AbortSignal.timeout(30000)]),
+          });
+          const result = (await response.json().catch(() => ({}))) as { error?: string };
+          if (!response.ok) throw Error(result.error || "并行子任务创建失败");
+        },
     knowledgeSearch: input.projectId
       ? async (args) => {
           const query = String(args.query ?? "").trim().slice(0, 500);
@@ -400,6 +414,11 @@ try {
   });
 } catch (error) {
   if (debugSessionId) flushDebug(debugSessionId);
+  if (error instanceof RunYield) {
+    // Parallel subtasks registered and a safe checkpoint saved: end this attempt without a result.
+    emitTelemetry(true);
+    emit({ kind: "result", ok: true, waiting: { callId: error.callId } });
+  } else {
   emitTelemetry(false);
   emit({
     kind: "result",
@@ -415,4 +434,5 @@ try {
     })(),
   });
   process.exitCode = 1;
+  }
 }

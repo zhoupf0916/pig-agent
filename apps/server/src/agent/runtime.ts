@@ -3,6 +3,7 @@ import { ComputerGuard } from "../desktop/computer-guard.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
 import { KNOWLEDGE_TOOL, knowledgeToolDefinition } from "./knowledge-tool.ts";
+import { PARALLEL_TOOL, RunYield, parallelToolDefinition } from "./parallel-tool.ts";
 import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
 import { ModelRouter, routerConfigFromEnv } from "./model-router.ts";
 import { runToolSearch, selectMcpTools, TOOL_SEARCH, toolSearchDefinition } from "./tool-search.ts";
@@ -215,6 +216,8 @@ export async function runAgent(options: {
   networkFetch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
   /** Cloud project runs: exposes knowledge_search, executed by the control plane. */
   knowledgeSearch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
+  /** Cloud parent runs: registers parallel subtasks with the control plane; the run then yields. */
+  spawnParallel?: (args: Record<string, unknown>, callId: string) => Promise<void>;
   authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
@@ -404,6 +407,7 @@ export async function runAgent(options: {
       const extraToolDefs = [
         ...(allowSubagents ? [subagentToolDefinition] : []),
         ...(options.knowledgeSearch ? [knowledgeToolDefinition] : []),
+        ...(options.spawnParallel ? [parallelToolDefinition] : []),
         ...(allowComputer ? [computerToolDefinition] : []),
         ...(mcpSelection.searchEnabled ? [toolSearchDefinition] : []),
         ...mcpSelection.tools,
@@ -675,6 +679,15 @@ export async function runAgent(options: {
         try {
           if (call.name === "http_fetch" && options.networkFetch) {
             output = await options.networkFetch(parsed as Record<string, unknown>, call.id);
+          } else if (call.name === PARALLEL_TOOL) {
+            if (!options.spawnParallel) throw new Error("当前任务不能创建并行子任务");
+            await options.spawnParallel(parsed as Record<string, unknown>, call.id);
+            // Close the provider protocol for calls after this one, then yield from a safe checkpoint;
+            // the control plane appends this call's result when every subtask is final.
+            for (const rest of toolCalls.slice(callIndex + 1))
+              session.messages.push({ id: newId("msg"), role: "tool", content: "未执行：并行子任务这一轮不能同时调用其他工具，请在收到结果后再调用。", toolCallId: rest.id, toolOk: false, createdAt: nowIso() });
+            await options.checkpoint?.("safe", session);
+            throw new RunYield(call.id);
           } else if (call.name === KNOWLEDGE_TOOL) {
             if (!options.knowledgeSearch) throw new Error("当前任务没有项目知识库");
             output = await options.knowledgeSearch(parsed as Record<string, unknown>, call.id);
@@ -744,6 +757,7 @@ export async function runAgent(options: {
             emit({ type: "steps", steps: session.steps });
           }
         } catch (err) {
+          if (err instanceof RunYield) throw err;
           if (err instanceof ToolAuthorizationDenied) {
             recordDebugSpan({
               id: call.id,
@@ -863,6 +877,7 @@ export async function runAgent(options: {
     emit({ type: "message", message: overflow });
     return finishIdle(session, emit);
   } catch (err) {
+    if (err instanceof RunYield) throw err;
     const raw = err instanceof Error ? err.message : String(err);
     const aborted = raw === "Aborted" || signal.aborted;
     if (aborted) {

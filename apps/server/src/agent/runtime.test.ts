@@ -1,5 +1,6 @@
 // These suites cover the deterministic context assembler; LLM compaction is tested in compaction.test.ts.
 process.env.PIG_COMPACTION = "off";
+import { RunYield } from "./parallel-tool.ts";
 import {loadWorkbench,saveWorkbench} from "../store/workbench.ts";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -748,5 +749,31 @@ describe("project knowledge tool", () => {
       await runAgent({ session: emptySession(), settings: pigSettings(root, { llmBaseUrl: plain.url }), signal: new AbortController().signal, emit: () => {} });
       expect(toolNames[1]).not.toContain("knowledge_search");
     } finally { await plain.close(); }
+  });
+});
+
+describe("parallel subtasks tool", () => {
+  it("registers the group, closes sibling calls, saves a safe checkpoint and yields", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pig-parallel-"));
+    const mock = await startScriptedLlm([
+      (_raw, res) => toolDelta(res, [
+        { id: "par-1", name: "spawn_parallel", args: { items: ["a", "b"], instruction: "做" } },
+        { id: "rd-1", name: "read_file", args: { path: "x.txt" } },
+      ]),
+    ]);
+    try {
+      const spawned: Array<[Record<string, unknown>, string]> = [];
+      const phases: Array<{ phase: string; last?: string }> = [];
+      const run = runAgent({
+        session: emptySession(), settings: pigSettings(root, { llmBaseUrl: mock.url }), signal: new AbortController().signal, emit: () => {},
+        spawnParallel: async (args, callId) => { spawned.push([args, callId]); },
+        checkpoint: async (phase, session) => { phases.push({ phase, last: session.messages.at(-1)?.toolCallId }); },
+      });
+      const error = await run.then(() => null, (e) => e);
+      expect(error).toBeInstanceOf(RunYield);
+      expect((error as RunYield).callId).toBe("par-1");
+      expect(spawned).toEqual([[{ items: ["a", "b"], instruction: "做" }, "par-1"]]);
+      expect(phases.at(-1)).toEqual({ phase: "safe", last: "rd-1" });
+    } finally { await mock.close(); }
   });
 });
