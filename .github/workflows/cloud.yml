@@ -40,6 +40,7 @@ jobs:
       - run: pnpm cloud:smoke:collaboration
       - run: pnpm cloud:smoke:approvals
       - run: pnpm cloud:smoke:parallel
+      - run: pnpm cloud:smoke:feishu
       - run: pnpm exec tsx scripts/smoke-cloud-adapter.ts
       - run: pnpm exec tsx scripts/smoke-cloud-workbench.ts
       - if: failure()

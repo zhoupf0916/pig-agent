@@ -35,6 +35,7 @@
     "cloud:smoke:collaboration": "node scripts/smoke-cloud-collaboration.mjs",
     "cloud:smoke:approvals": "node scripts/smoke-cloud-approvals.mjs",
     "cloud:smoke:parallel": "node scripts/smoke-cloud-parallel.mjs",
+    "cloud:smoke:feishu": "tsx scripts/smoke-cloud-feishu.ts",
     "cloud:backup": "node scripts/cloud-backup.mjs",
     "cloud:restore:verify": "node scripts/cloud-backup.mjs verify-restore",
     "cluster:up": "pnpm cloud:build && node scripts/cluster-local.mjs up",
