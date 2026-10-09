@@ -191,6 +191,43 @@ await test("observability: metrics + alerts (no critical firing)", async () => {
   ok(!critical.length, `critical alerts firing: ${critical.map((x) => `${x.rule} (${x.summary})`).join("; ")}`);
   return `${text.split("\n").filter((l) => l && !l.startsWith("#")).length} samples, ${a.rules.length} rules, active=[${a.active.map((x) => x.rule).join(",")}]`;
 });
+await test("model routing: channel fields + output cap on gateway spans", async () => {
+  const channels = (await api("/v1/admin/channels")).channels;
+  const primary = channels.find((c) => c.enabled);
+  ok(!primary || ("fallback_rank" in primary && Number.isInteger(primary.max_output_tokens)), "channel routing fields missing (migration 0005?)");
+  const t = await api(`/v1/runs/${run1.id}/trace`);
+  const chats = t.spans.filter((s) => s.service === "gateway" && s.name === "POST /v1/chat/completions");
+  ok(chats.length && chats.every((s) => Number(s.attributes["pig.output.cap"]) > 0 && Number(s.attributes["pig.failover.attempts"]) >= 1), "gateway spans lack routing attributes");
+  return `primary=${primary ? `${primary.name}/${primary.model} cap=${primary.max_output_tokens}` : "env"}, standby=${channels.filter((c) => c.fallback_rank).length}, attempts=[${chats.map((s) => s.attributes["pig.failover.attempts"]).join(",")}]`;
+});
+// Opt-in (PIG_E2E_FAILOVER=1): briefly routes production through a broken primary with the real channel as
+// standby, proves the run still succeeds via failover, then restores the original primary.
+if (process.env.PIG_E2E_FAILOVER === "1") await test("model failover: broken primary -> standby (live)", async () => {
+  const before = (await api("/v1/admin/channels")).channels.find((c) => c.enabled);
+  if (!before) throw new Skip("no primary channel configured");
+  let broken;
+  try {
+    broken = await api("/v1/admin/channels", { method: "POST", status: 201, body: { name: "e2e 故障转移（自动删除）", baseUrl: "https://failover-e2e.invalid/v1", model: "none", apiKey: "sk-e2e-not-a-key" } });
+    await api(`/v1/admin/channels/${broken.id}/activate`, { method: "POST", body: { enabled: true } });
+    await api(`/v1/admin/channels/${before.id}`, { method: "PATCH", body: { fallbackRank: 1 } });
+    const t0 = Date.now();
+    const created = await api("/v1/runs", { method: "POST", headers: { "Idempotency-Key": randomUUID() }, status: 201, body: { prompt: "计算 17*23，只回答数字。", requireApproval: false } });
+    const r = await finish(created.id); blockIf402(r.state, r.error); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
+    let chat;
+    for (let i = 0; i < 15 && !chat; i++) {
+      chat = (await api(`/v1/runs/${created.id}/trace`)).spans.find((s) => s.service === "gateway" && s.name === "POST /v1/chat/completions" && Number(s.attributes["pig.failover.attempts"]) >= 2);
+      if (!chat) await sleep(1000);
+    }
+    ok(chat, "no gateway span with a failover");
+    ok(chat.attributes["pig.channel_id"] === before.id && chat.attributes["pig.upstream.status"] === 200, `served by ${chat.attributes["pig.channel_id"]} status ${chat.attributes["pig.upstream.status"]}`);
+    return `${((Date.now() - t0) / 1000).toFixed(1)}s, path=${String(chat.attributes["pig.failover.path"]).replace(/channel_([a-f0-9]{6})[a-f0-9]+/g, "$1…")}`;
+  } finally {
+    await api(`/v1/admin/channels/${before.id}/activate`, { method: "POST", body: { enabled: true } });
+    if (broken) await api(`/v1/admin/channels/${broken.id}`, { method: "DELETE" });
+    const after = (await api("/v1/admin/channels")).channels;
+    ok(after.find((c) => c.enabled)?.id === before.id && !after.some((c) => c.id === broken?.id), "routing NOT restored — check /admin channels");
+  }
+});
 
 let n = 0;
 const rpc = async (method, params, auth = true) => {
