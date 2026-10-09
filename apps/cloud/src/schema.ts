@@ -8,6 +8,7 @@ import { userDataSchema } from "./user-data-schema.ts";
 import { passwordAccountSchema } from "./password-schema.ts";
 import { clusterSchema } from "./cluster-schema.ts";
 import { collaborationSchema } from "./collaboration-schema.ts";
+import { webhookSchemaSql } from "./webhook-schema.ts";
 import { bootstrapTokenSchema } from "./bootstrap-tokens.ts";
 import { authRateLimitSchema } from "./auth-rate-limit-schema.ts";
 import type { Migration } from "./migrations.ts";
@@ -186,4 +187,5 @@ CREATE TRIGGER pig_bus_auth AFTER UPDATE OR DELETE ON spaces FOR EACH STATEMENT 
 export const migrations = (): Migration[] => [
   { version: 1, name: "baseline", sql: baseline() },
   { version: 2, name: "event_bus_triggers", sql: eventBusTriggers },
+  { version: 3, name: "webhooks", sql: webhookSchemaSql },
 ];
