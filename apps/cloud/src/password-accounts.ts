@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import { db, hash } from "./db.ts";
 import type { CloudEnv } from "./types.ts";
+import { hitBucket, overLimit } from "./auth-rate-limit.ts";
 export const usernameSchema = z
   .string()
   .trim()
@@ -11,15 +12,37 @@ export const usernameSchema = z
   .max(32)
   .regex(/^[a-z0-9][a-z0-9._-]*$/);
 export const passwordSchema = z.string().min(10).max(128);
+/** Thrown when too many password derivations are already queued on this process. */
+export class PasswordWorkBusy extends Error {}
+// scrypt N=16384 costs ~16 MiB and tens of ms each; bound CPU/memory per process instead of a global login bucket.
+const PASSWORD_WORK = { concurrency: 4, queue: 64 };
+let passwordActive = 0;
+const passwordWaiting: (() => void)[] = [];
+async function withPasswordSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (passwordActive >= PASSWORD_WORK.concurrency) {
+    if (passwordWaiting.length >= PASSWORD_WORK.queue) throw new PasswordWorkBusy();
+    await new Promise<void>((resolve) => passwordWaiting.push(resolve));
+  } else passwordActive++;
+  try {
+    return await work();
+  } finally {
+    const next = passwordWaiting.shift();
+    if (next) next();
+    else passwordActive--;
+  }
+}
 const derive = (password: string, salt: string) =>
-  new Promise<Buffer>((resolve, reject) =>
-    scrypt(
-      password,
-      salt,
-      64,
-      { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
-      (error, key) => (error ? reject(error) : resolve(key)),
-    ),
+  withPasswordSlot(
+    () =>
+      new Promise<Buffer>((resolve, reject) =>
+        scrypt(
+          password,
+          salt,
+          64,
+          { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 },
+          (error, key) => (error ? reject(error) : resolve(key)),
+        ),
+      ),
   );
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -105,19 +128,6 @@ export async function loginWithPassword(
     return { ok: false, reason: registration.state };
   return { ok: false, reason: "invalid" };
 }
-// Shared account bucket supplements the global auth budget and protects expensive password hashes.
-export async function allowPasswordAttempt(username: string) {
-  const key = "passwordAuth:" + hash(username);
-  const r = await db.query(
-    `INSERT INTO platform_settings(key,value) VALUES ($1,jsonb_build_object('window',floor(extract(epoch FROM now())/60),'count',1)) ON CONFLICT(key) DO UPDATE SET value=CASE WHEN (platform_settings.value->>'window')::numeric=floor(extract(epoch FROM now())/60) THEN jsonb_set(platform_settings.value,'{count}',to_jsonb((platform_settings.value->>'count')::int+1)) ELSE jsonb_build_object('window',floor(extract(epoch FROM now())/60),'count',1) END RETURNING (value->>'count')::int AS count`,
-    [key],
-  );
-  // At most 120 new keys/minute through the outer shared limit; bound retained rows.
-  await db.query(
-    "DELETE FROM platform_settings WHERE key LIKE 'passwordAuth:%' AND (value->>'window')::numeric < floor(extract(epoch FROM now())/60)-60",
-  );
-  return r.rows[0].count <= 10;
-}
 export function registerPasswordApplicationRoute(app: Hono<CloudEnv>) {
   app.post("/auth/web/register", async (c) => {
     const parsed = z
@@ -134,10 +144,24 @@ export function registerPasswordApplicationRoute(app: Hono<CloudEnv>) {
         { error: "请使用3–32位账号、10–128位密码，并填写姓名" },
         400,
       );
-    if (!(await allowPasswordAttempt(parsed.data.username)))
+    if (
+      overLimit(
+        "registration",
+        await hitBucket("registration", hash(parsed.data.username)),
+      )
+    )
       return c.json({ error: "该账号请求过于频繁，请一分钟后重试" }, 429);
     const data = parsed.data;
-    const encoded = await hashPassword(data.password);
+    let encoded: string;
+    try {
+      encoded = await hashPassword(data.password);
+    } catch (error) {
+      if (error instanceof PasswordWorkBusy) {
+        c.header("Retry-After", "5");
+        return c.json({ error: "服务繁忙，请稍后重试" }, 503);
+      }
+      throw error;
+    }
     const client = await db.connect();
     try {
       await client.query("BEGIN");

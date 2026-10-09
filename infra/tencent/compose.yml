@@ -20,6 +20,8 @@ services:
       BOOTSTRAP_TOKEN_TTL_HOURS: "24"
       MEMBER_TOKEN: ""
       MEMBER2_TOKEN: ""
+      # Host Nginx overwrites X-Forwarded-For with $remote_addr; auth throttling keys on it.
+      TRUST_PROXY_HEADER: x-forwarded-for
   gateway:
     build:
       network: host

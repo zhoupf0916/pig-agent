@@ -41,6 +41,8 @@ services:
       WORKER_TOKEN: ${WORKER_TOKEN}
       MODEL_MODE: ${MODEL_MODE:-mock}
       WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:-}
+      # Set only behind a proxy that overwrites the header (see infra/tencent/compose.yml).
+      TRUST_PROXY_HEADER: ${TRUST_PROXY_HEADER:-}
     ports: ["127.0.0.1:8890:8890"]
     networks: [control]
     depends_on:
