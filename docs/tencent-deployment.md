@@ -20,7 +20,26 @@ docker compose --env-file /home/ubuntu/pig-agent/data/cloud-local/stack.env \
   -f infra/cloud/compose.yml -f infra/tencent/compose.yml up -d --build --wait
 ```
 
-覆盖文件配置四个 Runner，每节点并发 1、内存 768 MiB、CPU 1 核；仅接收 compact/standard 任务。控制面和数据库各 512 MiB，网关 256 MiB。管理后台全局并发设置为 2，用户和项目并发均为 1，队列长度 30，排队超时 1800 秒。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
+覆盖文件配置四个 Runner：每节点并发 1、CPU 1 核、内存 `RUNNER_MEM_LIMIT`（默认 512 MiB），仅接收 compact/standard 任务。
+
+内存预算按主机可用 3718 MiB 计算：容器上限是天花板而不是预留，合计必须给系统、dockerd、Nginx 和页缓存留出余量。
+
+| 服务 | 内存上限 | oom_score_adj |
+|---|---|---|
+| postgres | 512 MiB | −900 |
+| cloud | 512 MiB | −500 |
+| gateway | 192 MiB | −500 |
+| runner ×4 | 512 MiB | +500 |
+| **合计** | **3264 MiB**（约 450 MiB 余量；旧配置为 4352 MiB，超出物理内存） | |
+
+主机真正 OOM 时，内核先杀任务进程，最后才动数据库和控制面。Runner 在以下情况会暂停领取新任务，每分钟最多记一条 `Claim paused by memory pressure` 日志：
+
+- 自身容器工作集（扣除非活跃文件缓存）达到上限的 85%（`WORKER_MAX_MEMORY_RATIO`）；
+- 主机 MemAvailable 低于 400 MiB（`WORKER_MIN_HOST_AVAILABLE_MB`）。
+
+需要更大的单任务内存时，可减少 Runner 数量后调高 `RUNNER_MEM_LIMIT`，不要只调高上限。
+
+管理后台全局并发设置为 2，用户和项目并发均为 1，队列长度 30，排队超时 1800 秒。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
 
 只有构建阶段使用 host 网络来下载软件包。运行期仍走 bridge；数据库和 Runner 仅接内部网络，网关与控制面允许出站访问模型/MCP。任务使用 Bubblewrap + seccomp，沙箱失败拒绝执行，不挂载 Docker socket。
 
