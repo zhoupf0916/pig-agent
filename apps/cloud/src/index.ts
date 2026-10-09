@@ -49,6 +49,7 @@ import { registerConversationRoutes } from "./conversations.ts";
 import { registerFileEditRoutes, loadFileOverrides } from "./file-edits.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
+import { registerApiDocs } from "./api-docs.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
   presentDebugTrace,
@@ -106,6 +107,7 @@ app.get("/health", async (c) => {
   });
 });
 registerWebAuthRoutes(app);
+registerApiDocs(app);
 // Public self-test receiver: accepts only correctly signed deliveries of an existing webhook.
 registerWebhookSink(app);
 app.use("/v1/*", authenticateWebOrBearer);
