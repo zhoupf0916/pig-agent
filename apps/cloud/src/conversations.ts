@@ -1,5 +1,6 @@
 import { bus } from "./event-bus.ts";
 import { AUTH_RECHECK_MS, HEARTBEAT_MS, heartbeatDue, STREAM_COALESCE_MS } from "./stream-timing.ts";
+import { hydrateSnapshot } from "./storage.ts";
 import { attachmentIdsSchema, resolveAttachments, bindAttachments } from "./attachments.ts";
 import { loadUserSettings, buildUserContext } from "./user-data.ts";
 import { resolveCapabilityContext, resolveSkillSnapshots } from "./capabilities.ts";
@@ -105,15 +106,17 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
     const p = c.get("principal");
     const version = (
       await db.query(
-        `SELECT v.snapshot FROM workspace_versions v JOIN conversations c ON c.id=v.conversation_id WHERE c.id=$1 AND v.run_id=$2 AND ($4 OR CASE WHEN c.project_id IS NULL THEN c.owner_id=$3 ELSE project_access(c.project_id,$3,false) END)`,
+        `SELECT v.snapshot,v.blob_key,v.blob_sha256 FROM workspace_versions v JOIN conversations c ON c.id=v.conversation_id WHERE c.id=$1 AND v.run_id=$2 AND ($4 OR CASE WHEN c.project_id IS NULL THEN c.owner_id=$3 ELSE project_access(c.project_id,$3,false) END)`,
         [c.req.param("id"), c.req.param("run"), p.id, p.role === "admin"],
       )
     ).rows[0];
     if (!version) return c.json({ error: "工作区版本不存在" }, 404);
     c.header("Content-Disposition", 'attachment; filename="workspace.tar.gz"');
     c.header("X-Content-Type-Options", "nosniff");
+    let snapshot;
+    try { snapshot = await hydrateSnapshot(version); } catch (error) { return c.json({ error: (error as Error).message }, 503); }
     return c.body(
-      new Uint8Array(Buffer.from(version.snapshot.data, "base64")),
+      new Uint8Array(Buffer.from(snapshot.data, "base64")),
       200,
       { "Content-Type": "application/gzip" },
     );
@@ -206,7 +209,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       }
       const checkpoint = (
         await client.query(
-          "SELECT snapshot, created_at FROM workspace_versions WHERE run_id=$1",
+          "SELECT snapshot, blob_key, blob_sha256, created_at FROM workspace_versions WHERE run_id=$1",
           [parent.id],
         )
       ).rows[0];
@@ -288,7 +291,7 @@ export function registerConversationRoutes(app: Hono<CloudEnv>) {
       }
       catch(e) { await client.query("ROLLBACK");return c.json({error:(e as Error).message},400); }
       input.privateMemoryContext=await buildUserContext(p.id,input.projectId,client);
-      if (checkpoint) { input.workspace = { snapshot: checkpoint.snapshot }; delete input.projectFiles; }
+      if (checkpoint) { try { input.workspace = { snapshot: await hydrateSnapshot(checkpoint) }; } catch (e) { await client.query("ROLLBACK"); return c.json({ error: (e as Error).message }, 503); } delete input.projectFiles; }
       input.fileOverrides = await loadFileOverrides(conversationId, client, checkpoint?.created_at ? new Date(checkpoint.created_at).toISOString() : null);
       await client.query(
         "INSERT INTO runs(id,owner_id,input,request_key,conversation_id,parent_run_id) VALUES($1,$2,$3,$4,$5,$6)",
