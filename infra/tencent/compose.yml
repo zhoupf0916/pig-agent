@@ -2,14 +2,15 @@
 #
 # Memory budget (host: 3718 MiB usable). Container limits are ceilings, not reservations, so their sum
 # must leave room for the OS, dockerd, Nginx and page cache:
-#   postgres 512 + cloud 512 + gateway 192 + 4 runners x RUNNER_MEM_LIMIT (512) = 3264 MiB  (~450 MiB headroom)
+#   postgres 448 + cloud 448 + minio 256 + gateway 192 + 4 runners x RUNNER_MEM_LIMIT (512) = 3392 MiB
+#   (~325 MiB headroom; measured usage is far below the ceilings, see docs/object-storage.md)
 # If the host still runs out of memory, oom_score_adj makes the kernel kill runner (task) processes
 # first and stateful services last. Runners also stop claiming new work while their own container is
 # >=85% of its limit or host MemAvailable drops below WORKER_MIN_HOST_AVAILABLE_MB.
 services:
   postgres:
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 448m
     oom_score_adj: -900
     logging: &logs
       driver: json-file
@@ -19,10 +20,10 @@ services:
     build:
       network: host
     restart: unless-stopped
-    mem_limit: 512m
+    mem_limit: 448m
     oom_score_adj: -500
     logging: *logs
-    networks: [control, egress]
+    networks: [control, egress, storage]
     environment:
       # Production: the admin env bearer expires 24h after it is first configured (rotate the value in
       # stack.env to open a new window); the demo/test bearer accounts are revoked and member2 is disabled.
@@ -35,6 +36,14 @@ services:
       # screened (public IPv4 only) and pinned per delivery.
       NETWORK_DNS_MODE: public
       NETWORK_DNS_PROVIDER: alidns
+  minio:
+    restart: unless-stopped
+    mem_limit: 256m
+    oom_score_adj: -800
+    logging: *logs
+    environment:
+      # Keep the Go heap under the container ceiling.
+      GOMEMLIMIT: 200MiB
   gateway:
     build:
       network: host
@@ -87,6 +96,10 @@ services:
 networks:
   control:
     name: pig-agent-public-control
+    internal: true
+    driver_opts: { com.docker.network.driver.mtu: "1450" }
+  storage:
+    name: pig-agent-public-storage
     internal: true
     driver_opts: { com.docker.network.driver.mtu: "1450" }
   egress:

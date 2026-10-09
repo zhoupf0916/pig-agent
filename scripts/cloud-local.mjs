@@ -22,7 +22,9 @@ if (command === "setup") {
   try {
     await access(file);
     const existing=await readFile(file,"utf8");
-    if (!/^ENCRYPTION_KEY=/m.test(existing)) await writeFile(file,existing.trimEnd()+"\nENCRYPTION_KEY="+randomBytes(32).toString("hex")+"\n",{mode:0o600});
+    const missing={ENCRYPTION_KEY:randomBytes(32).toString("hex"),MINIO_ROOT_USER:"pig"+randomBytes(8).toString("hex"),MINIO_ROOT_PASSWORD:randomBytes(32).toString("hex")};
+    const added=Object.entries(missing).filter(([k])=>!new RegExp(`^${k}=`,"m").test(existing));
+    if (added.length) await writeFile(file,existing.trimEnd()+"\n"+added.map(([k,v])=>`${k}=${v}`).join("\n")+"\n",{mode:0o600});
     console.log("Existing credentials preserved:", file);
   } catch {
     const credentials = Object.fromEntries(
@@ -39,7 +41,7 @@ if (command === "setup") {
       file,
       Object.entries(credentials)
         .map(([k, v]) => `${k}=${v}`)
-        .join("\n") + "\nMODEL_MODE=mock\n",
+        .join("\n") + `\nMINIO_ROOT_USER=pig${randomBytes(8).toString("hex")}\nMINIO_ROOT_PASSWORD=${randomBytes(32).toString("hex")}\nMODEL_MODE=mock\n`,
       { mode: 0o600, flag: "wx" },
     );
     await writeFile(
