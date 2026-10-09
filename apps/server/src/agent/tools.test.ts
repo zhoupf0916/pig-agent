@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Artifact } from "../types.ts";
-import { executeTool, shellRejectedReason, type ToolContext } from "./tools.ts";
+import { executeTool, isBenignExit, shellRejectedReason, type ToolContext } from "./tools.ts";
 
 function ctx(root: string): ToolContext {
   const artifacts: Artifact[] = [];
@@ -176,5 +176,23 @@ describe("workspace tools", () => {
     await expect(
       executeTool("http_fetch", { url: "file:///etc/passwd" }, ctx(root)),
     ).rejects.toThrow(/blocked/i);
+  });
+});
+
+describe("shell exit classification and escape guidance", () => {
+  it("treats exit 1 without stderr as a benign answer", () => {
+    const base = { code: 1, signal: null, stderr: "", timedOut: false };
+    expect(isBenignExit(base)).toBe(true);
+    expect(isBenignExit({ ...base, stderr: "grep: x: No such file or directory" })).toBe(false);
+    expect(isBenignExit({ ...base, code: 2 })).toBe(false);
+    expect(isBenignExit({ ...base, signal: "SIGKILL" })).toBe(false);
+    expect(isBenignExit({ ...base, timedOut: true })).toBe(false);
+  });
+  it("tells the model where it may work when rejecting an escape", () => {
+    const msg = shellRejectedReason("cd /tmp/verify && node check.mjs", "/workspace");
+    expect(msg).toMatch(/workspace escape/);
+    expect(msg).toContain("(/workspace, the current directory)");
+    expect(msg).toMatch(/relative paths/);
+    expect(shellRejectedReason("cat /tmp/x.txt", "/w")).toBeNull();
   });
 });

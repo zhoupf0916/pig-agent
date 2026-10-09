@@ -775,7 +775,9 @@ export async function runAgent(options: {
           const failedOp = workbench?.operations.find((op) => op.callId === call.id) as { sandbox?: ToolSandboxFact } | undefined;
           sandboxFact = failedOp?.sandbox ?? sandboxFromError(err) ?? sandboxFact;
           if (workbench?.operations.some((op) => op.callId === call.id && op.status === "error")) awaitingReview = true;
-          turnHadError = true;
+          // Benign non-zero exits (grep no match, diff differs, test false) are answers, not failures:
+          // the model still sees exit_code, but they don't count toward the consecutive-failure stop rule.
+          if ((err as { benign?: boolean } | null)?.benign !== true) turnHadError = true;
           output = err instanceof Error ? err.message : String(err);
           if (err instanceof SandboxError) {
             output = `Sandbox blocked this call: ${output}`;

@@ -754,7 +754,7 @@ async function runShell(
 ): Promise<ToolResult> {
   const trimmed = command.trim();
   if (!trimmed) throw new Error("command is required");
-  const rejected = shellRejectedReason(trimmed);
+  const rejected = shellRejectedReason(trimmed, ctx.workspaceRoot);
   if (rejected) {
     throw new Error(rejected);
   }
@@ -854,7 +854,7 @@ async function runShell(
     stderr: capText(result.stderr, MAX_SHELL_CHARS),
   };
   if (result.code !== 0 || result.timedOut || ctx.signal?.aborted) {
-    throw Object.assign(new Error(JSON.stringify(payload, null, 2)), { sandbox: result.sandbox });
+    throw Object.assign(new Error(JSON.stringify(payload, null, 2)), { sandbox: result.sandbox, benign: !ctx.signal?.aborted && isBenignExit(result) });
   }
   return { output: JSON.stringify(payload, null, 2), sandbox: result.sandbox };
 }
@@ -891,16 +891,22 @@ async function httpFetchTool(ctx: ToolContext, args: Json): Promise<ToolResult> 
   }
 }
 
-export function shellRejectedReason(command: string): string | null {
+/** Exit 1 with nothing on stderr is a normal "no"/"no match"/"differs" answer (grep, diff, test, cmp), not a crash. */
+export function isBenignExit(r: { code: number | null; signal: string | null; stderr: string; timedOut: boolean }) {
+  return r.code === 1 && !r.signal && !r.timedOut && !r.stderr.trim();
+}
+
+export function shellRejectedReason(command: string, workspaceRoot?: string): string | null {
+  const escape = `Command rejected: looks like a workspace escape. Work inside the workspace${workspaceRoot ? ` (${workspaceRoot}, the current directory)` : ""} using relative paths, e.g. \`mkdir -p scratch && node scratch/check.mjs\`; do not cd to absolute paths or ..; /tmp may only be used with direct file paths, never as a working directory.`;
   const lower = command.toLowerCase();
   if (/(^|[\s;|&])cd\s+\.\.(?:\s|$|[;/])/i.test(command)) {
-    return "Command rejected: looks like a workspace escape";
+    return escape;
   }
   if (/(^|[\s;|&])cd\s+\//.test(lower)) {
-    return "Command rejected: looks like a workspace escape";
+    return escape;
   }
   if (/(^|[\s;|&])(?:cat|less|rm|mv|cp)\s+\/(?!tmp\b)/i.test(command)) {
-    return "Command rejected: looks like a workspace escape";
+    return escape;
   }
   for (const rule of SHELL_DENY) {
     if (rule.test(command)) {
