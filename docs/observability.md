@@ -35,6 +35,7 @@ run                       cloud    创建 → 终态（任务结束时写入）
 | `pig_http_requests_total{method,route,status}` | 按路由模板和状态类计数 |
 | `pig_http_request_duration_seconds{route}` | 延迟直方图（SSE / 长轮询除外） |
 | `pig_model_requests_total{status}` / `pig_model_request_duration_seconds` | 网关模型调用（上游状态码，`no_key`、`rejected_*`） |
+| `pig_model_failovers_total{recovered}` / `pig_model_output_capped_total` | 故障转移次数、因超出输出上限被截断的流 |
 | `pig_run_execution_seconds{outcome}` | 每次执行尝试耗时 |
 | `pig_runs{state}`、`pig_queue_oldest_seconds`、`pig_runners_online` | 队列与 Runner |
 | `pig_webhook_deliveries{state}`、`pig_event_bus_live`、`pig_pg_pool_connections{state}` | 依赖健康 |
@@ -44,12 +45,13 @@ run                       cloud    创建 → 终态（任务结束时写入）
 
 ## 告警
 
-cloud 每 30 秒评估一次内置规则（多实例时用 advisory lock 保证只有一个实例评估），状态写入 `alerts` 表：
+cloud 每 30 秒评估一次 9 条内置规则（多实例时用 advisory lock 保证只有一个实例评估），状态写入 `alerts` 表：
 
 | 规则 | 级别 | 条件 |
 | --- | --- | --- |
 | `runners_offline` | critical | 有启用的 Runner 但 30 秒内都没有心跳，持续 60 秒 |
 | `model_provider_errors` | critical | 10 分钟内出现 HTTP 402（余额不足）或至少 3 次错误 |
+| `model_failover` | warning | 10 分钟内至少 3 次主渠道失败后切换到备用渠道（见 [model-routing.md](model-routing.md)） |
 | `queue_stalled` | warning | 最早排队的任务等待超过 5 分钟 |
 | `run_failure_rate` | warning | 30 分钟内结束的任务 ≥ 4 个且失败率 ≥ 50% |
 | `http_5xx` | warning | 5 分钟内请求 ≥ 20 个且 5xx ≥ 5% |
