@@ -234,6 +234,17 @@ await test("object storage: attachment round trip + verified copies", async () =
   const t = (await api("/v1/admin/storage")).tables;
   return `mode=${st.mode}, verified ${v.ok}/${v.checked}, attachments ${t.attachments.offloaded}/${t.attachments.total}, workspaces ${t.workspaces.offloaded}/${t.workspaces.total} offloaded, pending ${t.attachments.pending + t.workspaces.pending}`;
 });
+await test("task queue: owner-first claim, retry and dead-letter state", async () => {
+  const q = await api("/v1/admin/queue");
+  ok(q.claimMode === "fair" || q.claimMode === "legacy", "queue status lacks claimMode (migration 0008?)");
+  for (const k of ["ready", "delayed", "active", "dead_letters", "oldest_queued_seconds"]) ok(Number.isInteger(q[k]), `queue status lacks ${k}`);
+  const dl = await api("/v1/admin/queue/dead-letters?limit=5");
+  ok(Array.isArray(dl.deadLetters), "dead-letter list missing");
+  const m = await (await req("/v1/admin/metrics")).text();
+  ok(/pig_queue_claim_seconds_count\{result="claimed"\} [1-9]/.test(m), "no claim latency observed (were runs claimed by this release?)");
+  ok(m.includes('pig_queue_runs{kind="dead_letter"}'), "queue gauge missing");
+  return `mode=${q.claimMode}, ready=${q.ready}, delayed=${q.delayed}, dead letters=${q.dead_letters}`;
+});
 await test("knowledge base: ingest + search + cited answer in a project run", async () => {
   // One reusable personal project (projects cannot be deleted); the test document is removed afterwards.
   const name = "E2E 知识库（自动测试）";

@@ -105,6 +105,16 @@ export const rules: Rule[] = [
     },
   },
   {
+    id: "queue_dead_letters",
+    severity: "warning",
+    forS: 0,
+    description: "1 小时内有任务转入死信（多次未能启动或执行中断），需管理员核验或重放",
+    async check() {
+      const n = (await db.query("SELECT count(*)::int AS n FROM runs WHERE dead_lettered_at > now() - interval '1 hour' AND replayed_as IS NULL AND state='failed'")).rows[0].n;
+      return { firing: n > 0, value: n, summary: `1 小时内 ${n} 个任务转入死信` };
+    },
+  },
+  {
     id: "event_bus_down",
     severity: "warning",
     forS: 60,

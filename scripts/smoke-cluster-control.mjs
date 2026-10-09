@@ -267,7 +267,8 @@ try {
   });
   if (owner === w1.workerId) w1 = newer;
   else w2 = newer;
-  assert.equal((await req("/v1/runs/" + other.id)).state, "failed");
+  // The fenced attempt never started, so no tool ran: it is requeued with backoff (U3), not failed.
+  assert.equal((await req("/v1/runs/" + other.id)).state, "queued");
   record(
     "cancel and process-generation fencing",
     "late start, finish, and old heartbeat rejected",
@@ -472,13 +473,43 @@ try {
     "live lease cannot extend expired execution deadline",
   );
   await cleanupJobs();
+  const unstarted = await create();
+  const ua = await claim(w2);
+  assert.equal(ua.id, unstarted.id);
+  sql(
+    `UPDATE runs SET lease_until=now()-interval '1 second' WHERE id='${ua.id}'`,
+  );
+  const requeued = await (async () => {
+    for (let i = 0; i < 60; i++) {
+      const row = sql(
+        `SELECT state||','||coalesce(last_error_class,'')||','||(next_attempt_at>now())::text FROM runs WHERE id='${ua.id}'`,
+      ).trim();
+      if (row.startsWith("queued")) return row;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return "timeout";
+  })();
+  assert.equal(requeued, "queued,prestart,true");
+  record(
+    "never-started attempt retried with backoff",
+    "lost lease before start requeues the run with a retry delay instead of failing it",
+  );
+  await cleanupJobs();
   const lost = await create();
   const la = await claim(w2);
   assert.equal(la.id, lost.id);
+  await req(`/internal/runs/${la.id}/start`, {
+    token: env.WORKER_TOKEN,
+    body: { token: la.token },
+  });
   sql(
     `UPDATE runs SET lease_until=now()-interval '1 second' WHERE id='${la.id}'`,
   );
   assert.equal((await terminal(la.id)).state, "failed");
+  assert.equal(
+    sql(`SELECT last_error_class||','||(dead_lettered_at IS NOT NULL)::text FROM runs WHERE id='${la.id}'`).trim(),
+    "interrupted,true",
+  );
   await req(`/internal/runs/${la.id}/event`, {
     token: env.WORKER_TOKEN,
     body: { token: la.token, event },
@@ -486,7 +517,7 @@ try {
   });
   record(
     "lost node lease and stale operation",
-    "expired attempt failed without automatic replay",
+    "started attempt without safe checkpoint failed and dead-lettered, no automatic replay",
   );
   await cleanupJobs();
   const schedule = await req("/v1/schedules", {

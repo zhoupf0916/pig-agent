@@ -52,8 +52,10 @@ import { registerApprovalRoutes } from "./approvals.ts";
 import { registerApiDocs } from "./api-docs.ts";
 import { registerKnowledgeRoutes, startKnowledge } from "./knowledge.ts";
 import { offloadLater, prepareWorkspaceVersion, registerStorageRoutes, startStorage } from "./storage.ts";
+import { queueDeadLetters, queueRetries } from "./observability.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
 import { requestErrorLine } from "./error-log.ts";
+import { MAX_PRESTART_ATTEMPTS, backoffSql, classifyFailure, registerQueueRoutes } from "./queue.ts";
 import { registerAlertRoutes, startAlerts } from "./alerts.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
@@ -151,6 +153,7 @@ registerMcpRoutes(app);
 registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
 registerStorageRoutes(app);
+registerQueueRoutes(app);
 registerKnowledgeRoutes(app);
 registerApprovalRoutes(app, runFor);
 registerWebhookRoutes(app);
@@ -646,7 +649,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
         : c.json({ error: "Completion conflicts with accepted result" }, 409);
     }
     const r = await client.query(
-      "SELECT state,conversation_id,coalesce(lease_until<=now(),true) OR coalesce(deadline_at<=now(),false) AS expired FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
+      "SELECT state,conversation_id,started_at IS NOT NULL AS started,attempt_count,coalesce(lease_until<=now(),true) OR coalesce(deadline_at<=now(),false) AS expired FROM runs WHERE id=$1 AND attempt_token=$2 FOR UPDATE",
       [id, hash(String(body.token))],
     );
     if (!r.rowCount || terminal(r.rows[0].state) || r.rows[0].expired) {
@@ -667,6 +670,21 @@ app.post("/internal/runs/:id/finish", async (c) => {
       body.error =
         "工作区超出快照限制或检查点未保存；可下载已保存成果，不能无损继续下一轮";
     }
+    const failure =
+      r.rows[0].state === "cancelling" || body.ok
+        ? null
+        : classifyFailure({ started: r.rows[0].started, error: body.error });
+    if (failure?.retry && r.rows[0].attempt_count < MAX_PRESTART_ATTEMPTS - 1) {
+      // The attempt failed before the runner started, so no tool ran: requeue with backoff. No completion
+      // receipt is stored, because the next attempt finishes this run under a new token.
+      await client.query(
+        `UPDATE runs SET state='queued',error=NULL,attempt_token=NULL,lease_until=NULL,attempt_count=attempt_count+1,next_attempt_at=${backoffSql},last_error_class=$2,updated_at=now() WHERE id=$1`,
+        [id, failure.errorClass],
+      );
+      await client.query("COMMIT");
+      queueRetries.inc({ class: failure.errorClass });
+      return c.json({ ok: true, state: "queued", retry: true });
+    }
     const state =
       r.rows[0].state === "cancelling"
         ? "cancelled"
@@ -674,13 +692,16 @@ app.post("/internal/runs/:id/finish", async (c) => {
           ? "succeeded"
           : "failed";
     await client.query(
-      "UPDATE runs SET state=$2,error=$3,attempt_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",
+      "UPDATE runs SET state=$2,error=$3,attempt_token=NULL,lease_until=NULL,updated_at=now(),attempt_count=attempt_count+CASE WHEN $2='failed' THEN 1 ELSE 0 END,last_error_class=coalesce($4,CASE WHEN $2='cancelled' THEN 'cancelled' ELSE last_error_class END),dead_lettered_at=CASE WHEN $5 THEN now() ELSE dead_lettered_at END WHERE id=$1",
       [
         id,
         state,
         body.ok ? null : String(body.error || "容器执行失败").slice(0, 500),
+        failure?.errorClass ?? null,
+        failure?.deadLetter === true,
       ],
     );
+    if (failure?.deadLetter) queueDeadLetters.inc({ class: failure.errorClass });
     const snapshot = inputSchema.shape.workspace.safeParse({
       snapshot: body.snapshot,
     });
