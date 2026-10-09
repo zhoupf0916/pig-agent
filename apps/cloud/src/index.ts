@@ -50,6 +50,7 @@ import { registerFileEditRoutes, loadFileOverrides } from "./file-edits.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
 import { registerApiDocs } from "./api-docs.ts";
+import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
   presentDebugTrace,
@@ -87,6 +88,8 @@ const finishSchema = credentialSchema
       .optional(),
   })
   .strict();
+// First: every request gets a server span and HTTP metrics.
+app.use("*", cloudTracingMiddleware);
 app.use("*", bodyLimit({ maxSize: 7 * 1024 * 1024 }));
 app.onError((err, c) => {
   if ("code" in err && err.code === "P0429")
@@ -110,6 +113,7 @@ registerWebAuthRoutes(app);
 registerApiDocs(app);
 // Public self-test receiver: accepts only correctly signed deliveries of an existing webhook.
 registerWebhookSink(app);
+registerMetricsEndpoint(app);
 app.use("/v1/*", authenticateWebOrBearer);
 // After the /v1 auth middleware so /v1/a2a is authenticated; the agent card stays public.
 registerA2aRoutes(app);
@@ -144,6 +148,7 @@ registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
 registerApprovalRoutes(app, runFor);
 registerWebhookRoutes(app);
+registerObservabilityRoutes(app, runFor);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
@@ -706,6 +711,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
       [id, body.submissionId || "legacy", tokenHash, payloadHash, state],
     );
     await client.query("COMMIT");
+    void recordRunRoot(id).catch(() => {});
     return c.json({ ok: true, state });
   } catch (e) {
     await client.query("ROLLBACK");
@@ -867,6 +873,7 @@ app.get("/", serveStatic({ path: "/app/web/index.html" }));
 await migrate();
 await bus.start();
 webhookDispatcher.start();
+startObservability();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {
   if (scheduling) return;
