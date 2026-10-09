@@ -202,3 +202,11 @@
 .cloud-app .ca-templates { grid-template-columns: repeat(auto-fit,minmax(min(100%,190px),1fr)); }
 .cloud-app .ca-empty > svg { margin-inline: auto; display: block; }
 .cloud-app .cloud-resource-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); }
+/* Installed app (PWA): with viewport-fit=cover the page runs under the notch and home indicator. */
+@media (display-mode: standalone) {
+  .cloud-app {
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+}

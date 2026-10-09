@@ -884,6 +884,22 @@ app.get(
   }),
 );
 app.get("/assets/*", serveStatic({ root: "/app/web" }));
+// Installable workbench (PWA): the worker script must revalidate on every load so deploys roll out,
+// the manifest and icons are small and cached briefly.
+app.get("/sw.js", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-cache");
+  c.header("Service-Worker-Allowed", "/");
+}, serveStatic({ path: "/app/web/sw.js" }));
+app.get("/manifest.webmanifest", async (c, next) => {
+  await next();
+  c.header("Content-Type", "application/manifest+json; charset=utf-8");
+  c.header("Cache-Control", "public, max-age=3600");
+}, serveStatic({ path: "/app/web/manifest.webmanifest" }));
+app.get("/icons/*", async (c, next) => {
+  await next();
+  if (c.res.ok) c.header("Cache-Control", "public, max-age=86400");
+}, serveStatic({ root: "/app/web" }));
 app.get("/debug/runs", serveStatic({ path: "/app/web/index.html" }));
 app.get("/cloud", (c) => c.redirect("/debug/runs"));
 app.get("/api/deployment", (c) => c.json({ surface: "cloud" }));

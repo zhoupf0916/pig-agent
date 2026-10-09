@@ -1,4 +1,5 @@
 import type { AccountBudget, CloudMemoryRecord } from "@pig-agent/contracts/cloud";
+import { PwaSettingsCard } from "../pwa/PwaSettingsCard";
 import { ExtensionsPanel } from "../components/ExtensionsPanel";
 import { useEffect, useState, useRef } from "react";
 import { cloudRequest as api } from "./cloud-api";
@@ -61,6 +62,7 @@ export function CloudSettingsPanel() {
         <ExtensionsPanel mode="cloud" request={api} />
       )}
       <div hidden={section !== "preferences"}>
+        <PwaSettingsCard />
         {budget && (
           <section className="cloud-budget" aria-label="账号模型额度">
             <h3>模型额度</h3>

@@ -52,6 +52,8 @@ import type {
 } from "@pig-agent/contracts/cloud";
 import { redactSecretsForDisplay } from "../lib/remote-retry";
 import { accountNamePattern } from "./account-name";
+import { notificationsEnabled, notifyInBackground } from "../pwa/pwa";
+import { runNotice, type RunOutcome } from "../pwa/pwa-state";
 import "./cloud-workspace.css";
 
 type WorkspaceProject = CloudProject;
@@ -311,6 +313,32 @@ export function CloudWorkspace({
     /^操作 \S+ 等待审批，尚未执行[。；]/.test(message.content);
   const currentRunRef = useRef(last?.id);
   currentRunRef.current = last?.id;
+  // Background notifications (installed app / hidden tab): run finished, or a new approval is waiting.
+  const watchedRun = useRef<{ id?: string; state?: string }>({});
+  const notifiedApprovals = useRef(new Set<string>());
+  useEffect(() => {
+    const previous = watchedRun.current;
+    watchedRun.current = { id: last?.id, state: last?.state };
+    if (!current || !last || previous.id !== last.id || !previous.state) return;
+    if (!terminal(previous.state) && terminal(last.state))
+      void notifyInBackground(
+        runNotice("finished", current.conversation.title || "", last.state as RunOutcome),
+        "#/conversations/" + current.conversation.id,
+        "run-" + last.id,
+      );
+  }, [last?.id, last?.state]);
+  useEffect(() => {
+    if (!current || !active) return;
+    for (const approval of approvals) {
+      if (approval.state !== "pending" || notifiedApprovals.current.has(approval.id)) continue;
+      notifiedApprovals.current.add(approval.id);
+      void notifyInBackground(
+        runNotice("approval", current.conversation.title || ""),
+        "#/conversations/" + current.conversation.id,
+        "approval-" + approval.id,
+      );
+    }
+  }, [approvals]);
   const accountGeneration = useRef(0);
   function clearAccount(clearSelection = true) {
     accountGeneration.current++;
@@ -605,7 +633,14 @@ export function CloudWorkspace({
       }
     }
     void poll();
-    const timer = active ? setInterval(() => { if (!document.hidden) void poll(); }, 2000) : null;
+    // In the background the poll slows to every 10 s and only runs when notifications are on.
+    let tick = 0;
+    const timer = active
+      ? setInterval(() => {
+          tick++;
+          if (!document.hidden || (tick % 5 === 0 && notificationsEnabled())) void poll();
+        }, 2000)
+      : null;
     const visible = () => { if (!document.hidden) void poll(); };
     document.addEventListener("visibilitychange", visible);
     return () => {
@@ -673,8 +708,18 @@ export function CloudWorkspace({
       window.removeEventListener("pig-cloud-intent", onIntent);
     };
   }, []);
+  const syncedSelection = useRef(selected);
   useEffect(() => {
+    const selectionChanged = syncedSelection.current !== selected;
+    syncedSelection.current = selected;
     if (!hashSync || !workspaceHash()) return;
+    // The shell just switched to this view (e.g. a notification click or link set the hash while another
+    // route was open): the hash is the source of truth, so adopt it instead of overwriting it.
+    const fromHash = hashConversationId();
+    if (!selectionChanged && fromHash && fromHash !== selected) {
+      setSelected(fromHash);
+      return;
+    }
     const prefix =
       routePrefix ?? (apiBase ? "#/projects/collaboration" : "#/conversations");
     const next = prefix + (selected ? "/" + selected : "");

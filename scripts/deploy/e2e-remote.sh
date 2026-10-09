@@ -116,6 +116,22 @@ await test("web workbench page + bundle", async () => {
   const js = String(html).match(/\/assets\/[^"]+\.js/)?.[0]; ok(js, "no /assets/*.js in index.html");
   const r = await req(js, { auth: false }); ok(r.ok, `${js} -> ${r.status}`); return js;
 });
+await test("installable app (PWA): manifest, icons, service worker", async () => {
+  const html = String(await api("/", { auth: false }));
+  ok(html.includes('rel="manifest" href="/manifest.webmanifest"'), "index.html does not link the manifest");
+  const m = await req("/manifest.webmanifest", { auth: false });
+  ok(m.ok && (m.headers.get("content-type") || "").startsWith("application/manifest+json"), `manifest -> ${m.status} ${m.headers.get("content-type")}`);
+  const manifest = await m.json();
+  ok(manifest.display === "standalone" && manifest.start_url && manifest.icons?.some((i) => i.sizes === "512x512" && i.purpose === "maskable"), "manifest missing standalone/start_url/maskable icon");
+  for (const icon of manifest.icons) { const r = await req(icon.src, { auth: false }); ok(r.ok && r.headers.get("content-type") === "image/png", `${icon.src} -> ${r.status}`); }
+  const sw = await req("/sw.js", { auth: false });
+  ok(sw.ok && sw.headers.get("cache-control") === "no-cache" && sw.headers.get("service-worker-allowed") === "/", `sw.js -> ${sw.status} cache-control=${sw.headers.get("cache-control")}`);
+  const code = await sw.text();
+  const version = code.match(/pig-agent sw ([0-9a-f]{12})/)?.[1]; ok(version, "sw.js has no build version");
+  const entry = html.match(/\/assets\/index-[^"]+\.js/)?.[0]; ok(entry && code.includes(entry), "sw.js does not precache the current entry bundle");
+  for (const prefix of ['"/v1/"', '"/auth/"', '"/internal/"']) ok(code.includes(prefix), `sw.js never-cache list lacks ${prefix}`);
+  return `sw ${version}, ${manifest.icons.length} icons`;
+});
 await test("admin console page", async () => { ok(String(await api("/admin/", { auth: false })).includes("app.js"), "admin/app.js not referenced"); });
 await test("API rejects anonymous calls", async () => { const r = await req("/v1/runs", { auth: false }); ok(r.status === 401, `HTTP ${r.status}`); });
 const loggedIn = await test("admin password login", async () => {
