@@ -53,6 +53,7 @@ import { registerApiDocs } from "./api-docs.ts";
 import { registerKnowledgeRoutes, startKnowledge } from "./knowledge.ts";
 import { offloadLater, prepareWorkspaceVersion, registerStorageRoutes, startStorage } from "./storage.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
+import { requestErrorLine } from "./error-log.ts";
 import { registerAlertRoutes, startAlerts } from "./alerts.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
@@ -99,7 +100,7 @@ app.onError((err, c) => {
     return c.json({ error: "任务队列已满，请稍后再试" }, 429);
   if ("code" in err && err.code === "42501")
     return c.json({ error: "没有共享项目的编辑权限" }, 403);
-  console.error(err.name);
+  console.error(requestErrorLine(err, c.req.method, c.req.routePath));
   return c.json({ error: "服务请求失败，请查看节点日志" }, 500);
 });
 app.get("/health", async (c) => {
