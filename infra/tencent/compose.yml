@@ -31,6 +31,10 @@ services:
       MEMBER2_TOKEN: ""
       # Host Nginx overwrites X-Forwarded-For with $remote_addr; auth throttling keys on it.
       TRUST_PROXY_HEADER: x-forwarded-for
+      # Outbound webhooks resolve through the same fixed-IP DNS as the gateway; addresses are still
+      # screened (public IPv4 only) and pinned per delivery.
+      NETWORK_DNS_MODE: public
+      NETWORK_DNS_PROVIDER: alidns
   gateway:
     build:
       network: host

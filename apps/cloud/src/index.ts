@@ -49,6 +49,8 @@ import { registerConversationRoutes } from "./conversations.ts";
 import { registerFileEditRoutes, loadFileOverrides } from "./file-edits.ts";
 import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
+import { registerApiDocs } from "./api-docs.ts";
+import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
   presentDebugTrace,
   closeTerminalDebugTrace,
@@ -105,6 +107,9 @@ app.get("/health", async (c) => {
   });
 });
 registerWebAuthRoutes(app);
+registerApiDocs(app);
+// Public self-test receiver: accepts only correctly signed deliveries of an existing webhook.
+registerWebhookSink(app);
 app.use("/v1/*", authenticateWebOrBearer);
 // After the /v1 auth middleware so /v1/a2a is authenticated; the agent card stays public.
 registerA2aRoutes(app);
@@ -138,6 +143,7 @@ registerMcpRoutes(app);
 registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
 registerApprovalRoutes(app, runFor);
+registerWebhookRoutes(app);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
@@ -860,6 +866,7 @@ app.all("/api/*", (c) => c.json({ error: "云端 Web 不提供本机执行接口
 app.get("/", serveStatic({ path: "/app/web/index.html" }));
 await migrate();
 await bus.start();
+webhookDispatcher.start();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {
   if (scheduling) return;
