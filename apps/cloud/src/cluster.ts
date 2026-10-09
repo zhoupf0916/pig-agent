@@ -5,6 +5,10 @@ import { z } from "zod";
 import type { PoolClient } from "pg";
 import type { CloudEnv } from "./types.ts";
 import { db, hash } from "./db.ts";
+import { bus } from "./event-bus.ts";
+import { longPollMs } from "./stream-timing.ts";
+
+const MAX_CLAIM_WAIT_MS = 10_000;
 import { profiles } from "./resources.ts";
 export const executionPolicySchema = z
   .object({
@@ -173,86 +177,111 @@ export function registerClusterRoutes(app: Hono<CloudEnv>) {
       .safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "Invalid worker" }, 400);
     const { workerId, instanceId } = parsed.data;
-    const client = await db.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(71839022)");
-      if (!instanceId)
+    // Optional long-poll (new workers send X-Pig-Wait-Ms): while nothing is claimable, wait without a
+    // database connection for the event bus to report new or requeued runs, freed capacity or a change
+    // to this worker. Old workers omit the header and keep their own 1 s polling.
+    const waitMs = longPollMs(c.req.header("x-pig-wait-ms"), MAX_CLAIM_WAIT_MS);
+    const deadline = Date.now() + waitMs;
+    const sub = waitMs ? bus.subscribe(["queue", `worker:${workerId}`, "auth"]) : undefined;
+    let retry = false;
+    const once = async () => {
+      retry = false;
+      const client = await db.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(71839022)");
+        if (!instanceId)
+          await client.query(
+            "INSERT INTO workers(id) VALUES($1) ON CONFLICT(id) DO NOTHING",
+            [workerId],
+          );
+        const worker = (
+          await client.query("SELECT * FROM workers WHERE id=$1 FOR UPDATE", [
+            workerId,
+          ])
+        ).rows[0];
+        if (!worker || (worker.instance_id || undefined) !== instanceId) {
+          await client.query("ROLLBACK");
+          return c.json({ error: "Worker generation expired" }, 409);
+        }
+        await client.query("UPDATE workers SET seen_at=now() WHERE id=$1", [
+          workerId,
+        ]);
+        const limits = await policy(client);
+        const counts = (
+          await client.query(
+            `SELECT count(*)::int AS total,count(*) FILTER(WHERE worker_id=$1)::int AS worker FROM runs WHERE ${active}`,
+            [workerId],
+          )
+        ).rows[0];
+        if (
+          !worker.enabled ||
+          worker.draining ||
+          counts.worker >= Math.min(worker.capacity, worker.reported_capacity) ||
+          counts.total >= limits.globalConcurrency
+        ) {
+          // Only "nothing claimable yet" is worth waiting for; a disabled or draining worker gets its answer now.
+          retry = worker.enabled && !worker.draining;
+          await client.query("COMMIT");
+          return c.json(null);
+        }
+        // The short, database-wide claim lock makes every aggregate limit authoritative across control instances.
+        const candidate = (
+          await client.query(
+            `SELECT r.id,r.execution_profile,r.owner_id FROM runs r JOIN principals p ON p.id=r.owner_id LEFT JOIN dispatch_owners d ON d.owner_id=r.owner_id WHERE r.state='queued' AND p.enabled AND r.execution_profile IN (SELECT jsonb_array_elements_text($1::jsonb)) AND (r.project_id IS NULL OR project_access(r.project_id,r.owner_id,true)) AND (SELECT count(*) FROM runs a WHERE a.owner_id=r.owner_id AND a.${active})<$2 AND (r.project_id IS NULL OR (SELECT count(*) FROM runs a WHERE a.project_id=r.project_id AND a.${active})<$3) ORDER BY d.last_claimed_at NULLS FIRST,r.created_at,r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
+            [
+              JSON.stringify(worker.profiles),
+              limits.userConcurrency,
+              limits.projectConcurrency,
+            ],
+          )
+        ).rows[0];
+        if (!candidate) {
+          retry = true;
+          await client.query("COMMIT");
+          return c.json(null);
+        }
+        const resources =
+          profiles[candidate.execution_profile as keyof typeof profiles] ||
+          profiles.standard;
+        const token = randomUUID() + randomUUID();
+        const attemptId = randomUUID();
         await client.query(
-          "INSERT INTO workers(id) VALUES($1) ON CONFLICT(id) DO NOTHING",
+          "UPDATE runs SET state='preparing',worker_id=$2,attempt_token=$3,lease_until=now()+interval '20 seconds',deadline_at=coalesce(deadline_at,now()+make_interval(secs=>$4)),attempt_id=$5,updated_at=now() WHERE id=$1",
+          [candidate.id, workerId, hash(token), resources.timeoutSeconds + 30, attemptId],
+        );
+        await client.query(
+          "INSERT INTO dispatch_owners(owner_id,last_claimed_at) VALUES($1,now()) ON CONFLICT(owner_id) DO UPDATE SET last_claimed_at=now()",
+          [candidate.owner_id],
+        );
+        await client.query(
+          "UPDATE workers SET last_claimed_at=now() WHERE id=$1",
           [workerId],
         );
-      const worker = (
-        await client.query("SELECT * FROM workers WHERE id=$1 FOR UPDATE", [
-          workerId,
-        ])
-      ).rows[0];
-      if (!worker || (worker.instance_id || undefined) !== instanceId) {
+        await client.query(
+          "INSERT INTO execution_attempts(id,run_id,worker_id,resources) VALUES($1,$2,$3,$4)",
+          [attemptId, candidate.id, workerId, resources],
+        );
+        await client.query("COMMIT");
+        return c.json({ id: candidate.id, token, resources });
+      } catch (e) {
         await client.query("ROLLBACK");
-        return c.json({ error: "Worker generation expired" }, 409);
+        throw e;
+      } finally {
+        client.release();
       }
-      await client.query("UPDATE workers SET seen_at=now() WHERE id=$1", [
-        workerId,
-      ]);
-      const limits = await policy(client);
-      const counts = (
-        await client.query(
-          `SELECT count(*)::int AS total,count(*) FILTER(WHERE worker_id=$1)::int AS worker FROM runs WHERE ${active}`,
-          [workerId],
-        )
-      ).rows[0];
-      if (
-        !worker.enabled ||
-        worker.draining ||
-        counts.worker >= Math.min(worker.capacity, worker.reported_capacity) ||
-        counts.total >= limits.globalConcurrency
-      ) {
-        await client.query("COMMIT");
-        return c.json(null);
+    };
+    try {
+      for (;;) {
+        const res = await once();
+        if (!sub || !retry || res.status !== 200 || Date.now() >= deadline || c.req.raw.signal.aborted) return res;
+        if ((await res.clone().json()) !== null) return res;
+        await sub.wait({ liveMs: deadline - Date.now(), pollMs: 1000, signal: c.req.raw.signal });
+        // The worker gave up (timeout or shutdown): do not claim a run nobody will receive.
+        if (c.req.raw.signal.aborted) return res;
       }
-      // The short, database-wide claim lock makes every aggregate limit authoritative across control instances.
-      const candidate = (
-        await client.query(
-          `SELECT r.id,r.execution_profile,r.owner_id FROM runs r JOIN principals p ON p.id=r.owner_id LEFT JOIN dispatch_owners d ON d.owner_id=r.owner_id WHERE r.state='queued' AND p.enabled AND r.execution_profile IN (SELECT jsonb_array_elements_text($1::jsonb)) AND (r.project_id IS NULL OR project_access(r.project_id,r.owner_id,true)) AND (SELECT count(*) FROM runs a WHERE a.owner_id=r.owner_id AND a.${active})<$2 AND (r.project_id IS NULL OR (SELECT count(*) FROM runs a WHERE a.project_id=r.project_id AND a.${active})<$3) ORDER BY d.last_claimed_at NULLS FIRST,r.created_at,r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1`,
-          [
-            JSON.stringify(worker.profiles),
-            limits.userConcurrency,
-            limits.projectConcurrency,
-          ],
-        )
-      ).rows[0];
-      if (!candidate) {
-        await client.query("COMMIT");
-        return c.json(null);
-      }
-      const resources =
-        profiles[candidate.execution_profile as keyof typeof profiles] ||
-        profiles.standard;
-      const token = randomUUID() + randomUUID();
-      const attemptId = randomUUID();
-      await client.query(
-        "UPDATE runs SET state='preparing',worker_id=$2,attempt_token=$3,lease_until=now()+interval '20 seconds',deadline_at=coalesce(deadline_at,now()+make_interval(secs=>$4)),attempt_id=$5,updated_at=now() WHERE id=$1",
-        [candidate.id, workerId, hash(token), resources.timeoutSeconds + 30, attemptId],
-      );
-      await client.query(
-        "INSERT INTO dispatch_owners(owner_id,last_claimed_at) VALUES($1,now()) ON CONFLICT(owner_id) DO UPDATE SET last_claimed_at=now()",
-        [candidate.owner_id],
-      );
-      await client.query(
-        "UPDATE workers SET last_claimed_at=now() WHERE id=$1",
-        [workerId],
-      );
-      await client.query(
-        "INSERT INTO execution_attempts(id,run_id,worker_id,resources) VALUES($1,$2,$3,$4)",
-        [attemptId, candidate.id, workerId, resources],
-      );
-      await client.query("COMMIT");
-      return c.json({ id: candidate.id, token, resources });
-    } catch (e) {
-      await client.query("ROLLBACK");
-      throw e;
     } finally {
-      client.release();
+      sub?.close();
     }
   });
 }
