@@ -6,6 +6,7 @@ await mkdir("cloud-dist", { recursive: true });
 for (const [name, entry] of Object.entries({
   cloud: "apps/cloud/src/index.ts",
   scheduler: "apps/cloud/src/schedules.ts",
+  migrate: "apps/cloud/src/migrate-cli.ts",
   gateway: "apps/cloud/src/gateway.ts",
   worker: "apps/worker/src/index.ts",
   runner: "apps/server/src/cloud-runner.ts",
