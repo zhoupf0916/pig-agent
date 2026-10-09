@@ -1,0 +1,15 @@
+# Scrape config for pig-agent cloud. The token is METRICS_TOKEN from stack.env (or WORKER_TOKEN); keep it
+# in a file readable only by Prometheus. /internal/ is not exposed publicly by nginx, so scrape from inside
+# the compose network (e.g. a prometheus service attached to the cloud network) or over a private link.
+global:
+  scrape_interval: 30s
+rule_files:
+  - pig-alerts.yml
+scrape_configs:
+  - job_name: pig-cloud
+    metrics_path: /internal/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/pig-metrics-token
+    static_configs:
+      - targets: ["cloud:8890"]

@@ -46,4 +46,5 @@ pending  0002 add_run_priority
 
 - 只回滚应用镜像（例如 `scripts/deploy/deploy.sh rollback`）。schema 只做了扩展，旧代码可以继续运行；旧版本启动时执行的内联 `IF NOT EXISTS` schema 也与新库兼容。
 - `0003 webhooks` 回滚后：触发器仍会为已登记的 Webhook 写入投递记录，但旧版本没有分发器，这些记录只会累积、不会发送；重新部署新版本后会按到期时间补发。
+- `0004 observability` 回滚后：`trace_spans` / `alerts` 两张表留着不用，旧版本不读写它们；重新部署新版本后接着写。保留期（默认 7 天）的清理也由新版本负责，回滚期间数据不会增长。
 - 不要手工删除 `schema_migrations` 里的行。确实需要撤销时，写一个新的迁移来撤销。
