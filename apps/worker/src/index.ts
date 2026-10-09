@@ -7,6 +7,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { mkdir, rm, readdir } from "node:fs/promises";
 import { runnerProcessEnv } from "./runner-env.ts";
 import { SlotPool } from "./slot-pool.ts";
+import { claimBlockedReason, memoryPolicyFromEnv, readMemorySample } from "./memory-pressure.ts";
 import { createInterface } from "node:readline";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -20,6 +21,8 @@ if (!Number.isInteger(slots) || slots < 1 || slots > 16)
 const profiles = (
   process.env.WORKER_PROFILES || "compact,standard,large"
 ).split(",");
+const memoryPolicy = memoryPolicyFromEnv();
+let lastPressureLog = 0;
 let draining = false;
 const activeStops = new Set<() => Promise<void>>();
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -334,6 +337,16 @@ await Promise.all(
   Array.from({ length: slots }, async () => {
     while (!draining) {
       try {
+        // Backpressure: do not take new work while this container or the host is short of memory.
+        const pressure = claimBlockedReason(readMemorySample(), memoryPolicy);
+        if (pressure) {
+          if (Date.now() - lastPressureLog > 60_000) {
+            lastPressureLog = Date.now();
+            console.error("Claim paused by memory pressure:", pressure);
+          }
+          await delay(2000);
+          continue;
+        }
         const slot = pool.acquire();
         if (!slot) {
           await delay(200);
