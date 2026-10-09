@@ -7,11 +7,29 @@ export function MarkdownView({ text }: { text: string }) {
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
       components={{
-        a: ({ href, children }) => (
-          <a href={href} target="_blank" rel="noreferrer" className="text-accent">
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          // Knowledge base citations ([K1](#knowledge:chunk_…)) open the cited passage in-app.
+          const chunk = href?.match(/^#knowledge:(chunk_[a-f0-9]{32})$/)?.[1];
+          if (chunk)
+            return (
+              <a
+                href={href}
+                className="knowledge-cite text-accent"
+                title="查看引用原文"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.dispatchEvent(new CustomEvent("pig-knowledge-citation", { detail: chunk }));
+                }}
+              >
+                {children}
+              </a>
+            );
+          return (
+            <a href={href} target="_blank" rel="noreferrer" className="text-accent">
+              {children}
+            </a>
+          );
+        },
         code: ({ className, children, ...props }) => {
           const inline = !className;
           if (inline) {
