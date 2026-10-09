@@ -2,7 +2,7 @@ FROM node:24-bookworm-slim AS base
 WORKDIR /app
 FROM base AS cloud
 RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils python3 && rm -rf /var/lib/apt/lists/*
-COPY cloud.mjs scheduler.mjs ./
+COPY cloud.mjs scheduler.mjs migrate.mjs ./
 COPY web ./web
 COPY admin ./admin
 COPY skills ./skills

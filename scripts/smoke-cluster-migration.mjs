@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 // Run real migration DDL against an empty, transaction-local schema. Rollback leaves the live cluster untouched.
-// db.ts interpolates the billing DDL (9fad499), so substitute it the same way the runtime does.
+// The baseline migration (schema.ts) interpolates the billing DDL, so substitute it the same way the runtime does.
 const billing = (await readFile("apps/cloud/src/billing.ts", "utf8")).match(
   /export const billingSchema = `([\s\S]*?)`;/,
 )?.[1];
-const base = (await readFile("apps/cloud/src/db.ts", "utf8"))
-  .match(/await client\.query\(`([\s\S]*?)`\);/)?.[1]
+const base = (await readFile("apps/cloud/src/schema.ts", "utf8"))
+  .match(/const coreSchema = `([\s\S]*?)`;/)?.[1]
   ?.replace("${billingSchema}", () => billing ?? "");
 const collaboration = (
   await readFile("apps/cloud/src/collaboration-schema.ts", "utf8")
