@@ -55,6 +55,7 @@ import { offloadLater, prepareWorkspaceVersion, registerStorageRoutes, startStor
 import { queueDeadLetters, queueRetries } from "./observability.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
 import { requestErrorLine } from "./error-log.ts";
+import { advanceForChild, advanceOpenGroups, enterWaiting, registerChildrenRoutes } from "./children.ts";
 import { MAX_PRESTART_ATTEMPTS, backoffSql, classifyFailure, registerQueueRoutes } from "./queue.ts";
 import { registerAlertRoutes, startAlerts } from "./alerts.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
@@ -77,6 +78,7 @@ const finishSchema = credentialSchema
     kind: z.literal("result").optional(),
     ok: z.boolean(),
     error: z.string().max(5000).optional(),
+    waiting: z.object({ callId: z.string().min(1).max(120) }).strict().optional(),
     snapshot: z.unknown().optional(),
     files: z
       .array(
@@ -154,6 +156,8 @@ registerUserDataRoutes(app);
 registerAttachmentRoutes(app);
 registerStorageRoutes(app);
 registerQueueRoutes(app);
+registerChildrenRoutes(app);
+setInterval(() => void advanceOpenGroups().catch(() => {}), 3000).unref();
 registerKnowledgeRoutes(app);
 registerApprovalRoutes(app, runFor);
 registerWebhookRoutes(app);
@@ -333,7 +337,7 @@ app.post("/v1/runs/:id/abort", async (c) => {
     p = c.get("principal");
   if (!(await runFor(id, p, true))) return c.json({ error: "Not found" }, 404);
   await db.query(
-    "UPDATE runs SET state=CASE WHEN state='queued' THEN 'cancelled' ELSE 'cancelling' END,updated_at=now() WHERE id=$1 AND state IN ('queued','preparing','running')",
+    "UPDATE runs SET state=CASE WHEN state IN ('queued','waiting') THEN 'cancelled' ELSE 'cancelling' END,updated_at=now() WHERE id=$1 AND state IN ('queued','preparing','running','waiting')",
     [id],
   );
   await db.query("INSERT INTO audit(actor,action,run_id) VALUES($1,$2,$3)", [
@@ -656,6 +660,15 @@ app.post("/internal/runs/:id/finish", async (c) => {
       await client.query("ROLLBACK");
       return c.json({ error: "Lease expired" }, 409);
     }
+    if (body.waiting && body.ok && r.rows[0].state === "running") {
+      // spawn_parallel: the parent yields its slot; no completion receipt (the resumed attempt finishes it).
+      if (!(await enterWaiting(client, id, body.waiting.callId))) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "并行子任务未登记或检查点未保存" }, 409);
+      }
+      await client.query("COMMIT");
+      return c.json({ ok: true, state: "waiting" });
+    }
     const checkpoint = inputSchema.shape.workspace.safeParse({
       snapshot: body.snapshot,
     });
@@ -743,6 +756,7 @@ app.post("/internal/runs/:id/finish", async (c) => {
     );
     await client.query("COMMIT");
     void recordRunRoot(id).catch(() => {});
+    void advanceForChild(id).catch(() => {});
     if (offloadAfterCommit) offloadLater("workspace", id);
     return c.json({ ok: true, state });
   } catch (e) {
@@ -789,7 +803,7 @@ app.post("/internal/authorize", async (c) => {
   if (!parsed.success) return c.json({ error: "Invalid authorization" }, 400);
   const { token, reserve, modelRequest } = parsed.data;
   const r = await db.query(
-    "SELECT id,input,model_calls,CASE WHEN recovery_count>0 AND checkpoint_phase='safe' THEN checkpoint ELSE NULL END AS recovery FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
+    "SELECT id,input,model_calls,CASE WHEN (recovery_count>0 OR resumed_at IS NOT NULL) AND checkpoint_phase='safe' THEN checkpoint ELSE NULL END AS recovery FROM runs WHERE attempt_token=$1 AND state IN ('preparing','running') AND lease_until>now() AND (deadline_at IS NULL OR deadline_at>now()) AND EXISTS(SELECT 1 FROM principals p WHERE p.id=runs.owner_id AND p.enabled) AND EXISTS(SELECT 1 FROM workers w WHERE w.id=runs.worker_id AND w.enabled) AND (project_id IS NULL OR project_access(project_id,owner_id,true))",
     [hash(String(token))],
   );
   if (!r.rowCount) return c.json({ error: "Run credential expired" }, 401);
