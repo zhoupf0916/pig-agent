@@ -6,6 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@pig-agent/contracts": "workspace:*"
+  },
   "devDependencies": {}
 }

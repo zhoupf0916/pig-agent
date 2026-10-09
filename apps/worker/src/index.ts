@@ -11,6 +11,8 @@ import { claimBlockedReason, memoryPolicyFromEnv, readMemorySample } from "./mem
 import { createInterface } from "node:readline";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { controlPlaneExporter, runContext, runTraceId, Tracer, validSpan, type Span } from "@pig-agent/contracts/telemetry";
 const control = process.env.CONTROL_URL || "http://cloud:8890",
   workerId = process.env.WORKER_ID || hostname();
 const instanceId = randomUUID();
@@ -27,6 +29,11 @@ let draining = false;
 const activeStops = new Set<() => Promise<void>>();
 const CLAIM_WAIT_MS = Math.max(0, Math.min(10_000, Number(process.env.WORKER_CLAIM_WAIT_MS ?? 10_000) || 0));
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Tracing: each run attempt is a `worker.execute` span in the run's trace (trace id derived from the run id);
+// control-plane calls made for the run carry its traceparent; spans are shipped to the control plane.
+const exporter = controlPlaneExporter(control, process.env.WORKER_TOKEN).start();
+const tracer = new Tracer("worker", exporter.push);
+const currentSpan = new AsyncLocalStorage<Span>();
 async function api(path: string, body: unknown, waitMs = 0) {
   const r = await fetch(control + path, {
     method: "POST",
@@ -34,6 +41,7 @@ async function api(path: string, body: unknown, waitMs = 0) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
       ...(waitMs ? { "X-Pig-Wait-Ms": String(waitMs) } : {}),
+      ...(currentSpan.getStore() ? { traceparent: currentSpan.getStore()!.traceparent } : {}),
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(4000 + waitMs),
@@ -56,7 +64,7 @@ async function sendEvent(path: string, body: unknown) {
     }
   }
 }
-async function execute(job: {
+type Job = {
   id: string;
   token: string;
   resources?: {
@@ -65,7 +73,21 @@ async function execute(job: {
     pids: number;
     timeoutSeconds: number;
   };
-}, workspace: string) {
+};
+async function execute(job: Job, workspace: string) {
+  const span = tracer.start("worker.execute", {
+    parent: runContext(job.id),
+    attributes: { "pig.run_id": job.id, "pig.worker_id": workerId, "pig.resources.memory_mib": job.resources?.memoryMiB ?? 512 },
+  });
+  try {
+    const ok = await currentSpan.run(span, () => executeJob(job, workspace, span));
+    span.set({ "pig.result.ok": ok }).end(ok ? "ok" : "error");
+  } catch (error) {
+    span.fail(error).end("error");
+    throw error;
+  }
+}
+async function executeJob(job: Job, workspace: string, span: Span): Promise<boolean> {
   const resource = job.resources || {
     memoryMiB: 512,
     cpu: 1,
@@ -160,6 +182,7 @@ async function execute(job: {
     await sendEvent(`/internal/runs/${job.id}/start`, { token: job.token });
     if (leaseLost || stopping)
       throw Error("Lease lost before native runner start");
+    const runnerSpan = tracer.start("runner.process", { parent: span.context, attributes: { "pig.run_id": job.id } });
     child = spawn(process.execPath, ["/app/runner.mjs"], {
       detached: true,
       cwd: workspace,
@@ -168,6 +191,7 @@ async function execute(job: {
         RUN_TOKEN: job.token,
         RUN_TIMEOUT_SECONDS: String(Math.max(30, resource.timeoutSeconds - 15)),
         GATEWAY_URL: process.env.GATEWAY_URL,
+        TRACEPARENT: runnerSpan.traceparent,
       }),
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -182,6 +206,11 @@ async function execute(job: {
       try {
         const item = JSON.parse(line);
         if (item.kind === "result") result = item;
+        else if (item.kind === "telemetry" && Array.isArray(item.spans)) {
+          // Runner spans: accepted only for this run's trace.
+          const traceId = runTraceId(job.id);
+          for (const s of item.spans.slice(0, 500)) if (validSpan(s) && s.service === "runner" && s.traceId === traceId) exporter.push(s);
+        }
         else if (item.kind === "event" && item.event?.type)
           eventBatcher.push(item.event);
       } catch {
@@ -191,7 +220,11 @@ async function execute(job: {
     const exitCode = await new Promise<number | null>((resolve, reject) => {
       child!.on("error", reject);
       child!.on("close", resolve);
+    }).catch((error) => {
+      runnerSpan.fail(error).end("error");
+      throw error;
     });
+    runnerSpan.set({ "process.exit.code": exitCode ?? -1, "pig.stopped": stopping }).end(exitCode === 0 && !stopping ? "ok" : "error");
     lines.close();
     eventBatcher.flush();
     await writes;
@@ -234,6 +267,8 @@ async function execute(job: {
     clearInterval(budgetPulse);
     activeStops.delete(stop);
   }
+  if (completion?.error) span.set({ "error.message": String(completion.error).slice(0, 300) });
+  return completion?.ok === true;
 }
 // Fail closed before registration/claim: never fall back to unsandboxed execution.
 execFileSync(
@@ -380,4 +415,5 @@ await Promise.all(
 clearInterval(nodePulse);
 clearInterval(recoveryPulse);
 if (shutdownTimer) clearTimeout(shutdownTimer);
+await exporter.stop().catch(() => {});
 console.log("Worker drained", workerId);
