@@ -51,6 +51,7 @@ import { registerCollaborationRoutes } from "./collaboration.ts";
 import { registerApprovalRoutes } from "./approvals.ts";
 import { registerApiDocs } from "./api-docs.ts";
 import { cloudTracingMiddleware, recordRunRoot, registerMetricsEndpoint, registerObservabilityRoutes, startObservability } from "./observability.ts";
+import { registerAlertRoutes, startAlerts } from "./alerts.ts";
 import { registerWebhookRoutes, registerWebhookSink, webhookDispatcher } from "./webhooks.ts";
 import {
   presentDebugTrace,
@@ -149,6 +150,7 @@ registerAttachmentRoutes(app);
 registerApprovalRoutes(app, runFor);
 registerWebhookRoutes(app);
 registerObservabilityRoutes(app, runFor);
+registerAlertRoutes(app);
 app.get("/v1/me", (c) => c.json(c.get("principal")));
 app.get("/v1/runs", async (c) =>
   c.json({
@@ -874,6 +876,7 @@ await migrate();
 await bus.start();
 webhookDispatcher.start();
 startObservability();
+startAlerts();
 let scheduling = false;
 const scheduleTimer = setInterval(async () => {
   if (scheduling) return;
