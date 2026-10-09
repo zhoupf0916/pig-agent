@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { CloudEnv } from "./types.ts";
 const state = vi.hoisted(() => ({
   shared: false,
+  personalProject: false,
   blocked: false,
   enabled: true,
   lease: true,
@@ -53,6 +54,7 @@ function invoke() {
 }
 beforeEach(() => {
   state.shared = false;
+  state.personalProject = false;
   state.blocked = false;
   state.enabled = true;
   state.lease = true;
@@ -71,7 +73,7 @@ beforeEach(() => {
                 space_id: state.shared ? "shared-space" : null,
                 input: {
                   networkPolicy: state.blocked ? "blocked" : "ask",
-                  projectId: state.shared ? "project-shared" : undefined,
+                  projectId: state.shared ? "project-shared" : state.personalProject ? "project-personal" : undefined,
                 },
               },
             ]
@@ -79,7 +81,7 @@ beforeEach(() => {
       };
     if (sql.includes("FROM principals"))
       return { rows: [{ role: "member", enabled: state.enabled }] };
-    if (sql.includes("FROM projects"))
+    if (sql.includes("FROM shared_projects"))
       return { rows: [{ space_id: state.shared ? "shared-space" : null }] };
     if (sql.includes("FROM approvals"))
       return {
@@ -139,6 +141,17 @@ describe("MCP independent approval boundary regression", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ tools: [], targets: [] });
     expect(state.list).not.toHaveBeenCalled();
+  });
+  it("loads the owners private connectors for a personal project task", async () => {
+    state.personalProject = true;
+    const response = await app().request("/internal/mcp/tools", {
+      method: "POST",
+      body: JSON.stringify({ token: "synthetic-run-token" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(response.status).toBe(200);
+    expect(state.list).toHaveBeenCalledOnce();
+    expect(state.query.mock.calls.some(([sql]) => String(sql).includes("FROM shared_projects"))).toBe(true);
   });
   it("blocks invocation from a shared project even with a consumed approval", async () => {
     state.shared = true;

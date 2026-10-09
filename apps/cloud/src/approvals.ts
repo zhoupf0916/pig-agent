@@ -136,7 +136,7 @@ export function registerApprovalRoutes(app: Hono<CloudEnv>, access: Access) {
       const external = parseMcpToolName(body.data.tool);
       if (external) {
         if (run.input.projectId) {
-          const project = (await client.query("SELECT space_id FROM projects WHERE id=$1", [run.input.projectId])).rows[0];
+          const project = (await client.query("SELECT space_id FROM shared_projects WHERE id=$1", [run.input.projectId])).rows[0];
           if (!project || project.space_id) { await client.query("ROLLBACK"); return c.json({error:"项目协同不能使用私人 MCP 连接"},403); }
         }
         const server = (await client.query("SELECT id,name,url,credential_version FROM mcp_servers WHERE id=$1 AND owner_id=$2 AND enabled", [external.serverId,run.owner_id])).rows[0];

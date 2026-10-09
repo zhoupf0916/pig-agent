@@ -1,4 +1,5 @@
 import { networkFailure } from "./network-errors.ts";
+import { requestErrorLine } from "./error-log.ts";
 import { networkRequestSchema, fetchApprovedNetwork } from "./network-fetch.ts";
 import { streamSSE } from "hono/streaming";
 import { Hono } from "hono";
@@ -36,7 +37,7 @@ app.use("*", tracingMiddleware(tracer, {
   shouldRecord: (r) => !!r.span.parent?.sampled || r.status >= 500,
 }));
 app.onError((error, c) => {
-  console.error(error.name);
+  console.error(requestErrorLine(error, c.req.method, c.req.routePath));
   return c.json({ error: "模型网关暂时无法连接上游服务" }, 502);
 });
 app.use("*", (c, next) => bodyLimit({ maxSize: c.req.path === "/checkpoint" ? 7 * 1024 * 1024 : 1024 * 1024 })(c, next));
