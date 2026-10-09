@@ -2,6 +2,7 @@ import { computerToolDefinition, executeComputerTool, hasComputerBridge } from "
 import { ComputerGuard } from "../desktop/computer-guard.ts";
 import { estimateMessagesTokens, estimateTokens, estimateToolSchemaTokens, prefixFingerprint, promptCacheStats, TokenCalibrator } from "./tokens.ts";
 import { buildCompactionRequest, compactedView, DEFAULT_COMPACT_RATIO, DEFAULT_KEEP_RATIO, envNumber, selectCompactionCut, viewChars } from "./compaction.ts";
+import { KNOWLEDGE_TOOL, knowledgeToolDefinition } from "./knowledge-tool.ts";
 import { formatSubagentOutput, runSubagent, SUBAGENT_MAX_PARALLEL, SUBAGENT_TOOL, subagentToolDefinition, type SubagentResult } from "./subagent.ts";
 import { ModelRouter, routerConfigFromEnv } from "./model-router.ts";
 import { runToolSearch, selectMcpTools, TOOL_SEARCH, toolSearchDefinition } from "./tool-search.ts";
@@ -212,6 +213,8 @@ export async function runAgent(options: {
   /** Remote control-plane gate; runs before any mutation and may wait for a durable decision. */
   allowComputer?: boolean;
   networkFetch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
+  /** Cloud project runs: exposes knowledge_search, executed by the control plane. */
+  knowledgeSearch?: (args: Record<string, unknown>, callId: string) => Promise<string>;
   authorizeTool?: (call: { callId: string; tool: string; args: unknown }) => Promise<boolean>;
   mcpInvoke?: (call: { name: string; args: Record<string, unknown>; signal: AbortSignal; callId: string }) => Promise<string>;
   /** Character-estimate label. Cloud runs still measure chars, not provider tokens. */
@@ -400,6 +403,7 @@ export async function runAgent(options: {
       const mcpSelection = selectMcpTools(allMcpTools, session.activatedTools);
       const extraToolDefs = [
         ...(allowSubagents ? [subagentToolDefinition] : []),
+        ...(options.knowledgeSearch ? [knowledgeToolDefinition] : []),
         ...(allowComputer ? [computerToolDefinition] : []),
         ...(mcpSelection.searchEnabled ? [toolSearchDefinition] : []),
         ...mcpSelection.tools,
@@ -671,6 +675,10 @@ export async function runAgent(options: {
         try {
           if (call.name === "http_fetch" && options.networkFetch) {
             output = await options.networkFetch(parsed as Record<string, unknown>, call.id);
+          } else if (call.name === KNOWLEDGE_TOOL) {
+            if (!options.knowledgeSearch) throw new Error("当前任务没有项目知识库");
+            output = await options.knowledgeSearch(parsed as Record<string, unknown>, call.id);
+            sandboxFact = { requested: "readonly", effective: "项目知识库检索", backend: "control-plane" };
           } else if (call.name === "computer_use") {
             if (!allowComputer) throw Error("电脑操作只允许在桌面本机 Pig 任务中使用");
             if (awaitingReview) throw Error("请先处理待批准操作");

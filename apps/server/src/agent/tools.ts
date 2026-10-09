@@ -89,7 +89,7 @@ export type ToolContext = {
 export type ToolSandboxFact = {
   requested: string;
   /** Set only after this call's process or file API actually ran. */
-  effective: "seatbelt" | "bubblewrap" | "host" | "workspace" | "尚未执行" | "未采集" | "远端 MCP 服务" | "只读子 Agent" | "工具目录检索";
+  effective: "seatbelt" | "bubblewrap" | "host" | "workspace" | "尚未执行" | "未采集" | "远端 MCP 服务" | "只读子 Agent" | "工具目录检索" | "项目知识库检索";
   backend: string;
 };
 

@@ -63,6 +63,7 @@ try {
       prompt: string;
       requireApproval?: boolean;
       networkPolicy?: "ask" | "blocked";
+      projectId?: string;
       projectContext?: string;
       capabilityContext?: string;
       skillSnapshots?: import("@pig-agent/contracts").SkillSnapshot[];
@@ -277,6 +278,22 @@ try {
       if (!response.ok) throw new Error(payload.error || "MCP 调用失败");
       return payload.output || "";
     },
+    knowledgeSearch: input.projectId
+      ? async (args) => {
+          const query = String(args.query ?? "").trim().slice(0, 500);
+          if (!query) throw Error("请提供检索词");
+          const k = Math.min(10, Math.max(1, Number(args.k) || 5));
+          const response = await fetch(gateway + "/knowledge/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ query, k }),
+            signal: AbortSignal.any([deadline, AbortSignal.timeout(30000)]),
+          });
+          const result = (await response.json().catch(() => ({}))) as { output?: string; error?: string };
+          if (!response.ok || typeof result.output !== "string") throw Error(result.error || "知识库检索失败");
+          return result.output;
+        }
+      : undefined,
     networkFetch: async (args, callId) => {
       if (input.networkPolicy === "blocked")
         throw Error(
