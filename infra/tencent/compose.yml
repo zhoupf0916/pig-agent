@@ -14,6 +14,12 @@ services:
     mem_limit: 512m
     logging: *logs
     networks: [control, egress]
+    environment:
+      # Production: the admin env bearer expires 24h after it is first configured (rotate the value in
+      # stack.env to open a new window); the demo/test bearer accounts are revoked and member2 is disabled.
+      BOOTSTRAP_TOKEN_TTL_HOURS: "24"
+      MEMBER_TOKEN: ""
+      MEMBER2_TOKEN: ""
   gateway:
     build:
       network: host
