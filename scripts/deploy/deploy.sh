@@ -2,6 +2,10 @@
 # Pig Agent — server-pulled upgrade to any commit of the public repo. Run ON the server as the deploy owner (ubuntu).
 #
 #   bash deploy.sh <commit>   deploy: backup -> source@commit -> cloud-dist -> switch current -> up --build --wait -> checks
+#   bash deploy.sh <commit> --source-tar <file.tgz>
+#                             same, but the source comes from a tarball uploaded from elsewhere (made by pack-source.sh:
+#                             git archive with prefix pig-agent-<full sha>/ plus <file>.sha256). Nothing is fetched from
+#                             GitHub in this mode (no codeload, no release assets).
 #                             (then runs e2e-remote.sh if it sits next to this file and admin credentials are available)
 #   bash deploy.sh rollback   back up, then return to the release that was current before the last deploy
 #   bash deploy.sh status     health / agent card / containers / runners / nginx only
@@ -28,6 +32,13 @@ SCHEMA_FILES="apps/cloud/src/db.ts apps/cloud/src/*schema*.ts"
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SELF=$HERE/$(basename "${BASH_SOURCE[0]}")
 CMD=${1:-}
+SOURCE_TAR=""
+if [ "${2:-}" = --source-tar ]; then
+  [ -n "${3:-}" ] && [ -f "$3" ] || { echo "FAIL --source-tar needs an existing file (got '${3:-}')"; exit 2; }
+  SOURCE_TAR=$(readlink -f "$3")
+elif [ -n "${2:-}" ]; then echo "FAIL unknown argument '$2' (usage: bash deploy.sh <commit> [--source-tar file.tgz])"; exit 2; fi
+# Abort a GitHub transfer that stalls below 1 KB/s for 60 s instead of hanging forever.
+GH_CURL=(curl -fsSL --retry 2 --connect-timeout 20 --speed-limit 1024 --speed-time 60)
 SHA="" REL="" NEW="" STATE=""
 SWITCHED=0
 RESULTS=()
@@ -108,7 +119,8 @@ build_dist() {
 REF_TREE=""
 fetch_sums() {
   local base="https://github.com/$REPO/releases/download/deploy-${SHA:0:7}"
-  curl -fsSL --retry 2 --connect-timeout 15 "$base/SHA256SUMS" -o "$NEW/.sums" 2>/dev/null || { rm -f "$NEW/.sums"; return 1; }
+  [ -z "$SOURCE_TAR" ] || return 1
+  "${GH_CURL[@]}" --max-time 60 "$base/SHA256SUMS" -o "$NEW/.sums" 2>/dev/null || { rm -f "$NEW/.sums"; return 1; }
   REF_TREE=$(grep -E '^[0-9a-f]{64}  cloud-dist\.tree$' "$NEW/.sums" | cut -d' ' -f1 || true)
 }
 fetch_dist() {
@@ -116,7 +128,7 @@ fetch_dist() {
   echo "downloading prebuilt cloud-dist asset from release deploy-${SHA:0:7} (sha256 via its SHA256SUMS)"
   [ -f "$NEW/.sums" ] || fetch_sums || { echo "no release deploy-${SHA:0:7}"; return 1; }
   line=$(grep -E "^[0-9a-f]{64}  $f\$" "$NEW/.sums" || true); [ -n "$line" ] || { echo "no checksum for $f"; return 1; }
-  curl -fsSL --retry 3 --connect-timeout 20 "$base/$f" -o "$NEW/.cloud-dist.tgz" || return 1
+  "${GH_CURL[@]}" "$base/$f" -o "$NEW/.cloud-dist.tgz" || return 1
   echo "${line%% *}  $NEW/.cloud-dist.tgz" | sha256sum -c --quiet - || { rm -f "$NEW/.cloud-dist.tgz"; return 1; }
   rm -rf "$NEW/cloud-dist" && tar -xzf "$NEW/.cloud-dist.tgz" -C "$NEW" && rm -f "$NEW/.cloud-dist.tgz"
 }
@@ -129,7 +141,15 @@ resolve_target() { # sets SHA (full), REL, NEW, STATE; downloads the source tree
   done
   if [ -z "$REL" ]; then
     tmp=$ROOT/releases/.download-${ref:0:7}; rm -rf "$tmp" && mkdir -p "$tmp"
-    curl -fsSL --retry 3 --connect-timeout 20 "https://codeload.github.com/$REPO/tar.gz/$ref" | tar -xz -C "$tmp" || die "source download failed for $ref"
+    if [ -n "$SOURCE_TAR" ]; then
+      [ -f "$SOURCE_TAR.sha256" ] || die "missing $SOURCE_TAR.sha256 (pack-source.sh writes it next to the tarball)"
+      [ "$(cut -d' ' -f1 "$SOURCE_TAR.sha256")" = "$(sha256sum "$SOURCE_TAR" | cut -d' ' -f1)" ] || die "sha256 mismatch for $SOURCE_TAR (incomplete upload?)"
+      tar -xzf "$SOURCE_TAR" -C "$tmp" || die "cannot extract $SOURCE_TAR"
+      echo "source from uploaded tarball $(basename "$SOURCE_TAR") (sha256 verified)"
+    else
+      "${GH_CURL[@]}" "https://codeload.github.com/$REPO/tar.gz/$ref" | tar -xz -C "$tmp" || die "source download failed for $ref (GitHub slow? use pack-source.sh + --source-tar)"
+    fi
+    [ "$(ls "$tmp" | wc -l)" = 1 ] || die "archive must contain exactly one top-level directory"
     top=$(ls "$tmp"); SHA=${top##*-}
     [[ "$SHA" =~ ^[0-9a-f]{40}$ && "$SHA" == "$ref"* ]] || die "unexpected archive layout ($top)"
     [ -f "$tmp/$top/infra/tencent/compose.yml" ] && [ -f "$tmp/$top/infra/cloud/Dockerfile" ] || die "source tree incomplete"
@@ -156,7 +176,7 @@ deploy() {
   echo "disk free ${avail}G; runs running=$active queued=$queued"
   if [ "$active" != 0 ] && [ "${FORCE:-0}" != 1 ]; then die "$active task(s) running — wait for them or re-run with FORCE=1"; fi
 
-  step "1/7 source $REPO@$CMD"
+  step "1/7 source $REPO@$CMD${SOURCE_TAR:+ (uploaded tarball)}"
   resolve_target "$CMD"
   CUR=$(readlink -f "$ROOT/current")
   if [ "$CUR" = "$NEW" ]; then
@@ -257,6 +277,6 @@ rollback() {
 case "$CMD" in
   rollback) rollback ;;
   status) checks new; summary status ;;
-  ""|-h|--help) echo "usage: bash $SELF <commit-sha> | rollback | status"; exit 2 ;;
+  ""|-h|--help) echo "usage: bash $SELF <commit-sha> [--source-tar file.tgz] | rollback | status"; exit 2 ;;
   *) deploy ;;
 esac

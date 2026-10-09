@@ -8,6 +8,8 @@
 | `deploy.sh rollback` | 先备份，再切回上一次部署前的 release 与 `before-*` 镜像；提示 schema 文件是否变化，不自动恢复数据库 |
 | `deploy.sh status` | 只做检查 |
 | `e2e-remote.sh` | e2e，只输出 PASS / FAIL / BLOCKED-402（模型服务返回 402 余额不足，属于账号问题，不计为失败）：健康、工作台、管理后台密码登录与概览、真实模型任务（工具调用+审批+成果文件）、续聊、A2A card（含 https URL 校验）/ 匿名 401 / send / stream / tasks/get、定时计划（创建/手动运行/历史/删除） |
+| `deploy.sh <commit> --source-tar <file.tgz>` | 同上，但源码来自上传的压缩包（需同目录 `<file>.sha256`，校验不一致即停止）；此模式完全不访问 GitHub |
+| `pack-source.sh <commit> [out-dir]` | 在有 git 仓库的机器上运行：`git archive` 打包该 commit（前缀 `pig-agent-<完整 SHA>/`，不含约 49 MB 的 `docs/`，构建和运行都不用），约 1.4 MB，并生成 `.sha256`，打印上传和部署命令 |
 | `cert-check.sh [host]` | 只读证书报告：ACME 客户端（certbot / acme.sh / lego / caddy）、systemd timer / cron、最近续期日志、证书 notAfter、续期后是否重载 Nginx（hook + 在线证书序列号是否等于磁盘证书）。不续期、不 dry-run、不重载，不读私钥 |
 
 后台一行部署：脚本取自目标 commit 本身，与浏览器终端断开无关。把 `S` 换成 main 的完整 SHA：
@@ -15,6 +17,18 @@
 ```sh
 S=<full-sha>; cd /home/ubuntu/pig-agent && mkdir -p tools/$S && curl -fsSL https://codeload.github.com/zhoupf0916/pig-agent/tar.gz/$S | tar -xz -C tools/$S --strip-components=3 --wildcards '*/scripts/deploy/*' && (setsid nohup bash tools/$S/deploy.sh $S > backups/deploy-${S:0:7}.out 2>&1 < /dev/null &) && echo "tail -f /home/ubuntu/pig-agent/backups/deploy-${S:0:7}.out"
 ```
+
+**推荐（服务器访问 GitHub 很慢或卡住时）**：在构建机打包上传，服务器不再访问 GitHub。实测：服务器 codeload 约 70 KB/s，46 MB 源码包下载约 10 分钟以上并卡住；精简包 1.4 MB，scp 约 90 秒。
+
+```sh
+# 构建机（仓库根目录，已 git fetch）
+bash scripts/deploy/pack-source.sh <full-sha> /tmp/pack
+scp /tmp/pack/pig-src-<sha7>.tgz /tmp/pack/pig-src-<sha7>.tgz.sha256 ubuntu@<server>:/home/ubuntu/pig-agent/uploads/
+# 服务器
+S=<full-sha>; cd /home/ubuntu/pig-agent && mkdir -p tools/$S && tar -xzf uploads/pig-src-${S:0:7}.tgz -C tools/$S --strip-components=3 --wildcards '*/scripts/deploy/*' && (setsid nohup bash tools/$S/deploy.sh $S --source-tar uploads/pig-src-${S:0:7}.tgz > backups/deploy-${S:0:7}.out 2>&1 < /dev/null &) && echo "tail -f /home/ubuntu/pig-agent/backups/deploy-${S:0:7}.out"
+```
+
+GitHub 下载（codeload、release 资产）在速度低于 1 KB/s 持续 60 秒时中止，不会无限挂起。
 
 ```sh
 bash deploy.sh <commit-sha>      # 部署（同目录有 e2e-remote.sh 且服务器上有管理员密码时，成功后自动跑 e2e）
