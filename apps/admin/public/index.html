@@ -171,6 +171,29 @@
                 <tbody id="runs"></tbody>
               </table>
             </div>
+            <div class="heading">
+              <div>
+                <span class="eyebrow">QUEUE</span>
+                <h2>队列与死信</h2>
+                <p id="queue-summary" class="muted">
+                  未能启动或执行中断、无法安全自动重试的任务会转入死信，核验后可重放（新建一次运行，工具可能再次执行）。
+                </p>
+              </div>
+            </div>
+            <div class="panel table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th>任务</th>
+                    <th>账号</th>
+                    <th>原因</th>
+                    <th>尝试</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="dead-letters"></tbody>
+              </table>
+            </div>
           </section>
           <section data-view="workers" hidden>
             <div class="heading">

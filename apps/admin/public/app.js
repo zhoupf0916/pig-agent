@@ -345,6 +345,49 @@ function renderRuns() {
     $("runs").append(row);
   }
 }
+const errorClasses = {
+  prestart: "多次未能启动",
+  interrupted: "执行中断（无安全检查点）",
+  worker_lost: "执行节点丢失",
+  model_unavailable: "模型服务不可用",
+};
+function renderDeadLetters() {
+  const q = snapshot.queueData;
+  $("queue-summary").textContent =
+    `可领取 ${q.ready} · 等待重试 ${q.delayed} · 执行中 ${q.active} · 死信 ${q.dead_letters} · 最久排队 ${q.oldest_queued_seconds} 秒`;
+  const items = snapshot.deadLetterData.deadLetters;
+  $("dead-letters").replaceChildren(
+    ...items.map((r) => {
+      const row = node("tr");
+      const task = node("td", (r.prompt || "").slice(0, 90) || r.id);
+      task.title = r.error || "";
+      task.append(node("span", `${r.id} · ${dates(r.dead_lettered_at)}`, "subline"));
+      const actions = node("td");
+      actions.append(button("详情与日志", () => openDetail(r.id)));
+      actions.append(
+        button("重放", (b) => {
+          if (!confirm("重放会用相同输入新建一次运行，之前已执行的工具可能再次执行。确认重放？")) return;
+          return action(`/v1/admin/queue/dead-letters/${encodeURIComponent(r.id)}/replay`, undefined, "POST", "已重新排队", b);
+        }),
+      );
+      row.append(
+        task,
+        node("td", r.owner_name || r.owner_id),
+        node("td", errorClasses[r.last_error_class] || r.last_error_class || "未知"),
+        node("td", String(r.attempt_count)),
+        actions,
+      );
+      return row;
+    }),
+  );
+  if (!items.length) {
+    const row = node("tr"),
+      cell = node("td", "没有死信", "empty");
+    cell.colSpan = 5;
+    row.append(cell);
+    $("dead-letters").append(row);
+  }
+}
 const workerExpanded = new Set();
 function renderWorkers() {
   if (
@@ -783,6 +826,8 @@ async function refresh() {
       resourceData,
       policyData,
       registrationData,
+      queueData,
+      deadLetterData,
     ] = await Promise.all([
       api("/v1/admin/overview"),
       api("/v1/runs"),
@@ -791,6 +836,8 @@ async function refresh() {
       api("/v1/admin/resources"),
       api("/v1/admin/execution-policy"),
       api("/v1/admin/registration-requests"),
+      api("/v1/admin/queue"),
+      api("/v1/admin/queue/dead-letters"),
     ]);
     if (before !== generation) return;
     if (connectionError) {
@@ -805,6 +852,8 @@ async function refresh() {
       resourceData,
       policyData,
       registrationData,
+      queueData,
+      deadLetterData,
     };
     connected(true);
     $("connection").textContent = "● 控制面已连接";
@@ -814,6 +863,7 @@ async function refresh() {
       `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
     renderOverview();
     renderRuns();
+    renderDeadLetters();
     renderWorkers();
     renderAccounts();
     renderRegistrationRequests();
