@@ -1,0 +1,48 @@
+name: Eval (real model)
+
+# Opt-in task eval against a real model. Runs only when the repository has an EVAL_LLM_API_KEY secret;
+# otherwise the job is skipped. Results are uploaded as an artifact (no secrets in the report).
+on:
+  workflow_dispatch:
+    inputs:
+      min_pass:
+        description: Minimum pass rate (0-1)
+        default: "0.67"
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  real-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.EVAL_LLM_BASE_URL || 'https://api.deepseek.com/v1' }}
+      LLM_MODEL: ${{ vars.EVAL_LLM_MODEL || 'deepseek-chat' }}
+    steps:
+      - name: Check secret
+        id: key
+        run: |
+          if [ -n "$LLM_API_KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "::notice::EVAL_LLM_API_KEY not configured; skipping real-model eval"; fi
+      - if: steps.key.outputs.present == 'true'
+        uses: actions/checkout@v6
+      - if: steps.key.outputs.present == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - if: steps.key.outputs.present == 'true'
+        uses: pnpm/action-setup@v6
+      - if: steps.key.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.key.outputs.present == 'true'
+        run: pnpm eval:tasks --real --min-pass "${{ inputs.min_pass || '0.67' }}" --out data/evals/tasks-real.json
+      - if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-real
+          path: data/evals/
+          if-no-files-found: ignore

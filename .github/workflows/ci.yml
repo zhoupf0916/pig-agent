@@ -29,5 +29,7 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
       - run: pnpm eval:context
+      # Task eval regression gate: offline scenario model, compared case-by-case with the committed baseline.
+      - run: pnpm eval:gate
       - run: pnpm test
       - run: pnpm desktop:build

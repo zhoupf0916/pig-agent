@@ -43,7 +43,8 @@
     "cluster:smoke": "node scripts/smoke-cluster-control.mjs && node scripts/smoke-cluster-runners.mjs",
     "product:smoke": "pnpm build && node scripts/smoke-product.mjs",
     "eval:context": "tsx scripts/eval-context.ts",
-    "eval:tasks": "tsx scripts/eval-tasks.ts"
+    "eval:tasks": "tsx scripts/eval-tasks.ts",
+    "eval:gate": "tsx scripts/eval-tasks.ts --baseline evals/tasks-mock-baseline.json --out data/evals/tasks-gate.json"
   },
   "engines": {
     "node": ">=22.13"
