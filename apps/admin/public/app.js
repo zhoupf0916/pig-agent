@@ -647,11 +647,14 @@ function renderSettings() {
       heading.append(
         node("h3", ch.name),
         badge(
-          ch.enabled ? "online" : "cancelled",
-          ch.enabled ? "已启用" : "已停用",
+          ch.enabled ? "online" : ch.fallback_rank ? "queued" : "cancelled",
+          ch.enabled ? "主渠道" : ch.fallback_rank ? `备用 #${ch.fallback_rank}` : "已停用",
         ),
       );
-      row.append(heading, node("p", `${ch.model} · ${ch.base_url}`));
+      row.append(
+        heading,
+        node("p", `${ch.model} · ${ch.base_url} · 输出上限 ${ch.max_output_tokens ?? 4096} tokens`),
+      );
       const actions = node("div", "", "actions");
       actions.append(
         button(ch.enabled ? "停用" : "启用", (b) =>
@@ -683,7 +686,28 @@ function renderSettings() {
           }
         }),
       );
-      if (!ch.enabled)
+      if (!ch.enabled) {
+        const ranks = snapshot.channelData.channels.map((x) => x.fallback_rank || 0);
+        actions.append(
+          button(ch.fallback_rank ? "移出备用" : "设为备用", (b) =>
+            action(
+              `/v1/admin/channels/${ch.id}`,
+              { fallbackRank: ch.fallback_rank ? null : Math.min(9, Math.max(0, ...ranks) + 1) },
+              "PATCH",
+              ch.fallback_rank ? "已移出备用渠道" : "已加入备用渠道：主渠道失败时按顺序切换",
+              b,
+            ),
+          ),
+        );
+      }
+      actions.append(
+        button("输出上限", (b) => {
+          const value = Number(prompt("单次模型调用最多输出多少 tokens（256–32768）？", String(ch.max_output_tokens ?? 4096)));
+          if (!Number.isInteger(value) || value < 256 || value > 32768) return;
+          action(`/v1/admin/channels/${ch.id}`, { maxOutputTokens: value }, "PATCH", "输出上限已更新", b);
+        }),
+      );
+      if (!ch.enabled && !ch.fallback_rank)
         actions.append(
           button(
             "删除",
