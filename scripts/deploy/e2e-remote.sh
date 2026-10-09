@@ -245,6 +245,27 @@ await test("task queue: owner-first claim, retry and dead-letter state", async (
   ok(m.includes('pig_queue_runs{kind="dead_letter"}'), "queue gauge missing");
   return `mode=${q.claimMode}, ready=${q.ready}, delayed=${q.delayed}, dead letters=${q.dead_letters}`;
 });
+await test("parallel subtasks: real fan-out, parent yields and resumes", async () => {
+  if (mode !== "provider") throw new Skip("needs a real model");
+  const t0 = Date.now();
+  const created = await api("/v1/runs", { method: "POST", status: 201, headers: { "Idempotency-Key": randomUUID() }, body: { requireApproval: false, prompt: "请调用 spawn_parallel 工具并行处理这 4 个汉字：日、月、山、水。instruction：用一句中文说明这个汉字最常见的含义。output_schema：{\"type\":\"object\",\"properties\":{\"char\":{\"type\":\"string\"},\"meaning\":{\"type\":\"string\",\"minLength\":2}},\"required\":[\"char\",\"meaning\"],\"additionalProperties\":false}，max_parallel 为 4。拿到结果后用一个表格汇总。" } });
+  let waited = false, r;
+  for (const end = Date.now() + RUN_MS; Date.now() < end; await sleep(1000)) {
+    r = await api(`/v1/runs/${created.id}`);
+    if (r.state === "waiting") waited = true;
+    if (["succeeded", "failed", "cancelled"].includes(r.state)) break;
+  }
+  blockIf402(r.state, r.error); ok(r.state === "succeeded", `state=${r.state} ${r.error || ""}`);
+  const { groups } = await api(`/v1/runs/${created.id}/children`);
+  ok(groups.length >= 1, "model did not call spawn_parallel");
+  const g = groups[0];
+  ok(g.state === "completed", `group ${g.state}`);
+  const good = g.items.filter((i) => i.state === "succeeded").length;
+  ok(good >= 3, `only ${good}/${g.items.length} children succeeded`);
+  ok(waited, "parent was never observed waiting (slot not yielded)");
+  const t = g.tokens;
+  return `${((Date.now() - t0) / 1000).toFixed(1)}s wall, ${good}/${g.items.length} ok, retries=${g.items.filter((i) => i.attempts > 1).length}, child tokens in=${t.input} cached=${t.cached} (${t.input ? Math.round((100 * t.cached) / t.input) : 0}%) out=${t.output}`;
+});
 await test("knowledge base: ingest + search + cited answer in a project run", async () => {
   // One reusable personal project (projects cannot be deleted); the test document is removed afterwards.
   const name = "E2E 知识库（自动测试）";
