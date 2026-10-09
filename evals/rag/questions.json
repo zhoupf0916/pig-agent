@@ -1,0 +1,25 @@
+{
+  "description": "F5 knowledge base retrieval eval: 20 paraphrased questions over a frozen copy of project docs (evals/rag/corpus). A hit is a top-k chunk from `doc` whose heading contains `section`.",
+  "questions": [
+    { "q": "主模型渠道挂了以后网关会怎么切换？", "doc": "model-routing", "section": "故障转移" },
+    { "q": "哪些上游错误码不会触发换渠道？", "doc": "model-routing", "section": "故障转移" },
+    { "q": "max_output_tokens 默认是多少，可以设多大？", "doc": "model-routing", "section": "输出上限" },
+    { "q": "拿不到 usage 的时候怎么结算费用", "doc": "model-routing", "section": "结算" },
+    { "q": "LISTEN 连接断开之后多久重连，期间怎么办？", "doc": "event-bus", "section": "组成" },
+    { "q": "旧版本 Runner 遇到新的控制面会不会出问题", "doc": "event-bus", "section": "兼容与回滚" },
+    { "q": "接收方如何校验 webhook 签名，防重放的时间窗口是多久？", "doc": "webhooks", "section": "签名" },
+    { "q": "怎么轮换 webhook 的签名密钥", "doc": "webhooks", "section": "接口" },
+    { "q": "dual 模式下 Postgres 里的原件会保留吗？", "doc": "object-storage", "section": "模式" },
+    { "q": "已有附件迁移到对象存储时如何保证数据没坏", "doc": "object-storage", "section": "迁移已有数据" },
+    { "q": "孤儿对象多久之后才会被删除", "doc": "object-storage", "section": "清理" },
+    { "q": "为什么不用 Docker Hub 上的 minio/minio 镜像", "doc": "object-storage", "section": "镜像与内存" },
+    { "q": "trace id 和任务 id 是什么关系", "doc": "observability", "section": "追踪" },
+    { "q": "Prometheus 抓取指标要用哪个令牌", "doc": "observability", "section": "指标" },
+    { "q": "什么情况下会触发 runners_offline 告警", "doc": "observability", "section": "告警" },
+    { "q": "CI 里的任务评测门禁什么时候会失败", "doc": "observability", "section": "评测门禁" },
+    { "q": "已经执行过的迁移 SQL 被改了会发生什么", "doc": "database-migrations", "section": "运行方式" },
+    { "q": "上线前怎么只读查看还有哪些迁移没执行", "doc": "database-migrations", "section": "部署前检查" },
+    { "q": "删除旧列应该放在哪次发布做", "doc": "database-migrations", "section": "新增迁移" },
+    { "q": "Chinese queries without spaces 本地搜索怎么匹配", "doc": "search", "section": "Matching" }
+  ]
+}
