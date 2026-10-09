@@ -796,13 +796,18 @@ app.post("/internal/authorize", async (c) => {
         await client.query("ROLLBACK");
         return c.json({ error: "模型调用次数已达上限或运行已结束" }, 429);
       }
-      const channel = (
-        await client.query("SELECT * FROM model_channels WHERE enabled")
-      ).rows[0];
+      // Primary channel first, then standby channels by rank (failover happens in the gateway).
+      const channels = (
+        await client.query("SELECT * FROM model_channels WHERE enabled OR fallback_rank IS NOT NULL ORDER BY enabled DESC, fallback_rank, created_at")
+      ).rows;
+      const channel = channels[0]?.enabled ? channels[0] : undefined;
+      const candidates = channel ? channels : [];
       const tariff = channel?.tariff || defaultTariff;
-      const amount =
-        channel || process.env.MODEL_MODE === "provider"
-          ? reserveCost(modelRequest || {}, 4096, tariff)
+      // Reserve for the most expensive candidate at its own output cap, so failover never overspends.
+      const amount = candidates.length
+        ? Math.max(...candidates.map((ch) => reserveCost(modelRequest || {}, ch.max_output_tokens ?? 4096, ch.tariff || defaultTariff)))
+        : process.env.MODEL_MODE === "provider"
+          ? reserveCost(modelRequest || {}, Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 4096, tariff)
           : 0;
       let billingId;
       try {
@@ -820,15 +825,16 @@ app.post("/internal/authorize", async (c) => {
           return c.json({ error: "模型额度不足，请联系管理员增加预算" }, 429);
         throw error;
       }
-      const provider = channel
-        ? {
-            baseUrl: channel.base_url,
-            model: channel.model,
-            apiKey: decryptSecret(channel.secret),
-          }
-        : undefined;
+      const providers = candidates.map((ch) => ({
+        id: ch.id,
+        baseUrl: ch.base_url,
+        model: ch.model,
+        apiKey: decryptSecret(ch.secret),
+        maxOutputTokens: ch.max_output_tokens ?? 4096,
+      }));
       await client.query("COMMIT");
-      return c.json({ id: r.rows[0].id, provider, billingId });
+      // `provider` (primary) is kept for gateways that predate failover.
+      return c.json({ id: r.rows[0].id, provider: providers[0], providers: providers.length ? providers : undefined, billingId });
     } catch (e) {
       await client.query("ROLLBACK");
       throw e;
@@ -852,9 +858,12 @@ app.post("/internal/model-settle", async (c) => {
     ])
   ).rows[0];
   if (!row?.tariff) return c.json({ error: "Unknown billing call" }, 404);
+  // A standby channel that served the call is priced at its own tariff.
+  const channelId = typeof body.channelId === "string" && /^channel_[a-f0-9]{32}$/.test(body.channelId) ? body.channelId : null;
+  const served = channelId ? (await db.query("SELECT tariff FROM model_channels WHERE id=$1", [channelId])).rows[0] : undefined;
   await db.query(
-    "UPDATE model_usage SET charged_micros=$2,token_usage=$3,settled_at=now() WHERE id=$1 AND settled_at IS NULL",
-    [body.billingId, priceUsage(usage, row.tariff), usage],
+    "UPDATE model_usage SET charged_micros=$2,token_usage=$3,settled_at=now(),channel_id=$4,settle_kind=$5 WHERE id=$1 AND settled_at IS NULL",
+    [body.billingId, priceUsage(usage, served?.tariff || row.tariff), usage, channelId, body.kind === "estimated" ? "estimated" : "usage"],
   );
   return c.json({ ok: true });
 });

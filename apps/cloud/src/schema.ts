@@ -10,6 +10,7 @@ import { clusterSchema } from "./cluster-schema.ts";
 import { collaborationSchema } from "./collaboration-schema.ts";
 import { webhookSchemaSql } from "./webhook-schema.ts";
 import { observabilitySchemaSql } from "./observability-schema.ts";
+import { modelRoutingSchemaSql } from "./model-routing-schema.ts";
 import { bootstrapTokenSchema } from "./bootstrap-tokens.ts";
 import { authRateLimitSchema } from "./auth-rate-limit-schema.ts";
 import type { Migration } from "./migrations.ts";
@@ -190,4 +191,5 @@ export const migrations = (): Migration[] => [
   { version: 2, name: "event_bus_triggers", sql: eventBusTriggers },
   { version: 3, name: "webhooks", sql: webhookSchemaSql },
   { version: 4, name: "observability", sql: observabilitySchemaSql },
+  { version: 5, name: "model_routing", sql: modelRoutingSchemaSql },
 ];

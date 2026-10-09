@@ -18,6 +18,8 @@ export const httpRequests = registry.register(new Counter("pig_http_requests_tot
 export const httpDuration = registry.register(new Histogram("pig_http_request_duration_seconds", "HTTP request latency by route (streams excluded)"));
 export const modelRequests = registry.register(new Counter("pig_model_requests_total", "Model requests through the gateway by upstream status"));
 export const modelDuration = registry.register(new Histogram("pig_model_request_duration_seconds", "Gateway model request time to response headers"));
+export const modelFailovers = registry.register(new Counter("pig_model_failovers_total", "Model calls that needed a standby channel (failed attempts before the serving one)"));
+export const modelOutputCapped = registry.register(new Counter("pig_model_output_capped_total", "Streams cut at the channel output cap (provider ignored max_tokens)"));
 export const runExecution = registry.register(new Histogram("pig_run_execution_seconds", "Worker execution time per run attempt by outcome"));
 export const spansIngested = registry.register(new Counter("pig_trace_spans_total", "Spans received by service"));
 const runsByState = registry.register(new Gauge("pig_runs", "Runs by state (non-terminal) or finished in the last hour (terminal)"));
@@ -70,6 +72,12 @@ export function observeSpan(span: SpanRecord) {
     modelRequests.inc({ status });
     modelDuration.observe(span.durationMs / 1000);
     recentModel.push({ t: Date.now(), status });
+    const failed = Number(span.attributes["pig.failover.attempts"] ?? 1) - (/^2\d\d$/.test(status) ? 1 : 0);
+    if (failed > 0 && Number(span.attributes["pig.failover.attempts"]) > 1) {
+      modelFailovers.inc({ recovered: /^2\d\d$/.test(status) ? "yes" : "no" }, failed);
+      recentFailover.push({ t: Date.now(), failed });
+    }
+    if (span.attributes["pig.output.capped"] === true) modelOutputCapped.inc();
   }
   if (span.service === "worker" && span.name === "worker.execute")
     runExecution.observe(span.durationMs / 1000, { outcome: span.status === "ok" ? "ok" : "error" });
@@ -78,6 +86,7 @@ export function observeSpan(span: SpanRecord) {
 // Sliding windows for alert rules (process-local).
 export const recentModel: Array<{ t: number; status: string }> = [];
 export const recentHttp: Array<{ t: number; status: number }> = [];
+export const recentFailover: Array<{ t: number; failed: number }> = [];
 const trim = <T extends { t: number }>(list: T[], maxAgeMs: number) => {
   const cutoff = Date.now() - maxAgeMs;
   let i = 0;

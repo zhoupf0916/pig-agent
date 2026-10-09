@@ -47,6 +47,8 @@ const channelSchema = z
       }, "需要 HTTPS 模型地址"),
     model: z.string().trim().min(1).max(100),
     apiKey: z.string().trim().min(8).max(1000),
+    maxOutputTokens: z.number().int().min(256).max(32768).optional(),
+    fallbackRank: z.number().int().min(1).max(9).nullable().optional(),
   })
   .strict();
 const id = () => randomUUID().replaceAll("-", "");
@@ -246,7 +248,7 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
     c.json({
       channels: (
         await db.query(
-          "SELECT id,name,base_url,model,enabled,created_at FROM model_channels ORDER BY created_at DESC",
+          "SELECT id,name,base_url,model,enabled,fallback_rank,max_output_tokens,created_at FROM model_channels ORDER BY enabled DESC, fallback_rank NULLS LAST, created_at DESC",
         )
       ).rows,
     }),
@@ -257,13 +259,15 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
       return c.json({ error: "渠道参数无效，请使用 HTTPS 地址" }, 400);
     const channelId = "channel_" + id();
     await db.query(
-      "INSERT INTO model_channels(id,name,base_url,model,secret) VALUES($1,$2,$3,$4,$5)",
+      "INSERT INTO model_channels(id,name,base_url,model,secret,max_output_tokens,fallback_rank) VALUES($1,$2,$3,$4,$5,$6,$7)",
       [
         channelId,
         body.data.name,
         body.data.baseUrl.replace(/\/$/, ""),
         body.data.model,
         encryptSecret(body.data.apiKey),
+        body.data.maxOutputTokens ?? 4096,
+        body.data.fallbackRank ?? null,
       ],
     );
     await db.query("INSERT INTO audit(actor,action) VALUES($1,$2)", [
@@ -271,6 +275,27 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
       "create-channel:" + channelId,
     ]);
     return c.json({ id: channelId }, 201);
+  });
+  // Standby rank (failover order after the primary) and output cap.
+  app.patch("/v1/admin/channels/:id", async (c) => {
+    const body = z
+      .object({
+        fallbackRank: z.number().int().min(1).max(9).nullable().optional(),
+        maxOutputTokens: z.number().int().min(256).max(32768).optional(),
+      })
+      .strict()
+      .refine((v) => v.fallbackRank !== undefined || v.maxOutputTokens !== undefined)
+      .safeParse(await c.req.json().catch(() => null));
+    if (!body.success) return c.json({ error: "渠道设置无效：备用顺序 1–9，输出上限 256–32768" }, 400);
+    const channel = (await db.query("SELECT enabled FROM model_channels WHERE id=$1", [c.req.param("id")])).rows[0];
+    if (!channel) return c.json({ error: "渠道不存在" }, 404);
+    if (channel.enabled && body.data.fallbackRank != null) return c.json({ error: "主渠道不能同时作为备用渠道" }, 409);
+    const r = await db.query(
+      "UPDATE model_channels SET fallback_rank=CASE WHEN $2 THEN $3::int ELSE fallback_rank END, max_output_tokens=COALESCE($4::int,max_output_tokens) WHERE id=$1 RETURNING id,name,base_url,model,enabled,fallback_rank,max_output_tokens",
+      [c.req.param("id"), body.data.fallbackRank !== undefined, body.data.fallbackRank ?? null, body.data.maxOutputTokens ?? null],
+    );
+    await db.query("INSERT INTO audit(actor,action) VALUES($1,$2)", [c.get("principal").id, "channel-routing:" + c.req.param("id")]);
+    return c.json(r.rows[0]);
   });
   app.delete("/v1/admin/channels/:id", async (c) => {
     const result = await db.query(
@@ -309,7 +334,8 @@ export function registerPlatformRoutes(app: Hono<CloudEnv>) {
         await client.query(
           "UPDATE model_channels SET enabled=false WHERE enabled",
         );
-      await client.query("UPDATE model_channels SET enabled=$2 WHERE id=$1", [
+      // A channel promoted to primary leaves the standby list.
+      await client.query("UPDATE model_channels SET enabled=$2, fallback_rank=CASE WHEN $2 THEN NULL ELSE fallback_rank END WHERE id=$1", [
         c.req.param("id"),
         body.data.enabled,
       ]);
