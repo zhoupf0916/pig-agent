@@ -73,7 +73,7 @@ sudo systemctl reload nginx
 - HSTS、CSP、Permissions-Policy 三个安全头；
 - `/assets/` 的 gzip 压缩与一年 immutable 缓存。
 
-CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修改该脚本时，`apps/web/src/deploy-headers.test.ts` 会提示更新哈希。
+CSP 按哈希放行 `apps/web/index.html` 里唯一的内联主题脚本；修改该脚本时，`apps/cloud/src/deploy-headers.test.ts` 会提示更新哈希。
 
 更新步骤：先备份，再检查语法，最后平滑重载，不中断现有连接。
 
