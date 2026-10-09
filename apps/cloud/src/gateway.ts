@@ -6,6 +6,7 @@ import { serve } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
 import { controlPlaneExporter, Tracer } from "@pig-agent/contracts/telemetry";
 import { activeSpan, tracedFetch, tracingMiddleware } from "./tracing.ts";
+import { capFrames, CircuitBreaker, estimatedUsage, outputCap, OutputMeter, route, type Provider } from "./model-router.ts";
 const control = process.env.CONTROL_URL || "http://cloud:8890";
 // Spans go to the control plane (which stores them and forwards to an OTLP collector if configured).
 const exporter = controlPlaneExporter(control, process.env.WORKER_TOKEN).start();
@@ -18,6 +19,15 @@ const fetch = tracedFetch(
   undefined,
   (url) => url.origin === controlOrigin,
 );
+// Per-process breaker: a provider failing 3 times in a row is tried last for 30 s.
+const breaker = new CircuitBreaker(Number(process.env.MODEL_BREAKER_THRESHOLD) || 3, Number(process.env.MODEL_BREAKER_OPEN_MS) || 30_000);
+const HEADERS_TIMEOUT_MS = Number(process.env.MODEL_HEADERS_TIMEOUT_MS) || 30_000;
+/** Platform key from the environment, used when no channel is configured in the admin console. */
+function envProvider(): Provider[] {
+  const apiKey = process.env.MODEL_API_KEY?.trim();
+  if (!apiKey) return [];
+  return [{ id: "env", baseUrl: process.env.MODEL_BASE_URL || "https://api.deepseek.com/v1", model: process.env.MODEL_NAME || "deepseek-chat", apiKey, maxOutputTokens: Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || undefined }];
+}
 const upstream = (attrs: Record<string, string | number | boolean>) => activeSpan.getStore()?.set(attrs);
 const app = new Hono();
 // Runner calls carry the run's traceparent; untraced calls are recorded only when they fail.
@@ -173,9 +183,10 @@ app.post("/v1/chat/completions", async (c) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-  const { provider, billingId } = (await auth.json()) as {
+  const { provider, providers: auth_providers, billingId } = (await auth.json()) as {
     billingId: string;
-    provider?: { baseUrl: string; model: string; apiKey: string };
+    provider?: Provider;
+    providers?: Provider[];
   };
   if (!provider && (process.env.MODEL_MODE || "mock") === "mock") {
     upstream({ "pig.upstream.status": 200, "gen_ai.request.model": "mock", "gen_ai.system": "mock" });
@@ -327,50 +338,33 @@ app.post("/v1/chat/completions", async (c) => {
       choices: [{ message, finish_reason: call ? "tool_calls" : "stop" }],
     });
   }
-  if (!provider?.apiKey && !process.env.MODEL_API_KEY) {
-    await settle({prompt_tokens:0,completion_tokens:0});
+  const providers: Provider[] = (auth_providers ?? (provider ? [provider] : envProvider())).filter((p) => p.apiKey);
+  if (!providers.length) {
+    await settle({ prompt_tokens: 0, completion_tokens: 0 });
     upstream({ "pig.upstream.status": "no_key" });
     return c.json({ error: "平台尚未配置模型 Key" }, 503);
   }
-  const response = await fetch(
-    (
-      provider?.baseUrl ||
-      process.env.MODEL_BASE_URL ||
-      "https://api.deepseek.com/v1"
-    ).replace(/\/$/, "") + "/chat/completions",
-    {
-      method: "POST",
-      redirect: "error",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${provider?.apiKey || process.env.MODEL_API_KEY}`,
-      },
-      body: JSON.stringify({
-        ...body,
-        n: 1,
-        max_completion_tokens: undefined,
-        model: provider?.model || process.env.MODEL_NAME || "deepseek-chat",
-        max_tokens: Math.max(
-          1,
-          Math.min(Number(body.max_tokens) || 4096, 4096),
-        ),
-        ...(body.stream ? { stream_options: { include_usage: true } } : {}),
-      }),
-      signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(90000)]),
-    },
-  );
+  const routed = await route({ providers, body, fetch, breaker, signal: c.req.raw.signal, headersTimeoutMs: HEADERS_TIMEOUT_MS });
+  const served = routed.ok ? routed.provider : undefined;
+  const final = routed.attempts.at(-1);
   upstream({
-    "pig.upstream.status": response.status,
-    "gen_ai.request.model": provider?.model || process.env.MODEL_NAME || "deepseek-chat",
-    "gen_ai.system": new URL(provider?.baseUrl || process.env.MODEL_BASE_URL || "https://api.deepseek.com/v1").hostname,
+    "pig.upstream.status": routed.ok ? routed.response.status : typeof final?.status === "number" ? final.status : final?.status ?? 502,
+    "gen_ai.request.model": (served ?? providers[0]!).model,
+    "gen_ai.system": new URL((served ?? providers[0]!).baseUrl).hostname,
     "pig.stream": Boolean(body.stream),
+    "pig.channel_id": served?.id ?? "",
+    "pig.failover.attempts": routed.attempts.length,
+    "pig.failover.path": routed.attempts.map((a) => `${a.provider}:${a.status}`).join(" > ").slice(0, 400),
+    "pig.output.cap": outputCap(served ?? providers[0]!),
   });
-  if (!response.ok) {
-    await settle({prompt_tokens:0,completion_tokens:0});
-    return c.json({ error: `模型服务 HTTP ${response.status}` }, 502);
+  if (!routed.ok) {
+    await routed.response?.body?.cancel().catch(() => {});
+    await settle({ prompt_tokens: 0, completion_tokens: 0 });
+    return c.json({ error: `模型服务 HTTP ${routed.status}`, attempts: routed.attempts.length }, 502);
   }
-  async function settle(usage: unknown) {
-    if (!usage) return; // Unknown cost stays reserved, including cancellation/crash.
+  const response = routed.response;
+  async function settle(usage: unknown, kind: "usage" | "estimated" = "usage") {
+    if (!usage) return; // Unknown cost stays reserved.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const r = await fetch(control + "/internal/model-settle", {
@@ -379,7 +373,7 @@ app.post("/v1/chat/completions", async (c) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${process.env.WORKER_TOKEN}`,
           },
-          body: JSON.stringify({ billingId, usage }),
+          body: JSON.stringify({ billingId, usage, kind, ...(served?.id && served.id !== "env" ? { channelId: served.id } : {}) }),
           signal: AbortSignal.timeout(5000),
         });
         if (r.ok) return;
@@ -387,42 +381,56 @@ app.post("/v1/chat/completions", async (c) => {
     }
     console.error("Model billing settlement pending", billingId);
   }
+  const cap = outputCap(routed.provider);
   if (!body.stream) {
-    const result = (await response.json()) as { usage?: unknown };
+    const result = (await response.json()) as { usage?: { completion_tokens?: number } };
+    if (Number(result.usage?.completion_tokens) > cap) upstream({ "pig.output.overrun": Number(result.usage?.completion_tokens) });
     await settle(result.usage);
     return c.json(result);
   }
-  const decoder = new TextDecoder();
-  let pending = "",
-    usage: unknown,
-    settlementSent = false;
-  const meter = new TransformStream<Uint8Array, Uint8Array>({
-    async transform(chunk, controller) {
-      pending += decoder.decode(chunk, { stream: true });
-      let end: number;
-      while ((end = pending.indexOf("\n")) >= 0) {
-        const line = pending.slice(0, end).trim();
-        pending = pending.slice(end + 1);
-        if (line.startsWith("data:")) {
-          try {
-            const data = JSON.parse(line.slice(5));
-            if (data.usage) usage = data.usage;
-          } catch {}
-        }
+  // Streaming: forward bytes as they come, meter output, cut at the cap if the provider ignores max_tokens,
+  // and settle exactly once — provider usage when it arrives, an estimate when the stream ends without it.
+  const meter = new OutputMeter(cap);
+  const reader = response.body!.getReader();
+  let settled = false;
+  const settleOnce = async (usage: unknown, kind: "usage" | "estimated") => {
+    if (settled) return;
+    settled = true;
+    await settle(usage, kind);
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let chunk: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        await settleOnce(meter.usage ?? estimatedUsage(body, meter), meter.usage ? "usage" : "estimated");
+        controller.error(Error("upstream stream failed"));
+        return;
       }
-      if (pending.length > 2 * 1024 * 1024)
-        throw Error("Provider SSE frame too large");
-      if (usage && !settlementSent) {
-        await settle(usage);
-        settlementSent = true;
+      if (chunk.done) {
+        await settleOnce(meter.usage ?? estimatedUsage(body, meter), meter.usage ? "usage" : "estimated");
+        controller.close();
+        return;
       }
-      controller.enqueue(chunk);
+      const exceeded = meter.push(chunk.value);
+      controller.enqueue(chunk.value);
+      if (meter.usage && !settled) await settleOnce(meter.usage, "usage");
+      if (exceeded) {
+        upstream({ "pig.output.capped": true, "pig.output.estimated": meter.estimatedOutput });
+        console.warn(`Model output cap reached (${cap} tokens); stream cut`);
+        await reader.cancel().catch(() => {});
+        controller.enqueue(capFrames());
+        await settleOnce(meter.usage ?? estimatedUsage(body, meter), meter.usage ? "usage" : "estimated");
+        controller.close();
+      }
     },
-    async flush() {
-      if (!settlementSent) await settle(usage);
+    async cancel() {
+      await reader.cancel().catch(() => {});
+      await settleOnce(meter.usage ?? estimatedUsage(body, meter), meter.usage ? "usage" : "estimated");
     },
   });
-  return new Response(response.body?.pipeThrough(meter), {
+  return new Response(stream, {
     headers: { "Content-Type": "text/event-stream" },
   });
 });
