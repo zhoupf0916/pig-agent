@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./cloud": "./src/cloud.ts",
-    "./mcp-oauth": "./src/mcp-oauth.ts"
+    "./mcp-oauth": "./src/mcp-oauth.ts",
+    "./telemetry": "./src/telemetry.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
