@@ -11,6 +11,7 @@ import { clusterSchema } from "./cluster-schema.ts";
 import { createHash } from "node:crypto";
 import { collaborationSchema } from "./collaboration-schema.ts";
 import { bootstrapTokenSchema, syncBootstrapPrincipals } from "./bootstrap-tokens.ts";
+import { authRateLimitSchema } from "./auth-rate-limit-schema.ts";
 export const db = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -91,6 +92,7 @@ export async function migrate() {
     await client.query(clusterSchema);
     await client.query(bootstrapTokenSchema);
     await syncBootstrapPrincipals(client);
+    await client.query(authRateLimitSchema);
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");

@@ -3,9 +3,18 @@ import {
   passwordSchema,
   loginWithPassword,
   loginFailure,
-  allowPasswordAttempt,
   registerPasswordApplicationRoute,
+  PasswordWorkBusy,
 } from "./password-accounts.ts";
+import {
+  AUTH_LIMITS,
+  clearPasswordFailures,
+  clientIp,
+  hitBucket,
+  overLimit,
+  passwordLoginBlocked,
+  recordPasswordFailure,
+} from "./auth-rate-limit.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
@@ -75,21 +84,15 @@ function issueCookie(c: Context, token: string) {
     maxAge: SESSION_SECONDS,
   });
 }
-// One atomic shared bucket across control-plane replicas. No untrusted proxy IP headers.
-async function allowLogin() {
-  const result =
-    await db.query(`INSERT INTO platform_settings(key,value) VALUES ('webAuthRate',jsonb_build_object('window',floor(extract(epoch FROM now())/60),'count',1))
-    ON CONFLICT(key) DO UPDATE SET value=CASE WHEN (platform_settings.value->>'window')::numeric=floor(extract(epoch FROM now())/60)
-    THEN jsonb_set(platform_settings.value,'{count}',to_jsonb((platform_settings.value->>'count')::int+1))
-    ELSE jsonb_build_object('window',floor(extract(epoch FROM now())/60),'count',1) END RETURNING (value->>'count')::int AS count`);
-  return result.rows[0]?.count <= 120;
-}
 export function registerWebAuthRoutes(app: Hono<CloudEnv>) {
   app.use("/auth/web/*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     if (!safeMethods.has(c.req.method) && !validateWebOrigin(c))
       return c.json({ error: "请求来源无效" }, 403);
-    if (c.req.path !== "/auth/web/logout" && !(await allowLogin())) {
+    if (
+      c.req.path !== "/auth/web/logout" &&
+      overLimit("ip", await hitBucket("ip", clientIp(c)))
+    ) {
       c.header("Retry-After", "60");
       return c.json({ error: "登录请求过于频繁，请稍后重试" }, 429);
     }
@@ -112,18 +115,37 @@ export function registerWebAuthRoutes(app: Hono<CloudEnv>) {
       name: string;
       credentialHash: string;
     } | null = null;
+    const ip = clientIp(c);
     if ("username" in parsed.data) {
-      if (!(await allowPasswordAttempt(parsed.data.username)))
-        return c.json({ error: "该账号请求过于频繁，请一分钟后重试" }, 429);
-      const attempt = await loginWithPassword(
-        parsed.data.username,
-        parsed.data.password,
-      );
+      const { username, password } = parsed.data;
+      if (await passwordLoginBlocked(username, ip)) {
+        c.header("Retry-After", "900");
+        return c.json({ error: "该账号登录失败次数过多，请15分钟后重试" }, 429);
+      }
+      let attempt: Awaited<ReturnType<typeof loginWithPassword>>;
+      try {
+        attempt = await loginWithPassword(username, password);
+      } catch (error) {
+        if (error instanceof PasswordWorkBusy) {
+          c.header("Retry-After", "5");
+          return c.json({ error: "登录服务繁忙，请稍后重试" }, 503);
+        }
+        throw error;
+      }
       if (!attempt.ok) {
+        if (attempt.reason === "invalid")
+          await recordPasswordFailure(username, ip);
         const failure = loginFailure(attempt.reason);
         return c.json({ error: failure.error }, failure.status);
       }
+      await clearPasswordFailures(username, ip);
       passwordAccount = attempt;
+    } else if (
+      (await hitBucket("tokenFailures", ip, 0)) >=
+      AUTH_LIMITS.tokenFailures.max
+    ) {
+      c.header("Retry-After", "900");
+      return c.json({ error: "登录失败次数过多，请15分钟后重试" }, 429);
     }
     const client = await db.connect();
     try {
@@ -143,6 +165,7 @@ export function registerWebAuthRoutes(app: Hono<CloudEnv>) {
           ).rows[0];
       if (!account) {
         await client.query("ROLLBACK");
+        if (!passwordAccount) await hitBucket("tokenFailures", ip);
         return c.json({ error: "访问令牌无效或已过期" }, 401);
       }
       const token = randomBytes(32).toString("hex");
