@@ -11,7 +11,8 @@
 # with tool calls + approval + artifact, a follow-up conversation turn, A2A card / auth / message/send /
 # message/stream / tasks/get, schedules (cron + manual run + history + delete), OpenAPI (/openapi.json +
 # /api-docs), signed webhooks (create, SSRF guard, ping + run.cancelled delivered to the built-in sink at the
-# public origin, forged signature rejected, redeliver, delete). SKIP = check not applicable on this host.
+# public origin, forged signature rejected, redeliver, delete), observability (run trace across
+# cloud/worker/runner/gateway, metrics, no critical alerts, test alert delivered to the webhook). SKIP = check not applicable on this host.
 set -uo pipefail
 ROOT=${PIG_DEPLOY_ROOT:-/home/ubuntu/pig-agent}
 ACC=${PIG_ACCOUNTS:-$ROOT/data/cloud-local/accounts.txt}
@@ -163,6 +164,33 @@ await test("conversation follow-up turn (same workspace)", async () => {
   if (mode === "provider") ok(reply.includes(marker), `reply does not contain the marker: ${reply.slice(0, 80)}`);
   return `reply="${reply.slice(0, 60)}"`;
 });
+await test("observability: run trace spans cloud/worker/runner/gateway", async () => {
+  ok(run1?.id, "no first run");
+  const want = ["cloud", "gateway", "runner", "worker"]; let t;
+  for (let i = 0; i < 20; i++) {
+    t = await api(`/v1/runs/${run1.id}/trace`);
+    if (want.every((s) => t.services.includes(s)) && t.spans.some((s) => s.name === "run" && !s.attributes?.synthesized)) break;
+    await sleep(1500);
+  }
+  const missing = want.filter((s) => !t.services.includes(s)); ok(!missing.length, `services=${t.services.join(",")} missing=${missing.join(",")}`);
+  const ids = new Set(t.spans.map((s) => s.spanId));
+  const orphans = t.spans.filter((s) => s.parentSpanId && !ids.has(s.parentSpanId)).length;
+  const model = t.spans.filter((s) => s.service === "runner" && s.name.startsWith("chat ")).length;
+  const tools = t.spans.filter((s) => s.name.startsWith("execute_tool ")).length;
+  const llm = t.spans.filter((s) => s.service === "gateway" && s.name.startsWith("POST /v1/chat")).length;
+  ok(model >= 1 && tools >= 1 && llm >= 1, `model=${model} tools=${tools} gateway=${llm}`);
+  ok(orphans === 0, `${orphans} spans with unknown parent`);
+  return `${t.spanCount} spans, services=[${t.services.join(",")}], model=${model}, tools=${tools}, gateway=${llm}`;
+});
+await test("observability: metrics + alerts (no critical firing)", async () => {
+  const text = await (await req("/v1/admin/metrics")).text();
+  const series = ["pig_http_requests_total", "pig_runs", "pig_runners_online", "pig_model_requests_total", "pig_run_execution_seconds_count", "pig_trace_spans_total", "pig_alerts_firing"];
+  const missing = series.filter((m) => !new RegExp(`^${m}[{ ]`, "m").test(text)); ok(!missing.length, `missing series: ${missing.join(",")}`);
+  const a = await api("/v1/admin/alerts");
+  const critical = a.active.filter((x) => x.severity === "critical");
+  ok(!critical.length, `critical alerts firing: ${critical.map((x) => `${x.rule} (${x.summary})`).join("; ")}`);
+  return `${text.split("\n").filter((l) => l && !l.startsWith("#")).length} samples, ${a.rules.length} rules, active=[${a.active.map((x) => x.rule).join(",")}]`;
+});
 
 let n = 0;
 const rpc = async (method, params, auth = true) => {
@@ -214,7 +242,7 @@ await test("A2A message/stream (SSE)", async () => {
 await test("OpenAPI spec /openapi.json", async () => {
   const spec = await api("/openapi.json", { auth: false });
   ok(spec.openapi === "3.1.0", `openapi=${spec.openapi}`);
-  for (const p of ["/v1/runs", "/v1/webhooks", "/v1/webhooks/{id}/deliveries"]) ok(spec.paths?.[p], `missing path ${p}`);
+  for (const p of ["/v1/runs", "/v1/webhooks", "/v1/webhooks/{id}/deliveries", "/v1/runs/{id}/trace", "/v1/admin/alerts"]) ok(spec.paths?.[p], `missing path ${p}`);
   return `${Object.keys(spec.paths).length} paths, ${Object.keys(spec.components.schemas).length} schemas`;
 });
 await test("API docs page /api-docs", async () => {
@@ -244,7 +272,7 @@ try {
     if (!SINK) throw new Skip(`public origin ${ORIGIN} is not HTTPS`);
     const bad = await req("/v1/webhooks", { method: "POST", body: { url: "https://127.0.0.1/x", events: ["run.succeeded"] } });
     ok(bad.status === 400, `private target accepted: HTTP ${bad.status}`);
-    hook = await api("/v1/webhooks", { method: "POST", status: 201, body: { url: SINK, events: ["run.succeeded", "run.failed", "run.cancelled"], description: "e2e 部署验收（自动删除）" } });
+    hook = await api("/v1/webhooks", { method: "POST", status: 201, body: { url: SINK, events: ["run.succeeded", "run.failed", "run.cancelled", "alert.firing"], description: "e2e 部署验收（自动删除）" } });
     ok(/^whsec_/.test(hook.secret || ""), "no signing secret returned");
     const again = await api(`/v1/webhooks/${hook.id}`); ok(!("secret" in again), "secret readable after creation");
     return `${hook.id} -> ${SINK}`;
@@ -267,6 +295,15 @@ try {
     const r = await finish(created.id); ok(r.state === "cancelled", `state=${r.state}`);
     const d = await delivered((x) => x.event === "run.cancelled" && Date.parse(x.createdAt) >= t0 - 5000);
     return `HTTP ${d.lastStatus}, attempts=${d.attempts}`;
+  });
+  await test("alerts: test alert.firing delivered to the webhook", async () => {
+    if (!hook) throw new Skip("no webhook");
+    const t0 = Date.now();
+    const a = await api("/v1/admin/alerts/test", { method: "POST", status: 202 });
+    const d = await delivered((x) => x.event === "alert.firing" && Date.parse(x.createdAt) >= t0 - 5000);
+    const r = (await api(`/v1/webhooks/${hook.id}/sink-receipts`)).receipts.find((x) => x.eventId === a.eventId);
+    ok(r?.verified, "receiver has no verified receipt for the alert");
+    return `HTTP ${d.lastStatus}, ${Date.now() - t0}ms incl. polling`;
   });
   await test("webhooks: receiver rejects a forged signature", async () => {
     if (!hook) throw new Skip("no webhook");
