@@ -7,9 +7,9 @@
 | `deploy.sh <commit>` | 下载 `<commit>` 源码到 `releases/<yyyymmdd>-<sha7>` → 备份数据库+配置并校验 → 在 `node:24` 容器内构建 `cloud-dist`（失败时下载 `deploy-<sha7>` release 资产并按其 SHA256SUMS 校验；有参考树哈希时比对）→ 旧镜像打 `before-<release>` 标签 → 切换 `current` → `docker compose ... up -d --build --wait` → 健康 / 容器 / Runner 心跳 / 工作台 / 后台 / A2A Agent Card（公网 origin 为 https 时必须宣告 https）/ Nginx → OK/FAIL 汇总 |
 | `deploy.sh rollback` | 先备份，再切回上一次部署前的 release 与 `before-*` 镜像；提示 schema 文件是否变化，不自动恢复数据库 |
 | `deploy.sh status` | 只做检查 |
-| `e2e-remote.sh` | e2e，只输出 PASS / FAIL / BLOCKED-402（模型服务返回 402 余额不足，属于账号问题，不计为失败）：健康、工作台、管理后台密码登录与概览、真实模型任务（工具调用+审批+成果文件）、续聊、A2A card（含 https URL 校验）/ 匿名 401 / send / stream / tasks/get、定时计划（创建/手动运行/历史/删除） |
+| `e2e-remote.sh` | e2e，只输出 PASS / FAIL / BLOCKED-402（模型服务返回 402 余额不足，属于账号问题，不计为失败）：健康、工作台、管理后台密码登录与概览、真实模型任务（工具调用+审批+成果文件）、续聊、A2A card（含 https URL 校验）/ 匿名 401 / send / stream / tasks/get、定时计划（创建/手动运行/历史/删除）、PWA（manifest/图标/Service Worker）、追踪 span 与指标告警、模型路由字段、对象存储往返与校验、队列与死信、并行子任务真实扇出、飞书开关状态、知识库引用回答、OpenAPI 与 API 文档、Webhook 签名投递/重投/伪造签名拒绝；`PIG_E2E_FAILOVER=1` 时另测主渠道故障切换。`E2E_RUN_TIMEOUT_S` 调整单任务等待（默认 300 秒），`PIG_PACE_MS` 调整请求间隔 |
 | `deploy.sh <commit> --source-tar <file.tgz>` | 同上，但源码来自上传的压缩包（需同目录 `<file>.sha256`，校验不一致即停止）；此模式完全不访问 GitHub |
-| `pack-source.sh <commit> [out-dir]` | 在有 git 仓库的机器上运行：`git archive` 打包该 commit（前缀 `pig-agent-<完整 SHA>/`，不含约 49 MB 的 `docs/`，构建和运行都不用），约 1.4 MB，并生成 `.sha256`，打印上传和部署命令 |
+| `pack-source.sh <commit> [out-dir]` | 在有 git 仓库的机器上运行：`git archive` 打包该 commit（前缀 `pig-agent-<完整 SHA>/`，不含约 49 MB 的 `docs/`，构建和运行都不用），约 1.6 MB，并生成 `.sha256`，打印上传和部署命令 |
 | `cert-check.sh [host]` | 只读证书报告：ACME 客户端（certbot / acme.sh / lego / caddy）、systemd timer / cron、最近续期日志、证书 notAfter、续期后是否重载 Nginx（hook + 在线证书序列号是否等于磁盘证书）。不续期、不 dry-run、不重载，不读私钥 |
 
 后台一行部署：脚本取自目标 commit 本身，与浏览器终端断开无关。把 `S` 换成 main 的完整 SHA：

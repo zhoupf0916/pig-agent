@@ -49,7 +49,7 @@ node scripts/setup-admin-password.mjs
 | Web 工作台 | http://127.0.0.1:8890/ |
 | 管理后台 | http://127.0.0.1:8890/admin/ |
 
-这会在本地启动 PostgreSQL、控制面、模型网关和 Runner。浏览器本身不执行主机命令。首次使用在工作台申请账号，由管理员批准后登录。默认使用模拟模型；管理员配置并启用真实模型渠道后，任务才会调用真实模型。
+这会在本地启动 PostgreSQL、MinIO 对象存储、控制面、模型网关和 Runner。浏览器本身不执行主机命令。首次使用在工作台申请账号，由管理员批准后登录。默认使用模拟模型；管理员配置并启用真实模型渠道后，任务才会调用真实模型。
 
 ```bash
 pnpm cloud:status    # 查看服务状态
@@ -141,9 +141,13 @@ packages/
   contracts/    各应用共享的 API、事件与云协议类型
   design/       共享设计样式与基础资源
 infra/
-  cloud/        本地 Docker 平台配置
-  tencent/      腾讯云单机部署、HTTPS、限流与备份配置
+  cloud/        本地 Docker 平台配置（PostgreSQL、MinIO、控制面、网关、Runner）
+  cluster/      多控制面、多 Runner 本地验证与 Nginx 负载均衡
+  observability/ Prometheus 抓取配置与告警规则
+  recovery/     Runner 故障恢复验收环境
+  tencent/      腾讯云单机部署、内存上限、HTTPS、限流、证书续期与备份配置
 scripts/        构建、启动、冒烟验证与运维脚本
+  deploy/       服务器部署、回滚、源码打包、证书检查与线上 e2e
 skills/         内置技能
 docs/          架构、部署、验收与排障文档
 ```
@@ -160,9 +164,65 @@ pnpm build
 
 # 已启动本地 Docker 平台后，使用模拟模型检查云端流程
 pnpm cloud:smoke
+pnpm cloud:smoke:approvals       # 另有 :schedules :conversations :platform :collaboration
+pnpm cloud:smoke:parallel        # 并行子任务：扇出、等待让槽、无效 JSON 重试、级联取消
+pnpm cloud:smoke:feishu          # 飞书机器人：假飞书传输 + 真实控制面
+pnpm product:smoke               # 构建后跑端到端产品流程（Playwright）
+
+pnpm eval:gate                   # 任务评测对照 mock 基线，回归即失败
+pnpm eval:rag                    # 知识库检索评测，recall@5 低于 0.9 即失败
 ```
 
 多控制面、多 Runner 的本地验证使用 `pnpm cluster:up` 和 `pnpm cluster:smoke`；详细环境与限制见 [本地云平台](docs/local-cloud.md)。
+
+## 云端平台能力
+
+| 能力 | 要点 | 详细说明 |
+| --- | --- | --- |
+| Token 计量与预算 | 网关解析每次模型调用的输入、缓存命中、输出 token，按调用时的价目快照结算（默认每百万 token：输入 ¥2、缓存命中 ¥0.04、输出 ¥8）；调用前预留，超额拦截 | [云端能力](docs/cloud-capabilities.md) |
+| 模拟模型 | `MODEL_MODE=mock`（默认）时网关返回确定性场景：写文件 + 读回 + 审批、联网（`[NETWORK_ACCEPTANCE:<url>]`）、MCP（`[MCP_ACCEPTANCE:echo|write_marker|slow]`）、并行子任务（`[PARALLEL_ACCEPTANCE]`）；`PIG_MOCK_MODEL_DELAY_MS` 调节延迟 | [本地云平台](docs/local-cloud.md) |
+| OTel 追踪 | cloud / worker / runner / gateway 共用 trace，GenAI 语义约定 span；`GET /v1/runs/:id/trace` 查看，`OTEL_EXPORTER_OTLP_*` 导出 | [观测](docs/observability.md) |
+| Prometheus 指标与告警 | `/internal/metrics`（`METRICS_TOKEN` 或 Worker 令牌）与 `/v1/admin/metrics`；11 条内置告警（Runner 离线、任务失败率、队列停滞、死信、模型上游错误、渠道切换、存储降级、事件总线断开、Webhook 失效、遥测丢弃、测试告警），以 `alert.firing` 推送到 Webhook | [观测](docs/observability.md)、`infra/observability/` |
+| 模型路由与故障切换 | 渠道主备、输出上限 `MODEL_MAX_OUTPUT_TOKENS`、熔断（`MODEL_BREAKER_THRESHOLD` / `MODEL_BREAKER_OPEN_MS`）、首包超时 `MODEL_HEADERS_TIMEOUT_MS`；本机运行时另有难度路由 `PIG_ROUTER_*` | [模型路由](docs/model-routing.md) |
+| A2A | Agent Card、`message/send`、`message/stream`（SSE）、`tasks/get`、`tasks/cancel`，见上文 | — |
+| MCP 按需检索与 OAuth | 工具超过阈值只暴露 `search_tools`；client_credentials 自动发现 token 端点 | [扩展与 MCP](docs/ecosystem-mcp.md) |
+| 事件总线 | PostgreSQL LISTEN/NOTIFY 推送任务事件与审批变化，SSE 不再轮询数据库 | [事件总线](docs/event-bus.md) |
+| 任务队列 | 按账号轮转领取（`QUEUE_CLAIM=fair`，`legacy` 可回退）；未开始执行的失败按退避重试，不能安全重试的进入死信，管理后台可重放 | [队列](docs/queue.md) |
+| 执行并发 | 管理后台或 `PUT /v1/admin/execution-policy` 设置全局 / 账号 / 项目并发、队列长度与排队超时 | [集群](docs/cluster.md) |
+| 版本化迁移 | `schema_migrations` 记录版本与校验和，启动自动执行，只做扩展；`node migrate.mjs status` / `up` | [数据库迁移](docs/database-migrations.md) |
+| 对象存储 | MinIO（S3 兼容）双写：附件与工作区快照复制、读回校验 SHA-256 后记录；读取优先对象存储、失败回退 PostgreSQL；`STORAGE_MODE=pg / dual / object` | [对象存储](docs/object-storage.md) |
+| 知识库 | 项目文档切块，BM25（中文双字切分）+ 可选向量（`EMBEDDINGS_*`）按 RRF 融合；`knowledge_search` 工具，回答带可点击引用 | [知识库](docs/knowledge-base.md) |
+| 并行子任务 | `spawn_parallel` 把多项独立工作拆成子任务，父任务让出 Runner 槽位、按 JSON Schema 校验结果后续跑；只在每项工作量较大时使用 | [并行子任务](docs/parallel.md) |
+| Webhook 与 OpenAPI | 任务事件与告警以 HMAC-SHA256 签名推送，失败重试、投递记录可重投，SSRF 防护；`/openapi.json` 与 `/api-docs` | [Webhook](docs/webhooks.md) |
+| PWA | 可安装、离线外壳、新版本提示、后台标签页完成/审批通知；不缓存 API 与登录 | [PWA](docs/pwa.md) |
+| 登录与令牌 | Web 会话 12 小时；引导令牌按 `BOOTSTRAP_TOKEN_TTL_HOURS` 过期，管理员可吊销访问令牌与会话；登录按 IP 和账号限流（失败过多锁定 15 分钟） | [账号与密码](docs/password-account-access.md) |
+| 飞书机器人 | 默认关闭；设置 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 后以长连接接入，`/bind` 一次性绑定码绑定账号，私聊或群里 @ 触发任务 | [飞书](docs/feishu.md) |
+
+## 部署与运维
+
+单机部署（Docker Compose + 宿主 Nginx HTTPS）见 [腾讯云单机部署](docs/tencent-deployment.md)：各服务内存上限、Nginx 限流（API 10 次/秒、登录 5 次/分钟，按 IP）、安全响应头、IP 证书续期与每日备份。
+
+```bash
+bash scripts/deploy/pack-source.sh <commit> /tmp/pack   # 打包源码并生成 .sha256，上传到服务器
+bash deploy.sh <commit> --source-tar <file.tgz>          # 服务器上：备份 → 构建 → 切换 → 健康检查
+bash deploy.sh rollback                                  # 回到上一个 release（不恢复数据库）
+PIG_BASE=https://<host> bash scripts/deploy/e2e-remote.sh   # 线上 e2e（只登录一次，结束注销）
+```
+
+完整说明见 [部署脚本](scripts/deploy/README.md)。
+
+## 实测指标
+
+只列在本仓库环境中实际测得的数字；测法与条件见各功能文档。
+
+| 指标 | 之前 | 之后 |
+| --- | --- | --- |
+| 模型提示缓存命中率 | 77.5% | 85.1% |
+| 任务事件推送延迟 p95 | 483 ms | 33 ms |
+| 队列领取吞吐 | 11 次/秒 | 91 次/秒 |
+| 知识库检索 top-1 命中率 | 60% | 95% |
+| 单元测试数 | 986 | 1197 |
+| 线上 e2e 检查项 | 16 | 34 |
 
 ## 上下文工程与评测
 
@@ -189,7 +249,7 @@ pnpm eval:context --trials 10     # 重复组装测量，报告写入 data/evals
 - 审批最多等待 30 分钟，等待期间仍占用执行名额。
 - 附件支持文本、PDF、DOCX。图片只保存原件，不做识别。Web 单文件 4 MiB，单次最多 10 个，每条消息合计 8 MiB。
 - 桌面安装包未签名、未公证，目前只有 macOS。执行固定走 Pig 的沙箱和审批，不能改成直接在主机上跑命令。
-- 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测，没有账号计费；公网内测可参考 [腾讯云单机部署](docs/tencent-deployment.md)，不代表高可用生产方案。
+- 本机开发服务的设置没有用系统密钥加密，不要暴露到公网。当前是内测：云账号按 token 用量扣减平台模型预算，但没有充值或支付；公网内测可参考 [腾讯云单机部署](docs/tencent-deployment.md)，不代表高可用生产方案。
 
 架构、桌面打包和云平台细节见 [架构说明](docs/architecture.md)、[桌面客户端](docs/desktop.md)、[本地云平台](docs/local-cloud.md)。运行时选型见 [运行时选型](docs/runtime-selection.md)。改代码的顺序和测试要求见 [AGENTS.md](AGENTS.md)。
 
@@ -201,6 +261,6 @@ Web 打开「设置 → 扩展与 MCP」，桌面打开「设置 → 插件」�
 
 任务保存技能快照，运行时将资源放入版本隔离的工作区目录，按需读取，不把脚本全文塞进系统提示词。脚本仍受沙箱、工具权限与审批约束，导入不会运行代码。本轮支持 UTF-8 文本资源、单层资源目录与 Python 脚本；大小限制及使用示例见 [技能包说明与验收记录](docs/skill-pack-upgrade-2026-09-24.md)。
 
-「MCP 连接」里填写服务名称、HTTP 地址、可选 Bearer 凭据和超时，保存、测试后启用。使用官方 TypeScript SDK 1.30.0，当前支持 Streamable HTTP 的工具发现与调用；不支持 stdio、OAuth、资源或提示词接口。桌面凭据进系统保险箱；云凭据由控制面加密保存，不下发 Runner。普通云账号只能连接公网地址，项目协同不会隐式使用个人 MCP 连接。
+「MCP 连接」里填写服务名称、HTTP 地址、可选 Bearer 凭据和超时，保存、测试后启用。使用官方 TypeScript SDK 1.30.0，当前支持 Streamable HTTP 的工具发现与调用，凭据可以是静态 Bearer 或 OAuth 2.1 client_credentials（见上文「远端 MCP 凭据」）；不支持 stdio、交互式 OAuth 授权码流程、资源或提示词接口。工具较多时只暴露 `search_tools`，按需检索激活（`PIG_TOOL_SEARCH`）。桌面凭据进系统保险箱；云凭据由控制面加密保存，不下发 Runner。普通云账号只能连接公网地址，项目协同不会隐式使用个人 MCP 连接。
 
 完整的边界、排障与模拟服务复验命令见 [扩展与 MCP 使用说明](docs/ecosystem-mcp.md)。

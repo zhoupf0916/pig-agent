@@ -1,10 +1,10 @@
 # 腾讯云单机部署
 
-用于小规模内测，Ubuntu 上使用 Docker Compose 运行 PostgreSQL、控制面、模型网关和四个 Runner，宿主 Nginx 终结 HTTPS。不是高可用部署。桌面 Electron 安装在用户电脑上，不部署到服务器。
+用于小规模内测，Ubuntu 上使用 Docker Compose 运行 PostgreSQL、MinIO 对象存储、控制面、模型网关和四个 Runner，宿主 Nginx 终结 HTTPS。不是高可用部署。桌面 Electron 安装在用户电脑上，不部署到服务器。
 
 ## 目录与启动
 
-当前实例 193.112.22.18：4 vCPU、约 4 GB 内存、59 GB 磁盘。当前应用版本：`ad13aec`，release 为 `20260927-market-ad13aec`。
+当前实例 193.112.22.18：4 vCPU、约 4 GB 内存、59 GB 磁盘。当前版本以服务器上 `current` 链接指向的 release 为准（`readlink /home/ubuntu/pig-agent/current`，`bash deploy.sh status` 会一并检查）。
 
 - `/home/ubuntu/pig-agent/releases/20260927-market-ad13aec`：源码和预构建 `cloud-dist`。
 - `/home/ubuntu/pig-agent/current`：指向当前 release 的符号链接。
@@ -22,15 +22,16 @@ docker compose --env-file /home/ubuntu/pig-agent/data/cloud-local/stack.env \
 
 覆盖文件配置四个 Runner：每节点并发 1、CPU 1 核、内存 `RUNNER_MEM_LIMIT`（默认 512 MiB），仅接收 compact/standard 任务。
 
-内存预算按主机可用 3718 MiB 计算：容器上限是天花板而不是预留，合计必须给系统、dockerd、Nginx 和页缓存留出余量。
+内存预算按主机可用约 3.7 GB 计算：容器上限是天花板而不是预留，合计必须给系统、dockerd、Nginx 和页缓存留出余量。
 
 | 服务 | 内存上限 | oom_score_adj |
 |---|---|---|
-| postgres | 512 MiB | −900 |
-| cloud | 512 MiB | −500 |
+| postgres | 448 MiB | −900 |
+| cloud | 448 MiB | −500 |
+| minio | 256 MiB（`GOMEMLIMIT=200MiB`） | −800 |
 | gateway | 192 MiB | −500 |
-| runner ×4 | 512 MiB | +500 |
-| **合计** | **3264 MiB**（约 450 MiB 余量；旧配置为 4352 MiB，超出物理内存） | |
+| runner ×4 | 512 MiB（`RUNNER_MEM_LIMIT`） | +500 |
+| **合计** | **3392 MiB**（总预算不超过约 3.4 GB；旧配置为 4352 MiB，超出物理内存） | |
 
 主机真正 OOM 时，内核先杀任务进程，最后才动数据库和控制面。Runner 在以下情况会暂停领取新任务，每分钟最多记一条 `Claim paused by memory pressure` 日志：
 
@@ -39,7 +40,7 @@ docker compose --env-file /home/ubuntu/pig-agent/data/cloud-local/stack.env \
 
 需要更大的单任务内存时，可减少 Runner 数量后调高 `RUNNER_MEM_LIMIT`，不要只调高上限。
 
-管理后台全局并发设置为 2，用户和项目并发均为 1，队列长度 30，排队超时 1800 秒。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
+执行策略：全局并发 4、账号并发 4、项目并发 1，队列长度 30，排队超时 1800 秒（管理后台或 `PUT /v1/admin/execution-policy` 修改，记录审计）。并行子任务按账号并发同时执行。审批等待会占用执行名额。所有服务设置自动重启和轮转日志。
 
 只有构建阶段使用 host 网络来下载软件包。运行期仍走 bridge；数据库和 Runner 仅接内部网络，网关与控制面允许出站访问模型/MCP。任务使用 Bubblewrap + seccomp，沙箱失败拒绝执行，不挂载 Docker socket。
 
